@@ -37,13 +37,13 @@ skills and packaging.
 | Thing | Value |
 |---|---|
 | Machine | Windows 11, Ryzen 7 5800H, 32 GB RAM, RTX 3070 Laptop 8 GB, 127 GB free on C: (2026-11-16) |
-| Python | 3.13.5 system; uv 0.13.1. Hermes requires Python >=3.11,<3.15 |
+| Python | Ariadne venv `.venv` on uv-managed Python 3.14.8 in `.tools\python` (upstream lock resolves only for 3.14); deps via `uv sync --project upstream --frozen --no-dev` with `UV_PROJECT_ENVIRONMENT=.venv`; uv 0.13.1 |
 | Models (Ollama, `localhost:11434`) | qwen3.5:9b (6.6 GB), qwen3.5:4b (3.3 GB), qwen2.5:7b, qwen2.5vl:7b, qwen3-embedding:0.6b, nomic-embed-text |
 | Hermes | `upstream\` at the commit in `hermes.lock` (MIT, Nous Research) |
 | Hermes home | `C:\repos\ariadne\.hermes-home` (gitignored) |
 | Local Ollama as provider | `provider: custom`, `base_url: http://localhost:11434/v1` (from upstream docs `guides/local-ollama-setup.md`) |
 
-8 GB VRAM is the real limit: 27B-class models do not fit on the GPU. Starting set: `coder`/main =
+Hermes refuses models served with under 64,000 tokens of context, so local models run as Ariadne Ollama tags with num_ctx 65536 (`serving\ollama\*.Modelfile`). 8 GB VRAM is the real limit: 27B-class models do not fit on the GPU. Starting set: `coder`/main =
 qwen3.5:9b, `router`/auxiliary = qwen3.5:4b, `vision` = qwen2.5vl:7b, `embed` = qwen3-embedding:0.6b.
 Bigger models (e.g. a 35B-A3B MoE with experts on CPU) are an experiment in A4, not an assumption.
 
@@ -86,7 +86,7 @@ Each has: goal, steps, pass line, and what to do if blocked. Each ends with a ch
 Hermes clone moved to `upstream\`, Ariadne repo created around it, PLAN/WORKLOG/README/hermes.lock written,
 first checkpoint committed.
 
-### A1. Baseline: stock Hermes on local Ollama, isolated home
+### A1. Baseline: stock Hermes on local Ollama, isolated home - done 2026-11-16
 - Create `.venv` in `C:\repos\ariadne` with uv; install `upstream` editable into it (no global installs).
 - `HERMES_HOME=C:\repos\ariadne\.hermes-home`; config: `provider: custom`, base_url Ollama, model qwen3.5:9b.
 - Run a one-shot prompt that needs a file-read tool call. Write `tools\gate-smoke.ps1` (G2).

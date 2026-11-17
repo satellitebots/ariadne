@@ -1,0 +1,5 @@
+# Ariadne base profile - local only. Copied into HERMES_HOME by tools\use-profile.ps1.
+model:
+  default: "ariadne-qwen3.5-9b"
+  provider: "custom"
+  base_url: "http://localhost:11434/v1"
