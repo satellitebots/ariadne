@@ -8,3 +8,6 @@ models/
 .tools/
 serving/bin/
 .ariadne/
+
+# local working notes (not checked in)
+work_*
