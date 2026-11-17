@@ -13,9 +13,9 @@ Ollama as fallback); tools and chat channels may use the internet.
 ## How it fits together
 
 ```
-Slack, CLI, Desktop, VS Code chat --> Hermes gateway --+
+Slack, terminal (CLI) ------------> Hermes gateway --+
                                                        +--> task orchestrator --> Hermes worker --> local models
-Claude, other MCP clients ---> ariadne-tasks (MCP) ----+    (brief, backbrief,    (set up by the     (llama-swap)
+Claude, other MCP clients ---> ariadne-tasks (MCP) --+    (brief, backbrief,    (set up by the     (llama-swap)
                                                             sign-off)              chosen flow)  --> MCP tools
                           shared memory (durable, every task reads and writes it)                   (git, ...)
 ```
@@ -31,17 +31,37 @@ Claude, other MCP clients ---> ariadne-tasks (MCP) ----+    (brief, backbrief,  
 | Gateway profile + skill (CLI / Desktop / Slack use the orchestrator) | `profiles\ariadne\` |
 | Local model serving | `serving\`, `tools\serve.ps1` |
 
-## Using the POC
+Supported entry points: **Slack**, the **terminal** (Hermes CLI or `python -m ariadne.orchestrator`) and **MCP**
+(Claude and other large models hand work to Ariadne).
 
-Setup once (Windows, from the repo root):
+## Install
+
+Windows 10/11 with an NVIDIA GPU (8 GB is enough). One command checks every dependency and installs what is
+missing (git, uv, Node.js, Ollama, Chrome via winget; Hermes at the pinned commit; the Python env from Hermes's
+lockfile; llama.cpp, llama-swap, Pandoc, stable-diffusion.cpp and SD Turbo by sha256; the Ollama models):
 
 ```powershell
-$env:UV_PROJECT_ENVIRONMENT = "$PWD\.venv"
-uv sync --project upstream --frozen --no-dev --extra mcp     # Hermes + its MCP client
-uv pip install --python .venv\Scripts\python.exe pytest==9.1.1
-powershell -ExecutionPolicy Bypass -File tools\serve.ps1     # llama-swap on 127.0.0.1:8090
-powershell -ExecutionPolicy Bypass -File tools\use-profile.ps1 ariadne   # gateway home = .hermes-home
+powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Check    # what is missing, changes nothing
+powershell -ExecutionPolicy Bypass -File tools\install.ps1           # install it (add -Slack for the Slack channel)
 ```
+
+It runs natively, not in a container: the models need the GPU and the browser/editor tools need your desktop.
+
+## Host and connect
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\host.ps1              # models + tasks endpoint on loopback
+powershell -ExecutionPolicy Bypass -File tools\host.ps1 -Lan         # tasks endpoint for other machines (token)
+powershell -ExecutionPolicy Bypass -File tools\host.ps1 -Install     # same, at every logon (scheduled task)
+.venv\Scripts\python.exe -m ariadne.host connect --host <name or IP> # client configs with the token
+```
+
+The tasks endpoint is `http://<host>:8791/mcp` (MCP streamable HTTP); every request needs
+`Authorization: Bearer <token>` (`.ariadne\token`, rotate with `python -m ariadne.host token --rotate`). Models
+stay on loopback; other machines give Ariadne tasks, they do not call the models. For `-Lan`, allow TCP 8791 in
+Windows Firewall for private networks.
+
+## Using it
 
 Give a task from the command line:
 
@@ -53,7 +73,7 @@ $env:PYTHONPATH = "$PWD"
 .venv\Scripts\python.exe -m ariadne.orchestrator wait <id>      # returns with the report
 ```
 
-From Hermes (CLI, Desktop, or Slack once its tokens are set), with `HERMES_HOME=.hermes-home`:
+From Hermes (the terminal, or Slack once its tokens are set), with `HERMES_HOME=.hermes-home`:
 
 ```powershell
 .venv\Scripts\hermes.exe chat -s ariadne-tasks -q "Give Ariadne this task for C:\path\to\repo: ..."

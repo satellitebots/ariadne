@@ -17,6 +17,7 @@ Get-Content (Join-Path $root 'serving\bin.lock') | Where-Object { $_ -and -not $
   if ($got -ne $sha) { Remove-Item $zip -Force; throw "sha256 mismatch for $name ${ver}: got $got expected $sha (file deleted)" }
   $dest = Join-Path $bin "$name-$ver"
   if ($name -eq 'cudart') { $dest = Join-Path $bin "llama.cpp-$ver" }  # CUDA runtime DLLs go next to llama-server.exe
+  if ($name -eq 'cudart-sd') { $dest = Join-Path $bin "sd.cpp-$ver" }  # and next to sd-cli.exe
   New-Item -ItemType Directory $dest -Force | Out-Null
   Expand-Archive $zip -DestinationPath $dest -Force
   Write-Host ("OK {0} {1} sha256 verified ({2:N1} MB) -> {3}" -f $name, $ver, ((Get-Item $zip).Length / 1e6), $dest)

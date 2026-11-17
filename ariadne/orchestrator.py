@@ -474,7 +474,9 @@ def _print(t):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ariadne", description="Ariadne tasks: brief, backbrief, sign-off, execute")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("submit"); s.add_argument("text"); s.add_argument("--workspace", default="")
+    s = sub.add_parser("submit"); s.add_argument("text", nargs="?", default="")
+    s.add_argument("--file", default="", help="read the task text from a file (long briefs, no shell quoting)")
+    s.add_argument("--workspace", default="")
     s.add_argument("--flow", default=""); s.add_argument("--wait", type=int, default=0)
     g = sub.add_parser("get"); g.add_argument("id")
     w = sub.add_parser("wait"); w.add_argument("id"); w.add_argument("--timeout", type=int, default=600)
@@ -493,7 +495,8 @@ def main(argv=None):
         return 0
     st = Store()
     if args.cmd == "submit":
-        tid = st.submit(args.text, "cli", args.workspace, args.flow)
+        text = Path(args.file).read_text(encoding="utf-8") if args.file else args.text
+        tid = st.submit(text, "cli", args.workspace, args.flow)
         ensure_worker()
         _print(st.wait(tid, args.wait) if args.wait else {"id": tid, "status": "new"})
     elif args.cmd == "get":
