@@ -50,7 +50,9 @@ def _desktop(rest):
     if not shutil.which("node"):
         sys.exit("Hermes Desktop needs Node.js: python -m ariadne install --system")
     cwd = rest[rest.index("--cwd") + 1] if "--cwd" in rest else os.getcwd()
-    env = dict(os.environ, HERMES_HOME=str(paths.GATEWAY_HOME))
+    # npm_config_* from a parent npm/npx process makes the pinned pnpm's preinstall check fail; start clean.
+    env = {k: v for k, v in os.environ.items() if not k.lower().startswith("npm_")}
+    env["HERMES_HOME"] = str(paths.GATEWAY_HOME)
     args = [str(paths.HERMES_EXE), "desktop", "--hermes-root", str(paths.UPSTREAM), "--cwd", cwd, "--local"]
     if "--build" in rest:
         args.append("--force-build")
