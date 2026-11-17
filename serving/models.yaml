@@ -1,0 +1,94 @@
+# Model catalog: every model a plan may pick, what it is for, and where its weights come from.
+#
+# kind:  agent    - drives a Hermes run (tool calls, >= 64K context). A step's model.
+#        generate - writes text when asked (generate_text tool); too small a context to drive Hermes.
+#        image    - renders images (generate_image tool, stable-diffusion.cpp).
+#        embed    - shared-memory embeddings.
+# roles: what the planner may suggest it for. defaults: the model suggested when a step names none.
+# weights: Hugging Face files (repo + file, or repo + dir for split GGUFs), fetched into models/<name>/.
+#          The LFS sha256 is pinned in .ariadne/model-pins.json on first fetch and verified on every fetch after;
+#          a sha256 here is enforced from the start. ollama: an Ollama model whose GGUF blob is served read-only.
+# args:  llama-server arguments for agent/generate models (defaults to the 64K chat settings).
+
+defaults:
+  coding: qwen3.8-27b
+  design: gemma-4-12b
+  writing: fimbulvetr-11b
+  image: z-image-turbo
+  router: router
+  embed: embed
+
+models:
+  qwen3.8-27b:
+    kind: agent
+    roles: [coding]
+    about: Qwen3.8 27B (dense). Strongest local coder here. 17.7 GB, so on an 8 GB GPU it offloads to CPU and is slow.
+    size_gb: 17.7
+    weights: {repo: unsloth/Qwen3.8-27B-GGUF, file: Qwen3.8-27B-UD-Q4_K_XL.gguf}
+    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+
+  deepseek-v4.1-flash:
+    kind: agent
+    roles: [coding]
+    about: DeepSeek V4.1 Flash (284B MoE, 13B active). Very strong coder; needs ~100 GB of RAM + VRAM even at 2-bit.
+    size_gb: 100
+    weights: {repo: unsloth/DeepSeek-V4.1-Flash-1017-GGUF, dir: UD-Q2_K_XL}
+    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+
+  qwen3.5-9b:
+    kind: agent
+    roles: [coding, writing, design]
+    about: Qwen3.5 9B. Fits an 8 GB GPU with a 64K context; fast, less capable.
+    size_gb: 5.6
+    ollama: {tag: "qwen3.5:9b", blob: sha256-02d45dc1cf451ba2475ac33b301c2dd8f985abe4c182ce04a1f2f5bf0260278d}
+
+  gemma-4-12b:
+    kind: agent
+    roles: [design]
+    about: Gemma 4 12B. Design work (layouts, UI, visual judgement); 7.4 GB.
+    size_gb: 7.4
+    weights: {repo: unsloth/gemma-4-12b-it-GGUF, file: gemma-4-12b-it-UD-Q4_K_XL.gguf}
+
+  fimbulvetr-11b:
+    kind: generate
+    roles: [writing]
+    about: Fimbulvetr 11B v2 (SOLAR). Creative prose; 4K context, so it drafts text for an agent model. CC-BY-NC-4.0.
+    size_gb: 6.6
+    weights: {repo: mradermacher/Fimbulvetr-11B-v2-GGUF, file: Fimbulvetr-11B-v2.Q4_K_M.gguf}
+    args: "-c 4096 -ngl 99"
+
+  z-image-turbo:
+    kind: image
+    roles: [image]
+    about: Z-Image-Turbo (6B, 8 steps). Good photoreal and text in images; ~4.7 GB with its encoder and VAE.
+    size_gb: 6.7
+    weights:
+      diffusion: {repo: leejet/Z-Image-Turbo-GGUF, file: z_image_turbo-Q4_K.gguf}
+      llm: {repo: unsloth/Qwen3-4B-Instruct-2507-GGUF, file: Qwen3-4B-Instruct-2507-Q4_K_M.gguf}
+      vae: {repo: Comfy-Org/z_image_turbo, file: split_files/vae/ae.safetensors}
+    sd_args: "--cfg-scale 1 --steps 8 --diffusion-fa --offload-to-cpu"
+
+  sd-turbo:
+    kind: image
+    roles: [image]
+    about: SD Turbo (1 step). Fast drafts, low quality. Stability AI Community License (non-commercial).
+    size_gb: 5.2
+    weights:
+      model: {repo: stabilityai/sd-turbo, file: sd_turbo.safetensors,
+              sha256: 3f067a1b943cf162f2b8f8588f6cf5824bd5b4c7d1d88d87164b9ca123616549}
+    sd_args: "--steps 1 --cfg-scale 1.0 --sampling-method euler_a"
+
+  router:
+    kind: generate
+    roles: [router]
+    about: Qwen3.5 4B. Picks the flow for a task.
+    size_gb: 2.7
+    ollama: {tag: "qwen3.5:4b", blob: sha256-a9d0a3e1d8c91732a3812becd31f8d4a8ff57414903f226306069f0437e2ac50}
+
+  embed:
+    kind: embed
+    roles: [embed]
+    about: Qwen3 Embedding 0.6B for shared memory.
+    size_gb: 0.6
+    ollama: {tag: "qwen3-embedding:0.6b", blob: sha256-06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439}
+    args: "-c 8192 --embedding --pooling last -ngl 99"

@@ -19,7 +19,7 @@ DEFAULT_PLAN_TOOLS = ["read_file", "search_files", "skill_view", "skills_list", 
 # Settings every worker home gets (local models only; quiet, no background fetches). Mirrors profiles\llamaswap.
 BASE_CONFIG = {
     "_config_version": 12,  # current upstream schema; without it Hermes warns that it cannot migrate the file
-    "model": {"default": "coder", "provider": "custom", "base_url": paths.LLM_BASE_URL, "context_length": 65536},
+    "model": {"default": "qwen3.5-9b", "provider": "custom", "base_url": paths.LLM_BASE_URL, "context_length": 65536},
     "model_catalog": {"enabled": False},
     "models_dev": {"url": "http://127.0.0.1:9/models-dev-disabled.json"},
     "updates": {"check": False},
@@ -38,7 +38,7 @@ class Flow:
     name: str
     description: str
     when: str
-    model: str = "coder"
+    model: str = "qwen3.5-9b"   # agent model (serving/models.yaml) for steps that name none
     skills: list = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
     plan_toolsets: list = field(default_factory=lambda: ["file", "skills"])
@@ -76,7 +76,7 @@ def load_flow(folder):
         raise FlowError(f"{folder.name}/flow.yaml: name '{data['name']}' must match its folder")
     ts = data.get("toolsets") or {}
     fl = Flow(name=data["name"], description=data["description"].strip(), when=data["when"].strip(),
-              model=data.get("model", "coder"), skills=list(data.get("skills") or []),
+              model=data.get("model", "qwen3.5-9b"), skills=list(data.get("skills") or []),
               mcp_servers=list(data.get("mcp_servers") or []),
               plan_toolsets=list(ts.get("plan") or ["file", "skills"]),
               execute_toolsets=list(ts.get("execute") or ["file", "terminal", "skills", "todo"]),
@@ -85,6 +85,13 @@ def load_flow(folder):
               requires=[str(x).lower() for x in data.get("requires") or []],
               real_logins=bool((data.get("browser") or {}).get("real_logins", True)),
               blocklist=[str(h).strip().lower() for h in (data.get("network") or {}).get("blocklist") or []])
+    from . import models as modellib
+    try:
+        agent = modellib.load().get(fl.model)
+    except modellib.ModelError as e:
+        raise FlowError(f"{fl.name}: model: {e}")
+    if agent.kind != "agent":
+        raise FlowError(f"{fl.name}: model '{fl.model}' is a {agent.kind} model; a flow's model must be an agent model")
     fl.max_turns.update(data.get("max_turns") or {})
     fl.run_budget.update(data.get("run_budget") or {})
     for s in fl.skills:

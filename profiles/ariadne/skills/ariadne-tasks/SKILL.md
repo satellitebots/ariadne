@@ -16,10 +16,13 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
    as `workspace` (ask if they did not say), and `source` set to where you are talking to them
    (e.g. `slack`, `cli`). Tell them the task id.
 2. **Backbrief.** Call `wait_task(id)` until the status is `awaiting_signoff` (it returns every ~50 s while the
-   worker plans; keep calling). Show the person the backbrief (`plan`) exactly as written.
-3. **Sign-off.** Ask: approve, change, or cancel? Then call `approve_task`, `revise_task` (with their
-   feedback, which produces a new backbrief - go back to step 2) or `cancel_task`. Never approve on their behalf.
+   worker plans; keep calling). Show the person the backbrief (`plan`) exactly as written, including its
+   MODEL PLAN (the model for each step, and any model that will be downloaded after sign-off).
+3. **Sign-off.** Ask: approve, change, or cancel? Then call `approve_task` (with `models`, e.g. `"2=gemma-4-12b"`,
+   if they want a different model for a step), `revise_task` (with their feedback, which produces a new
+   backbrief - go back to step 2) or `cancel_task`. Never approve on their behalf.
 4. **Execute and report.** After approval call `wait_task` until `done`, `failed` or `needs_attention`, and
-   give them the result. `needs_attention` means the worker stopped off-plan: show why and ask how to revise.
+   give them the result. `needs_attention` means the worker stopped (off-plan, a model would not install, or a
+   tool is missing): show why and ask whether to fix and approve again, revise, or cancel.
 
 Use `list_tasks` / `get_task` when they ask about earlier tasks.

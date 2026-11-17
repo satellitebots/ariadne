@@ -1,4 +1,0 @@
-# Pinned model files not served by Ollama. name|url (pinned to a repo commit)|sha256 (Hugging Face LFS digest).
-# Fetched and verified by tools\fetch-models.ps1 into models\ (gitignored).
-# SD Turbo (stabilityai/sd-turbo @ b261bac6, Stability AI Community License: non-commercial use).
-sd_turbo.safetensors|https://huggingface.co/stabilityai/sd-turbo/resolve/b261bac6fd2cf515557d5d0707481eafa0485ec2/sd_turbo.safetensors|3f067a1b943cf162f2b8f8588f6cf5824bd5b4c7d1d88d87164b9ca123616549

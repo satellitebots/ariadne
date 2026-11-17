@@ -7,8 +7,8 @@ import urllib.request
 from . import paths
 
 
-def chat(model, messages, max_tokens=64, timeout=180, base_url=None):
-    body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0,
+def chat(model, messages, max_tokens=64, timeout=180, base_url=None, temperature=0):
+    body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
             "chat_template_kwargs": {"enable_thinking": False}}
     req = urllib.request.Request((base_url or paths.LLM_BASE_URL).rstrip("/") + "/chat/completions",
                                  data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})

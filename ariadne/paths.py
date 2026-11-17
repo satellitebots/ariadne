@@ -16,7 +16,7 @@ LOGS = STATE / "logs"
 TASKS_DB = STATE / "tasks.db"
 MEMORY_DB = STATE / "memory.db"              # the durable shared memory
 BIN = ROOT / "serving" / "bin"               # pinned binaries (serving/bin.lock)
-MODELS = ROOT / "models"                     # pinned model files (serving/models.lock)
+MODELS = ROOT / "models"                     # catalog model weights (serving/models.yaml)
 LLM_BASE_URL = os.environ.get("ARIADNE_LLM_URL", "http://127.0.0.1:8090/v1")
 
 WINDOWS = os.name == "nt"

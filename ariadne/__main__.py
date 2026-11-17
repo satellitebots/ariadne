@@ -1,7 +1,9 @@
 """Ariadne command line (Windows, Linux, macOS):  python -m ariadne <command>
 
   doctor                     check every dependency (changes nothing)
-  install [--system]         install what is missing (--system: git/uv/ollama/node via winget, brew or apt too)
+  install [--system] [--models]   install what is missing (--system: git/uv/ollama/node via winget, brew or apt;
+                             --models: also fetch the default models now instead of when a plan first picks them)
+  models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
   up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
@@ -46,7 +48,7 @@ def main(argv=None):
     if cmd == "doctor":
         return deps.doctor()
     if cmd == "install":
-        return deps.install(system="--system" in rest, slack="--slack" in rest, images="--no-images" not in rest)
+        return deps.install(system="--system" in rest, slack="--slack" in rest, models="--models" in rest)
     if cmd == "profile":
         return _profile() or 0
     if cmd == "flows":
@@ -54,6 +56,9 @@ def main(argv=None):
         for name, home in compile_all().items():
             print(f"{name}: {home}")
         return 0
+    if cmd == "models":
+        from . import models
+        return models.main(rest)
     deps.require()  # everything below needs the dependencies
     if cmd == "serve":
         from . import serve

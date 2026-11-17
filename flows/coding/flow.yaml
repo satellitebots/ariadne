@@ -1,7 +1,7 @@
 name: coding
 description: Change code in a repository, prove it with its tests, and commit locally.
 when: fixing bugs, adding features, refactoring, writing or fixing tests - any change to code in a repository
-model: coder
+model: qwen3.8-27b       # the agent model when a step names none (serving/models.yaml)
 skills: [fix-and-verify]
 requires: []               # system tools the servers below need, e.g. [node, chrome] for browser
 mcp_servers: [memory, git] # optional: vscode (VS Code MCP extension running), browser (needs node + chrome)

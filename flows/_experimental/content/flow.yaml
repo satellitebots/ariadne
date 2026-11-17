@@ -1,7 +1,7 @@
 name: content
 description: Make content for a channel - angles, drafts per channel, review - saved as Markdown in the workspace.
 when: social posts, newsletters, blog posts, marketing copy, scripts, repurposing long content into short pieces
-model: coder
+model: qwen3.5-9b
 skills: [channel-content]
 requires: [node, chrome]   # for the browser server; checked before a task runs
 mcp_servers: [memory, browser, export, image]

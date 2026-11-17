@@ -1,7 +1,7 @@
 name: writing
 description: Research and write a document - brief, outline, draft, edit pass - saved as Markdown in the workspace.
 when: writing or editing documents, reports, articles, emails, notes, documentation prose
-model: coder
+model: qwen3.5-9b
 skills: [draft-and-edit]
 requires: [node, chrome]   # for the browser server; checked before a task runs
 mcp_servers: [memory, browser, export]

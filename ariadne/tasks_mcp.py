@@ -26,12 +26,14 @@ def store():
 
 
 def _view(t):
-    keep = ("id", "status", "flow", "source", "text", "workspace", "plan", "result", "error", "events")
+    keep = ("id", "status", "flow", "source", "text", "workspace", "plan", "models", "result", "error", "events")
     v = {k: t.get(k) for k in keep if t.get(k)}
     if t["status"] == "awaiting_signoff":
-        v["next"] = "Show the backbrief (plan) to the person. They approve (approve_task), revise (revise_task) or cancel."
+        v["next"] = ("Show the backbrief (plan, including its MODEL PLAN) to the person. They approve (approve_task, "
+                     "optionally changing models), revise (revise_task) or cancel.")
     elif t["status"] == "needs_attention":
-        v["next"] = "The worker stopped off-plan (see result). The person revises (revise_task) or cancels."
+        v["next"] = ("The worker stopped (see result): off-plan, a model that would not install, or a missing tool. "
+                     "The person fixes it and approves again, revises (revise_task) or cancels.")
     elif t["status"] not in FINAL:
         v["next"] = "Working. Call wait_task again."
     return json.dumps(v, indent=2, default=str)
@@ -72,10 +74,11 @@ def get_task(id: str) -> str:
 
 
 @server.tool()
-def approve_task(id: str) -> str:
-    """Sign-off: the person approved the backbrief. The worker executes the plan."""
+def approve_task(id: str, models: str = "") -> str:
+    """Sign-off: the person approved the backbrief, which locks its model plan. The worker fetches any model that is
+    not installed, then executes. models: optional changes first, e.g. "2=gemma-4-12b,3=sd-turbo" or "all=qwen3.5-9b"."""
     def go():
-        store().approve(id)
+        store().approve(id, models or None)
         ensure_worker()
         return _view(store().get(id))
     return _guard(go)

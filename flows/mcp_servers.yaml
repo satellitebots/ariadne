@@ -31,8 +31,13 @@ export:   # Pandoc document export (ariadne/export_mcp.py; Pandoc pinned in serv
   args: ["-m", "ariadne.export_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 300
-image:    # SD Turbo images via stable-diffusion.cpp (ariadne/image_mcp.py; frees the GPU first)
+image:    # images with a catalog image model (Z-Image-Turbo, SD Turbo) via stable-diffusion.cpp (ariadne/image_mcp.py)
   command: "{python}"
   args: ["-m", "ariadne.image_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 600
+text:     # drafts by a generate-kind catalog model, e.g. Fimbulvetr for prose (ariadne/text_mcp.py)
+  command: "{python}"
+  args: ["-m", "ariadne.text_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 900

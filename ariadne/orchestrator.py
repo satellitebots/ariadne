@@ -30,7 +30,8 @@ WAITING = ("awaiting_signoff", "needs_attention")   # the task needs the person 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT, text TEXT, workspace TEXT, flow TEXT,
-  status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '');
+  status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
+  models TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
 """
 
@@ -46,6 +47,8 @@ class Store:
             paths.ensure()
         with self._conn() as c:
             c.executescript(SCHEMA)
+            if "models" not in [r["name"] for r in c.execute("PRAGMA table_info(tasks)")]:
+                c.execute("ALTER TABLE tasks ADD COLUMN models TEXT DEFAULT ''")
 
     @contextmanager
     def _conn(self):
@@ -102,9 +105,22 @@ class Store:
             raise TaskError(f"task {tid} is '{t['status']}'; this needs one of {list(allowed_from)}")
         self.update(tid, status=to, **fields)
 
-    def approve(self, tid):
-        self._transition(tid, ("awaiting_signoff",), "approved")
-        self.event(tid, "sign-off", "approved")
+    def approve(self, tid, models=None):
+        """Sign-off. models: {step number or 'all': model name} to change the plan's choices first. Approval locks
+        the model plan: execution uses exactly these models, and fetches any that are not installed.
+        Also re-approves a task that stopped for attention (a model failed to install, a tool was missing)."""
+        t = self.get(tid, events=False)
+        mp = json.loads(t["models"]) if t.get("models") else None
+        if models:
+            if not mp:
+                raise TaskError(f"task {tid} has no model plan to change")
+            mp = apply_model_overrides(mp, models)
+        fields = {"models": json.dumps(mp)} if mp else {}
+        if mp:
+            mp["locked"] = True
+            fields["models"] = json.dumps(mp)
+        self._transition(tid, ("awaiting_signoff", "needs_attention"), "approved", **fields)
+        self.event(tid, "sign-off", "approved" + (f"; models locked: {model_summary(mp)}" if mp else ""))
 
     def revise(self, tid, feedback):
         t = self.get(tid, events=False)
@@ -161,7 +177,7 @@ def _clean_output(out):
     return "\n".join(lines).strip()
 
 
-def hermes_run(flow, phase, prompt, workspace, tid):
+def hermes_run(flow, phase, prompt, workspace, tid, model=None):
     """One headless Hermes run in the flow's worker home."""
     home = flow.home
     (home / "ariadne_phase").write_text(phase, encoding="utf-8")
@@ -174,6 +190,8 @@ def hermes_run(flow, phase, prompt, workspace, tid):
            "-t", ",".join(toolsets)]
     for s in flow.skills:
         cmd += ["-s", s]
+    if model:
+        cmd += ["-m", model]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
     env.pop("ARIADNE_GUARD_ALL_PROCS", None)
     log = qfile.with_suffix("").with_suffix(".log")
@@ -203,12 +221,17 @@ SHARED MEMORY (what earlier tasks recorded):
 
 After sign-off the execute phase will have only these tools: {exec_tools}. Plan only steps those tools can do.
 
+MODELS you may assign to steps (one per step; {default_model} if a step does not need anything else):
+{models}
+Agent models do a step themselves. A generate model drafts text for a step (the agent asks it through
+generate_text); an image model renders images (generate_image). Pick the best model for each step, not the biggest.
+
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 
 MISSION: <one sentence: what will be true when this is done>
 FLOW: {flow}
 STEPS:
-1. <step> - tools: <tools it uses>
+1. <step> - tools: <tools it uses> - model: <model name from MODELS>
 2. ...
 CHECKS: <how we will know it worked>
 RISKS: <what could go wrong, or 'none'>
@@ -231,6 +254,139 @@ Rules:
 - Finish with a short report: what you changed, how you verified it.
 """
 
+# ---------- model plan: a model per step, suggested by the planner, locked at sign-off ----------
+
+STEP_RE = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
+MODEL_RE = re.compile(r"\bmodel:\s*`?([A-Za-z0-9][\w.\-]*)", re.I)
+SECTION_RE = re.compile(r"^[A-Z][A-Z ]+:")
+
+
+def parse_model_plan(plan_text, flow, catalog):
+    """The backbrief's steps and the model each names; a missing or unknown name gets the flow's agent model."""
+    steps, notes, in_steps = [], [], False
+    for line in plan_text.splitlines():
+        s = line.strip()
+        if s.upper().startswith("STEPS"):
+            in_steps = True
+            continue
+        if not in_steps:
+            continue
+        m = STEP_RE.match(line)
+        if not m:
+            if SECTION_RE.match(s):
+                break
+            continue
+        body = m.group(2).strip()
+        found = MODEL_RE.search(body)
+        name = found.group(1).rstrip(".,;") if found else ""
+        if name and name not in catalog.models:
+            notes.append(f"step {m.group(1)} named '{name}', which is not in the catalog; using {flow.model}")
+            name = ""
+        steps.append({"n": int(m.group(1)), "text": body, "model": name or flow.model})
+    return {"steps": steps, "agent": flow.model, "notes": notes}
+
+
+def apply_model_overrides(mp, overrides):
+    """{step or 'all': name} (or 'STEP=NAME,...') -> the model plan with those choices. Raises TaskError."""
+    from . import models as modellib
+    if isinstance(overrides, str):
+        overrides = dict(p.split("=", 1) for p in overrides.replace(" ", "").split(",") if "=" in p)
+    cat = modellib.load()
+    mp = json.loads(json.dumps(mp))
+    for key, name in overrides.items():
+        key, name = str(key).strip(), str(name).strip()
+        try:
+            m = cat.get(name)
+        except modellib.ModelError as e:
+            raise TaskError(str(e))
+        if m.kind not in ("agent", "generate", "image"):
+            raise TaskError(f"{name} is a {m.kind} model; a step needs an agent, generate or image model")
+        if key == "all":
+            targets = mp["steps"]
+            if m.kind == "agent":
+                mp["agent"] = name
+        else:
+            targets = [s for s in mp["steps"] if str(s["n"]) == key]
+            if not targets:
+                raise TaskError(f"the plan has no step {key}")
+        for s in targets:
+            s["model"] = name
+    return mp
+
+
+def model_summary(mp):
+    return ", ".join(f"{s['n']}={s['model']}" for s in mp["steps"]) or f"all={mp['agent']}"
+
+
+def agent_for(step, mp, catalog):
+    """The agent model that runs a step: its own model, or the plan's agent when the step's model is not one."""
+    return step["model"] if catalog.get(step["model"]).kind == "agent" else mp["agent"]
+
+
+def needed_models(mp, catalog):
+    names = [s["model"] for s in mp["steps"]] + [agent_for(s, mp, catalog) for s in mp["steps"]]
+    return list(dict.fromkeys(names or [mp["agent"]]))
+
+
+def needed_servers(mp, catalog):
+    """MCP servers the chosen models are reached through (image -> image, generate -> text)."""
+    kinds = {catalog.get(s["model"]).kind for s in mp["steps"]}
+    return [srv for kind, srv in (("image", "image"), ("generate", "text")) if kind in kinds]
+
+
+def step_groups(mp, catalog):
+    """Consecutive steps run by the same agent model share one Hermes run: [(agent, [steps])]."""
+    groups = []
+    for s in mp["steps"]:
+        a = agent_for(s, mp, catalog)
+        if groups and groups[-1][0] == a:
+            groups[-1][1].append(s)
+        else:
+            groups.append((a, [s]))
+    return groups or [(mp["agent"], [])]
+
+
+def model_block(mp, flow, catalog):
+    """What the harness adds to the backbrief: the model per step, what will be fetched, what tools are missing."""
+    out = ["", "MODEL PLAN (sign-off locks these; anything not installed is fetched before step 1):"]
+    for s in mp["steps"] or [{"n": "all", "model": mp["agent"]}]:
+        m = catalog.get(s["model"])
+        state = "installed" if m.installed() else f"not installed, {m.size_gb:g} GB"
+        via = "" if m.kind == "agent" else f", run by {agent_for(s, mp, catalog) if mp['steps'] else mp['agent']}"
+        out.append(f"  step {s['n']}: {m.name} ({m.kind}, {state}{via})")
+    out += [f"  note: {n}" for n in mp["notes"]]
+    todo = [n for n in needed_models(mp, catalog) if not catalog.get(n).installed()]
+    if todo:
+        out.append("TO FETCH AFTER SIGN-OFF: " + ", ".join(f"{n} ({catalog.get(n).size_gb:g} GB)" for n in todo))
+    gaps = missing_tools(mp, flow, catalog)
+    if gaps:
+        out.append("MISSING TOOLS (execution will not start until they are there): " + "; ".join(gaps))
+    out.append("Change a model: approve with --model STEP=NAME (or all=NAME), or revise. Models: python -m ariadne models")
+    return "\n".join(out)
+
+
+def missing_tools(mp, flow, catalog):
+    gaps = [f"{m} (python -m ariadne install --system)" for m in flowlib.missing_requirements(flow)]
+    gaps += [f"MCP server '{s}' (add it to mcp_servers in flows/{flow.name}/flow.yaml)"
+             for s in needed_servers(mp, catalog) if s not in flow.mcp_servers]
+    return gaps
+
+
+def step_scope(steps, groups, mp, catalog):
+    """What an execute run is told to do now: its steps (when the plan is split) and how to use other models."""
+    lines = []
+    if len(groups) > 1:
+        lines.append(f"NOW DO STEP{'S' if len(steps) > 1 else ''} {', '.join(str(s['n']) for s in steps)} ONLY. "
+                     "Earlier steps are done; later steps run separately.")
+    for s in steps:
+        m = catalog.get(s["model"])
+        if m.kind == "generate":
+            lines.append(f"Step {s['n']}: have {m.name} write the text: generate_text(model='{m.name}', prompt=...).")
+        elif m.kind == "image":
+            lines.append(f"Step {s['n']}: render with generate_image(model='{m.name}', ...).")
+    return ("\n" + "\n".join(lines) + "\n") if lines else ""
+
+
 ROUTE_PROMPT = """Pick the flow for this task. Flows:
 {flows}
 
@@ -242,7 +398,12 @@ Reply with only the flow name."""
 # ---------- the worker ----------
 
 class Worker:
-    def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None):
+    def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
+                 catalog=None, installer=None, on_installed=None):
+        from . import models as modellib
+        self.catalog = catalog or modellib.load()
+        self.installer = installer or modellib.install
+        self.on_installed = on_installed or _reload_models
         self.store = store or Store()
         self.memory = memory or Memory()
         self.flows = flows or flowlib.load_flows()
@@ -284,19 +445,29 @@ class Worker:
             return
         self.store.update(t["id"], flow=name)
         self.store.event(t["id"], "route", f"{name} ({why})")
+        planner = self.catalog.get(flow.model)
+        if not planner.installed():
+            msg = (f"flow '{name}' plans and works with {flow.model}, which is not installed ({planner.size_gb:g} GB). "
+                   f"Install it (python -m ariadne models install {flow.model}), then revise the task to retry.")
+            self.store.update(t["id"], status="needs_attention", result=msg)
+            self.store.event(t["id"], "route", f"{flow.model} not installed")
+            return
         ws = self.workspace(t)
         hits = self.memory.recall(f"{t['text']} {ws}", limit=5)
         feedback = f"\nFEEDBACK ON THE LAST PLAN (address it):\n{t['feedback']}\n" if t["feedback"] else ""
         prompt = PLAN_PROMPT.format(flow=name, source=t["source"], text=t["text"], workspace=ws,
                                     feedback=feedback, memory=format_hits(hits),
-                                    exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]))
+                                    exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
+                                    models=self.catalog.text(), default_model=flow.model)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
-        r = self.runner(flow, "plan", prompt, ws, t["id"])
+        r = self.runner(flow, "plan", prompt, ws, t["id"], model=flow.model)
         if r.exit_code != 0 or not r.text:
             self.store.update(t["id"], status="failed", error=f"plan run failed (exit {r.exit_code}); log {r.log}")
             self.store.event(t["id"], "plan", f"failed, log {r.log}")
             return
-        self.store.update(t["id"], status="awaiting_signoff", plan=r.text)
+        mp = parse_model_plan(r.text, flow, self.catalog)
+        self.store.update(t["id"], status="awaiting_signoff", plan=r.text.rstrip() + "\n" + model_block(mp, flow, self.catalog),
+                          models=json.dumps(mp))
         self.store.event(t["id"], "backbrief", "ready for sign-off")
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: awaiting sign-off",
                            [("uses_flow", "flow", name), ("in_workspace", "workspace", ws)])
@@ -315,33 +486,67 @@ class Worker:
                 failures.append(f"$ {cmd}\n(exit {p.returncode})\n{(p.stdout + p.stderr)[-3000:]}")
         return failures
 
+    def prepare(self, t, flow, mp):
+        """Before step 1: every tool the plan needs is there and every locked model is installed (fetched now if
+        not; the sign-off covered it). Returns what stops the task, or ''."""
+        gaps = missing_tools(mp, flow, self.catalog)
+        if gaps:
+            return "Execution did not start; missing: " + "; ".join(gaps) + ". Fix that, then approve again."
+        from . import models as modellib
+        fetch = modellib.missing(needed_models(mp, self.catalog), self.catalog)
+        for name in fetch:
+            self.store.event(t["id"], "install", f"{name} ({self.catalog.get(name).size_gb:g} GB)")
+            try:
+                self.installer(name, self.catalog, log=lambda s: self.store.event(t["id"], "install", s))
+            except Exception as e:
+                return (f"Execution did not start: could not install {name}: {e}. Install it "
+                        f"(python -m ariadne models install {name}) or approve with --model to pick another.")
+        if fetch:
+            self.on_installed()
+        return ""
+
     def execute(self, t):
         flow = self.flows.get(t["flow"])
         if not flow:
             self.store.update(t["id"], status="failed", error=f"flow '{t['flow']}' no longer exists")
             return
+        mp = json.loads(t["models"]) if t.get("models") else {"steps": [], "agent": flow.model, "notes": []}
+        problem = self.prepare(t, flow, mp)
+        if problem:
+            self.store.update(t["id"], status="needs_attention", result=problem)
+            self.store.event(t["id"], "prepare", problem[:300])
+            return
         ws = self.workspace(t)
-        extra, attempts = "", 0
-        while True:
-            attempts += 1
-            self.store.event(t["id"], "execute", f"attempt {attempts}")
-            r = self.runner(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
-                                                                 plan=t["plan"], extra=extra), ws, t["id"])
-            if r.exit_code != 0 or not r.text:
-                return self._finish(t, flow, ws, "failed", r.text, f"execute run failed (exit {r.exit_code}); log {r.log}")
-            if r.text.lstrip().upper().startswith("OFF-PLAN"):
-                self.store.update(t["id"], status="needs_attention", result=r.text)
-                self.store.event(t["id"], "execute", "stopped: off-plan, back to the person for a new sign-off")
-                return
-            failures = self.run_checks(flow, ws)
-            if not failures:
-                self.store.event(t["id"], "checks", "passed" if flow.checks else "none defined")
-                return self._finish(t, flow, ws, "done", r.text)
-            self.store.event(t["id"], "checks", f"failed: {failures[0][:300]}")
-            if attempts >= 2:
-                return self._finish(t, flow, ws, "failed", r.text, "checks still failing:\n" + "\n".join(failures))
-            extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE CHECKS FAILED. Fix them, staying on the plan:\n"
-                     + "\n".join(failures) + "\n")
+        groups, reports = step_groups(mp, self.catalog), []
+        for i, (agent, steps) in enumerate(groups):
+            scope, extra, attempts, last = step_scope(steps, groups, mp, self.catalog), "", 0, i == len(groups) - 1
+            label = f"steps {', '.join(str(s['n']) for s in steps)}" if len(groups) > 1 else "plan"
+            while True:
+                attempts += 1
+                self.store.event(t["id"], "execute", f"{label} on {agent}, attempt {attempts}")
+                r = self.runner(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
+                                                                     plan=t["plan"], extra=scope + extra),
+                                ws, t["id"], model=agent)
+                if r.exit_code != 0 or not r.text:
+                    return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
+                                        f"execute run failed (exit {r.exit_code}); log {r.log}")
+                if r.text.lstrip().upper().startswith("OFF-PLAN"):
+                    self.store.update(t["id"], status="needs_attention", result=r.text)
+                    self.store.event(t["id"], "execute", "stopped: off-plan, back to the person for a new sign-off")
+                    return
+                if not last:
+                    reports.append(r.text)
+                    break
+                failures = self.run_checks(flow, ws)
+                if not failures:
+                    self.store.event(t["id"], "checks", "passed" if flow.checks else "none defined")
+                    return self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]))
+                self.store.event(t["id"], "checks", f"failed: {failures[0][:300]}")
+                if attempts >= 2:
+                    return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
+                                        "checks still failing:\n" + "\n".join(failures))
+                extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE CHECKS FAILED. Fix them, staying on the plan:\n"
+                         + "\n".join(failures) + "\n")
 
     def _finish(self, t, flow, ws, status, result, error=""):
         self.store.update(t["id"], status=status, result=result or "", error=error)
@@ -362,6 +567,15 @@ class Worker:
             self.store.update(t["id"], status="failed", error=f"{type(e).__name__}: {e}")
             self.store.event(t["id"], "error", f"{type(e).__name__}: {e}")
         return True
+
+
+def _reload_models():
+    """Rewrite llama-swap's config so models fetched just now are served (it watches the file)."""
+    try:
+        from . import serve
+        serve.render_config()
+    except (Exception, SystemExit) as e:  # models not set up: the run will fail and say so
+        print(f"could not refresh the model server config: {e}", flush=True)
 
 
 # ---------- single worker process ----------
@@ -492,6 +706,8 @@ def main(argv=None):
     g = sub.add_parser("get"); g.add_argument("id")
     w = sub.add_parser("wait"); w.add_argument("id"); w.add_argument("--timeout", type=int, default=600)
     a = sub.add_parser("approve"); a.add_argument("id")
+    a.add_argument("--model", action="append", default=[], metavar="STEP=NAME",
+                   help="change a step's model before locking the plan (STEP may be 'all'); repeatable")
     r = sub.add_parser("revise"); r.add_argument("id"); r.add_argument("feedback")
     c = sub.add_parser("cancel"); c.add_argument("id")
     sub.add_parser("list")
@@ -516,7 +732,7 @@ def main(argv=None):
         ensure_worker()
         _print(st.wait(args.id, args.timeout))
     elif args.cmd == "approve":
-        st.approve(args.id); ensure_worker(); _print(st.get(args.id, events=False))
+        st.approve(args.id, ",".join(args.model) or None); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "revise":
         st.revise(args.id, args.feedback); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "cancel":

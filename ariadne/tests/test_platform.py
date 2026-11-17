@@ -11,8 +11,6 @@ def test_every_platform_has_the_engine_binaries():
 def test_lock_rows_are_well_formed():
     for e in deps.bin_entries("windows-x64") + deps.bin_entries("linux-x64") + deps.bin_entries("darwin-arm64"):
         assert e["url"].startswith("https://github.com/") and len(e["sha256"]) == 64
-    for m in deps.model_entries():
-        assert m["url"].startswith("https://huggingface.co/") and len(m["sha256"]) == 64
 
 
 def test_runtime_entries_extract_next_to_their_engine():

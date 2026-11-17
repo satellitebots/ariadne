@@ -1,8 +1,9 @@
 """Dependencies: check them (`doctor`) and install what is missing (`install`), on Windows, Linux and macOS.
 
 Standard library only, so it runs before the Python environment exists:  uv run python -m ariadne install
-Everything is pinned: Hermes by submodule commit, Python packages by Hermes's uv.lock, binaries and model files by
-sha256 (serving/bin.lock, serving/models.lock), Ollama models by tag. System tools (git, uv, node, ollama) are
+Everything is pinned: Hermes by submodule commit, Python packages by Hermes's uv.lock, binaries by sha256
+(serving/bin.lock), Ollama models by tag. Other model weights come from the catalog (serving/models.yaml, ariadne/models.py),
+sha256-pinned on first fetch. System tools (git, uv, node, ollama) are
 installed with the platform's package manager only when you pass --system; otherwise their install command is shown.
 """
 import hashlib
@@ -87,10 +88,6 @@ def find_bin(name, exe):
     return hits[-1] if hits else None
 
 
-def model_entries():
-    return [dict(name=r[0], url=r[1], sha256=r[2]) for r in read_lock("models.lock")]
-
-
 # ---------- download, verify, extract ----------
 
 def sha256(path):
@@ -137,10 +134,6 @@ def extract(archive, dest):
 def fetch_bin(entry):
     archive = download(entry["url"], paths.BIN / "_downloads" / entry["url"].rsplit("/", 1)[-1], entry["sha256"])
     extract(archive, bin_dir(entry))
-
-
-def fetch_model(entry):
-    download(entry["url"], paths.MODELS / entry["name"], entry["sha256"])
 
 
 # ---------- checks ----------
@@ -211,9 +204,15 @@ def check(full=True):
     for e in entries:
         present = bin_dir(e).exists() and any(bin_dir(e).iterdir())
         add(Check(f"{e['name']} {e['version']}", present, "pinned binary, sha256-verified", "auto"))
-    for m in model_entries():
-        add(Check(f"model {m['name']}", (paths.MODELS / m["name"]).exists(), "pinned model file (images)", "auto",
-                  required=False))
+    try:  # the catalog needs the venv (ruamel); before install there is nothing to report
+        from . import models as modellib
+        cat = modellib.load()
+    except ImportError:
+        cat = None
+    for m in (cat.models.values() if cat else []):
+        if not m.ollama:
+            add(Check(f"model {m.name}", m.installed(), f"{m.kind} model, {m.size_gb:g} GB (fetched when a plan picks it)",
+                      f"python -m ariadne models install {m.name}", required=False))
     if full and has_tool("ollama"):
         listed = _run(["ollama", "list"]).stdout
         for tag in OLLAMA_MODELS + [p.stem for p in (paths.ROOT / "serving" / "ollama").glob("*.Modelfile")]:
@@ -234,7 +233,7 @@ def require(full=False):
 
 # ---------- install ----------
 
-def install(system=False, slack=False, images=True):
+def install(system=False, slack=False, models=False):
     print(f"Ariadne install on {paths.platform_key()}")
     for name in SYSTEM_TOOLS:
         if not has_tool(name):
@@ -256,9 +255,6 @@ def install(system=False, slack=False, images=True):
     for e in bin_entries():
         if not (bin_dir(e).exists() and any(bin_dir(e).iterdir())) or e["name"].endswith("-rt"):
             print(f"  {e['name']} {e['version']}"); fetch_bin(e)
-    if images:
-        for m in model_entries():
-            print(f"  model {m['name']}"); fetch_model(m)
     if has_tool("ollama"):
         listed = _run(["ollama", "list"]).stdout
         for tag in OLLAMA_MODELS:
@@ -269,6 +265,8 @@ def install(system=False, slack=False, images=True):
                 subprocess.run(["ollama", "create", mf.stem, "-f", str(mf)], check=True)
     _run_in_venv(["-m", "ariadne", "profile"])
     _run_in_venv(["-m", "ariadne", "flows"])
+    if models:  # the catalog defaults (coding, design, writing, image); otherwise each is fetched when a plan picks it
+        _run_in_venv(["-m", "ariadne", "models", "install", "--defaults"])
     r = check()
     print(r.text())
     print("\nReady." if not r.missing else f"\nStill missing: {', '.join(c.name for c in r.missing)}")

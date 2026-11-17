@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ariadne import flows as flowlib
+from ariadne import models as modellib
 from ariadne import orchestrator as orch
 from ariadne import paths
 from ariadne.memory import Memory, format_hits
@@ -17,6 +18,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")
     monkeypatch.setattr(paths, "LOGS", tmp_path / "logs")
     monkeypatch.setattr(paths, "STATE", tmp_path)
+    monkeypatch.setattr(modellib.Model, "installed", lambda self: True)   # no weights in tests
     (tmp_path / "logs").mkdir()
     return tmp_path
 
@@ -76,17 +78,18 @@ class FakeRunner:
     def __init__(self, plan="MISSION: fix it\nSTEPS:\n1. edit", results=("Changed add(); tests pass.",)):
         self.plan, self.results, self.calls = plan, list(results), []
 
-    def __call__(self, flow, phase, prompt, ws, tid):
-        self.calls.append((flow.name, phase, prompt))
+    def __call__(self, flow, phase, prompt, ws, tid, model=None):
+        self.calls.append((flow.name, phase, prompt, model))
         text = self.plan if phase == "plan" else self.results.pop(0)
         return orch.RunResult(text, 0, "log")
 
 
-def make_worker(env, runner, route_answer="coding"):
+def make_worker(env, runner, route_answer="coding", installer=None):
     flows = flowlib.load_flows(REPO_FLOWS)
     flows.update(flowlib.load_flows(REPO_FLOWS / "_experimental"))   # two+ flows so routing is exercised
     return orch.Worker(store=orch.Store(env / "t.db"), memory=Memory(env / "m.db"), flows=flows,
-                       runner=runner, llm_chat=lambda model, msgs: route_answer)
+                       runner=runner, llm_chat=lambda model, msgs: route_answer,
+                       installer=installer or (lambda name, cat, log=print: None), on_installed=lambda: None)
 
 
 def test_full_drill_brief_backbrief_signoff_execute(env):

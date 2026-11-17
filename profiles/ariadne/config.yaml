@@ -2,7 +2,7 @@
 # the ariadne-tasks MCP server so any of those channels can give Ariadne a task (brief -> backbrief -> sign-off ->
 # execute). Written into .hermes-home by `python -m ariadne profile`, which fills in this machine's paths.
 model:
-  default: "coder"
+  default: "qwen3.5-9b"
   provider: "custom"
   base_url: "http://127.0.0.1:8090/v1"
   context_length: 65536

@@ -1,7 +1,7 @@
 # Ariadne profile: base, but models from llama-swap (tools\serve.ps1) instead of Ollama. A4.
 # (derived from the base profile) - local only. Copied into HERMES_HOME by tools\use-profile.ps1.
 model:
-  default: "coder"
+  default: "qwen3.5-9b"
   provider: "custom"
   base_url: "http://127.0.0.1:8090/v1"
   # llama-swap serves llama.cpp with -c 65536 (serving\llama-swap.yaml); stated so Hermes's >= 64K check
