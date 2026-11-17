@@ -80,6 +80,8 @@ class FakeRunner:
 
     def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
         self.calls.append((flow.name, phase, prompt, model))
+        if phase.startswith("checkpoint"):
+            return orch.RunResult("SITUATION: x\nDONE: y", 0, "log")
         text = self.plan if phase == "plan" else self.results.pop(0)
         return orch.RunResult(text, 0, "log")
 
@@ -103,8 +105,9 @@ def test_full_drill_brief_backbrief_signoff_execute(env):
     assert w.run_once()                                     # execute
     t = w.store.get(tid)
     assert t["status"] == "done" and "tests pass" in t["result"]
-    assert [c[1] for c in run.calls] == ["plan", "execute"]
-    assert "APPROVED PLAN" in run.calls[1][2] and "MISSION: fix it" in run.calls[1][2]
+    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute"]
+    assert "APPROVED PLAN" in run.calls[2][2] and "MISSION: fix it" in run.calls[2][2]
+    assert run.calls[2][2].startswith("SESSION HANDOFF")      # execute starts from the plan's handoff brief
     assert "terminal" in run.calls[0][2] and "git (MCP)" in run.calls[0][2]   # planner knows the execute tools
     assert "done" in w.memory.get("task", tid)["text"]      # outcome is in shared memory
     assert any("route: coding" in e for e in t["events"])
@@ -138,7 +141,9 @@ def test_failed_check_retries_once_then_reports(env):
     w.run_once(); w.store.approve(tid); w.run_once()
     t = w.store.get(tid)
     assert t["status"] == "failed" and "checks still failing" in t["error"]
-    assert "CHECKS FAILED" in run.calls[-1][2]              # the retry was told what failed
+    execs = [c for c in run.calls if c[1] == "execute"]
+    assert "CHECKS FAILED" in execs[-1][2]                  # the retry was told what failed
+    assert "QA RESULTS" in [c for c in run.calls if c[1].startswith("checkpoint")][-1][2]
 
 
 def test_conditional_check_skipped_when_path_missing(env):

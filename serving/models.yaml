@@ -13,12 +13,13 @@
 # args:  llama-server arguments for agent/generate models (default: flash attention, q8 KV cache, all on the GPU).
 #        Agent models always get -c <context.window>.
 
-# Every agent model is served with this window, and Hermes compresses the conversation when it passes
-# compress_at: the run pauses, older turns become a summary (written by the same model, so no swap), the recent
-# tail stays verbatim, and the run continues.
+# Every agent model is served with this window (Hermes needs 64K). Context is kept small two ways:
+# - checkpoints: after the plan is approved, after each step, and after QA, the worker pauses and the model writes a
+#   handoff brief; the next phase starts a fresh Hermes session seeded with it (orchestrator.py, Worker.checkpoint)
+# - inside a run, past compress_at tokens Hermes pauses and summarises the older turns (same model, no swap)
 context:
-  window: 98304
-  compress_at: 70000
+  window: 65536
+  compress_at: 30000
 
 defaults:
   coding: qwen3.8-27b

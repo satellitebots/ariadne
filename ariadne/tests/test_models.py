@@ -43,6 +43,8 @@ class Runner:
 
     def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
         self.calls.append((phase, model, prompt, session))
+        if phase.startswith("checkpoint"):
+            return orch.RunResult(f"SITUATION: summary {len(self.calls)}", 0, "log")
         return orch.RunResult(self.plan if phase == "plan" else (self.results.pop(0) if self.results else "ok"), 0, "log")
 
 
@@ -91,7 +93,7 @@ def test_swap_entries_serve_text_models_and_can_park_slots():
     e = modellib.swap_entries()
     assert "qwen3.8-27b" in e and "router" in e and "z-image-turbo" not in e
     assert "--fit on" in e["qwen3.8-27b"]["cmd"] and "--slot-save-path" in e["qwen3.8-27b"]["cmd"]
-    assert "-c 98304" in e["qwen3.8-27b"]["cmd"] and "-c 16384" in e["router"]["cmd"]
+    assert "-c 65536" in e["qwen3.8-27b"]["cmd"] and "-c 16384" in e["router"]["cmd"]
     assert "--slot-save-path" not in e["embed"]["cmd"]
 
 
@@ -163,12 +165,20 @@ def test_drill_with_models_fetches_before_step_one_and_runs_each_group_on_its_mo
     assert set(fetched) == {"gemma-4-26b-a4b", "z-image-turbo"}
     execs = [c for c in run.calls if c[0] == "execute"]
     assert [c[1] for c in execs] == ["qwen3.8-27b", "gemma-4-26b-a4b", "qwen3.8-27b", "qwen3.5-9b"]
+    # pause and compress: after the plan, after each step group, after QA - each on the model that just worked
+    cps = [(c[0], c[1]) for c in run.calls if c[0].startswith("checkpoint")]
+    assert cps == [("checkpoint:plan", "qwen3.8-27b"), ("checkpoint:execute", "qwen3.8-27b"),
+                   ("checkpoint:execute", "gemma-4-26b-a4b"), ("checkpoint:execute", "qwen3.8-27b"),
+                   ("checkpoint:execute", "qwen3.5-9b")]
+    assert all(c[2].startswith("SESSION HANDOFF") for c in execs)    # every step starts from a handoff brief
+    assert [c[3] for c in execs] == [f"{tid}~2", f"{tid}~3", f"{tid}~4", f"{tid}~5"]
     assert "NOW DO STEP 1 ONLY" in execs[0][2] and "NOW DO STEPS 3, 4 ONLY" in execs[2][2]
     assert "generate_image(model='z-image-turbo'" in execs[2][2]
-    # one Hermes session for the whole task; each run's KV cache parked after it; the task's own session dropped at the end
-    assert {c[3] for c in run.calls} == {tid}
-    assert ("save", tid, "qwen3.8-27b", "plan") in kv.log and ("save", tid, "gemma-4-26b-a4b", "step-2") in kv.log
-    assert ("restore", tid, "qwen3.8-27b", "step-3-4") in kv.log and kv.log[-1] == ("drop", tid)
+    # caches are parked per segment, step and model; a segment's caches go when it is compressed
+    assert ("save", f"{tid}~1", "qwen3.8-27b", "plan") in kv.log and ("save", f"{tid}~3", "gemma-4-26b-a4b", "step-2") in kv.log
+    assert ("restore", f"{tid}~4", "qwen3.8-27b", "step-3-4") in kv.log and ("drop", f"{tid}~1") in kv.log
+    assert kv.log[-1] == ("drop", f"{tid}~6")
+    assert w.store.sessions()[0]["segment"] == 6 and w.store.sessions()[0]["tasks"] == 1
     assert any("kv: qwen3.8-27b: saved" in e for e in t["events"])
 
 
@@ -180,8 +190,12 @@ def test_callers_session_is_continued_and_kept(env):
     tid = w.store.submit("x", "mcp", str(tmp), session="claude-conv-42")
     w.run_once(); w.store.approve(tid); w.run_once()
     assert w.store.get(tid)["status"] == "done"
-    assert {c[3] for c in run.calls} == {"claude-conv-42"}
-    assert ("drop", "claude-conv-42") not in kv.log        # the caller's conversation lives on
+    assert {c[3].split("~")[0] for c in run.calls} == {"claude-conv-42"}
+    assert not [e for e in kv.log if e[0] == "drop" and e[1] == f"claude-conv-42~{w.store.session('claude-conv-42')['segment']}"]
+    # the next task in the same session starts from the last handoff brief
+    tid2 = w.store.submit("y", "mcp", str(tmp), session="claude-conv-42")
+    w.run_once()
+    assert run.calls[-1][0] == "plan" and run.calls[-1][2].startswith("SESSION HANDOFF")
 
 
 def test_nothing_starts_until_tools_and_models_are_there(env):
@@ -247,10 +261,10 @@ def test_kv_cache_parks_per_session_step_and_model(tmp_path):
     assert "skipped" in KVCache(tmp_path, post=broken).save("s3", "m")   # never fails a task
 
 
-def test_compiled_flow_compresses_at_70k(tmp_path, monkeypatch):
+def test_compiled_flow_compresses_at_30k(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")
     home = flowlib.compile_flow(flowlib.load_flows(REPO_FLOWS)["coding"], REPO_FLOWS)
     from ariadne import yamlio
     cfg = yamlio.safe_load((home / "config.yaml").read_text())
-    assert cfg["model"]["context_length"] == 98304
-    assert cfg["compression"]["threshold_tokens"] == 70000 and cfg["auxiliary"]["compression"]["provider"] == "auto"
+    assert cfg["model"]["context_length"] == 65536
+    assert cfg["compression"]["threshold_tokens"] == 30000 and cfg["auxiliary"]["compression"]["provider"] == "auto"

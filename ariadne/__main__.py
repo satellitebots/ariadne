@@ -9,7 +9,9 @@
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
   task ...                   give a task from the terminal: submit / wait / approve / revise / cancel / list / get
-  chat                       talk to Hermes in the terminal, with the ariadne-tasks skill
+  chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
+                             chat's session, or NAME to continue a named one
+  sessions                   Ariadne sessions: tasks, segments, last handoff brief
   serve | profile | flows | token     lower-level pieces
 
 Every command except doctor and install first checks that the dependencies are there.
@@ -80,9 +82,17 @@ def main(argv=None):
     if cmd == "task":
         from . import orchestrator
         return orchestrator.main(rest)
+    if cmd == "sessions":
+        from . import orchestrator
+        return orchestrator.main(["sessions"])
     if cmd == "chat":
         env = dict(os.environ, HERMES_HOME=str(paths.GATEWAY_HOME))
-        return subprocess.call([str(paths.HERMES_EXE), "chat", "-s", "ariadne-tasks", *rest], env=env)
+        extra = ["--pass-session-id"]  # the chat knows its own session id and hands it to submit_task
+        if "--session" in rest:
+            i = rest.index("--session")
+            name, rest = rest[i + 1], rest[:i] + rest[i + 2:]
+            extra += ["-c", name, "--create-if-missing"]
+        return subprocess.call([str(paths.HERMES_EXE), "chat", "-s", "ariadne-tasks", *extra, *rest], env=env)
     print(f"unknown command '{cmd}'\n{__doc__}")
     return 2
 

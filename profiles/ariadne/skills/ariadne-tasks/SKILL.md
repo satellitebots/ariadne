@@ -13,8 +13,10 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
 `mcp__ariadne_tasks__cancel_task`, `mcp__ariadne_tasks__list_tasks`. Task ids are strings like `t1117-140722-c914`.
 
 1. **Brief.** Call `submit_task` with the person's request in their words as `text`, the folder it applies to
-   as `workspace` (ask if they did not say), and `source` set to where you are talking to them
-   (e.g. `slack`, `cli`). Tell them the task id.
+   as `workspace` (ask if they did not say), `source` set to where you are talking to them (e.g. `slack`, `cli`),
+   and `session`: the session name the person gave ("continue auth-work"), else your own session id (it is in
+   your system prompt). Every task from this conversation then shares one Ariadne session, so the worker
+   carries what earlier tasks did. Tell them the task id. `list_sessions` shows the sessions they can continue.
 2. **Backbrief.** Call `wait_task(id)` until the status is `awaiting_signoff` (it returns every ~50 s while the
    worker plans; keep calling). Show the person the backbrief (`plan`) exactly as written, including its
    MODEL PLAN (the model for each step, and any model that will be downloaded after sign-off).

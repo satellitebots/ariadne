@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS tasks(
   status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
   models TEXT DEFAULT '', session TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS sessions(
+  name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
+  segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', summary TEXT DEFAULT '',
+  fresh INTEGER DEFAULT 0, dirty INTEGER DEFAULT 0);
 """
 
 
@@ -73,12 +77,41 @@ class Store:
             raise TaskError("the task text is empty")
         tid = time.strftime("t%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         now = time.time()
+        session = (session or "").strip() or tid
+        self.session(session, source)
         with self._conn() as c:
             c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session) "
                       "VALUES (?,?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", "new",
-                                                     (session or "").strip() or tid))
+                                                     session))
         self.event(tid, "brief", f"from {source}: {text[:300]}")
         return tid
+
+    # ---------- sessions ----------
+    # An Ariadne session is a workstream: the tasks given in it, and a chain of Hermes sessions ("segments",
+    # titled <name>~<n>). A checkpoint ends a segment with a handoff brief; the next segment starts from it.
+
+    def session(self, name, source=""):
+        """The session row, created on first use."""
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM sessions WHERE name=?", (name,)).fetchone()
+            if not r:
+                now = time.time()
+                c.execute("INSERT INTO sessions(name, created, updated, source) VALUES (?,?,?,?)",
+                          (name, now, now, source))
+                r = c.execute("SELECT * FROM sessions WHERE name=?", (name,)).fetchone()
+        return dict(r)
+
+    def session_update(self, name, **fields):
+        fields["updated"] = time.time()
+        with self._conn() as c:
+            c.execute(f"UPDATE sessions SET {', '.join(f'{k}=?' for k in fields)} WHERE name=?", (*fields.values(), name))
+
+    def sessions(self, limit=20):
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT s.name, s.source, s.segment, s.flow, s.updated, substr(s.summary,1,200) AS summary, "
+                "(SELECT count(*) FROM tasks t WHERE t.session=s.name) AS tasks FROM sessions s "
+                "ORDER BY s.updated DESC LIMIT ?", (int(limit),))]
 
     def get(self, tid, events=True):
         with self._conn() as c:
@@ -184,13 +217,17 @@ def _clean_output(out):
 def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     """One headless Hermes run in the flow's worker home."""
     home = flow.home
-    (home / "ariadne_phase").write_text(phase, encoding="utf-8")
-    qfile = paths.LOGS / f"{tid}-{phase}-{int(time.time())}.prompt.md"
+    # A checkpoint ("checkpoint:plan" / "checkpoint:execute") keeps the toolsets of the phase it closes (same system
+    # prompt, so the parked KV cache still matches) but runs read-only, with a few turns.
+    tools_phase = phase.split(":", 1)[1] if phase.startswith("checkpoint:") else phase
+    (home / "ariadne_phase").write_text("plan" if phase.startswith("checkpoint") else phase, encoding="utf-8")
+    qfile = paths.LOGS / f"{tid}-{phase.replace(':', '-')}-{int(time.time())}.prompt.md"
     qfile.write_text(prompt, encoding="utf-8")
     # Hermes names an MCP server's toolset "mcp-<server>" (the bare name can collide with a built-in, e.g. memory).
-    toolsets = (flow.plan_toolsets if phase == "plan" else flow.execute_toolsets) + [f"mcp-{m}" for m in flow.mcp_servers]
+    toolsets = (flow.plan_toolsets if tools_phase == "plan" else flow.execute_toolsets) + [f"mcp-{m}" for m in flow.mcp_servers]
+    turns, budget = flow.max_turns.get(phase, 3), flow.run_budget.get(phase, 900)
     cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool",
-           "--max-turns", str(flow.max_turns[phase]), "--run-budget", str(flow.run_budget[phase]),
+           "--max-turns", str(turns), "--run-budget", str(budget),
            "-t", ",".join(toolsets)]
     for s in flow.skills:
         cmd += ["-s", s]
@@ -203,7 +240,7 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     log = qfile.with_suffix("").with_suffix(".log")
     try:
         p = subprocess.run(cmd, cwd=workspace, env=env, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=flow.run_budget[phase] + 180,
+                           errors="replace", timeout=budget + 180,
                            stdin=subprocess.DEVNULL)
         out, code = p.stdout + ("\n[stderr]\n" + p.stderr if p.stderr.strip() else ""), p.returncode
     except subprocess.TimeoutExpired as e:
@@ -393,6 +430,25 @@ def step_scope(steps, groups, mp, catalog):
     return ("\n" + "\n".join(lines) + "\n") if lines else ""
 
 
+CHECKPOINT_PROMPT = """CHECKPOINT: {reason}. Pause here and do not call any tools.
+This conversation is about to be replaced by what you write now. Write the handoff brief the next worker needs to
+carry on without it:
+
+SITUATION: what this session is working on, in which workspace, for which task
+DONE: what has been done (files changed, commands run, results), with exact paths and names
+STATE: decisions made, facts learned, what is verified and what is not
+OPEN: what is left to do, problems, failing checks
+{extra}
+Facts only, complete but brief (under 600 words)."""
+
+HANDOFF = """SESSION HANDOFF - the earlier work in this session, compressed at a checkpoint. Trust it; re-read files
+only where you need detail.
+{summary}
+
+---
+
+"""
+
 ROUTE_PROMPT = """Pick the flow for this task. Flows:
 {flows}
 
@@ -480,18 +536,50 @@ class Worker:
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: awaiting sign-off",
                            [("uses_flow", "flow", name), ("in_workspace", "workspace", ws)])
 
+    def segment(self, t, flow):
+        """The session row and the Hermes session (segment) the next run continues: <name>~<n>. Moving to another
+        flow starts a new segment (its own Hermes home) seeded with the last handoff brief."""
+        s = self.store.session(t.get("session") or t["id"], t.get("source", ""))
+        if s["flow"] != flow.name:
+            seg = s["segment"] + 1 if s["flow"] else s["segment"]
+            self.store.session_update(s["name"], flow=flow.name, segment=seg, fresh=1 if s["summary"] else 0)
+            s = self.store.session(s["name"])
+        return s, f"{s['name']}~{s['segment']}"
+
     def run(self, flow, phase, prompt, ws, t, model, scope):
-        """One Hermes run in the task's session on `model`. The KV cache for (session, step, model) is woken first
-        (the step's own, else the session's master for that model) and parked after (kvcache.py)."""
-        session = t.get("session") or t["id"]
-        note = self.kv.restore(session, model, scope)
+        """One Hermes run in the task's session segment on `model`. A fresh segment's first run is seeded with the
+        handoff brief. The KV cache for (segment, step, model) is woken first and parked after (kvcache.py)."""
+        s, title = self.segment(t, flow)
+        seeded = bool(s["fresh"] and s["summary"])
+        if seeded:
+            prompt = HANDOFF.format(summary=s["summary"]) + prompt
+        note = self.kv.restore(title, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
-        r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=session)
-        note = self.kv.save(session, model, scope)
+        r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=title)
+        note = self.kv.save(title, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
+        if r.exit_code == 0:
+            self.store.session_update(s["name"], fresh=0, dirty=0 if phase.startswith("checkpoint") else 1)
         return r
+
+    def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
+        """Pause and compress at a phase boundary: the model that just worked (still loaded, cache hot) writes a
+        handoff brief; the next run starts a new segment seeded with it. Skipped when nothing ran since the last
+        checkpoint. A failed checkpoint just leaves the session uncompressed."""
+        s, title = self.segment(t, flow)
+        if not s["dirty"]:
+            return
+        r = self.run(flow, f"checkpoint:{closes}", CHECKPOINT_PROMPT.format(reason=reason, extra=extra), ws, t,
+                     model, "checkpoint")
+        if r.exit_code != 0 or not r.text.strip():
+            self.store.event(t["id"], "compress", f"{reason}: skipped (exit {r.exit_code}); continuing uncompressed")
+            return
+        self.store.session_update(s["name"], segment=s["segment"] + 1, summary=r.text.strip()[:12000], fresh=1, dirty=0)
+        self.kv.drop(title)
+        self.store.event(t["id"], "compress", f"{reason}: {title} -> {s['name']}~{s['segment'] + 1} "
+                                              f"(handoff {len(r.text)} chars)")
 
     def run_checks(self, flow, ws):
         failures = []
@@ -538,6 +626,8 @@ class Worker:
             self.store.event(t["id"], "prepare", problem[:300])
             return
         ws = self.workspace(t)
+        self.checkpoint(t, flow, ws, flow.model, "plan approved", closes="plan",
+                        extra="Include the approved plan's steps verbatim under OPEN.")
         groups, reports = step_groups(mp, self.catalog), []
         for i, (agent, steps) in enumerate(groups):
             scope, extra, attempts, last = step_scope(steps, groups, mp, self.catalog), "", 0, i == len(groups) - 1
@@ -554,11 +644,16 @@ class Worker:
                 if r.text.lstrip().upper().startswith("OFF-PLAN"):
                     self.store.update(t["id"], status="needs_attention", result=r.text)
                     self.store.event(t["id"], "execute", "stopped: off-plan, back to the person for a new sign-off")
+                    self.checkpoint(t, flow, ws, agent, "stopped off-plan", extra="Say why under OPEN.")
                     return
                 if not last:
                     reports.append(r.text)
+                    self.checkpoint(t, flow, ws, agent, f"{label} done")
                     break
                 failures = self.run_checks(flow, ws)
+                qa = ("QA passed" if flow.checks else "no QA checks defined") if not failures else "QA failed"
+                self.checkpoint(t, flow, ws, agent, qa,
+                                extra=("QA RESULTS (put them under OPEN):\n" + "\n".join(failures)) if failures else "")
                 if not failures:
                     self.store.event(t["id"], "checks", "passed" if flow.checks else "none defined")
                     return self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]))
@@ -572,7 +667,7 @@ class Worker:
     def _finish(self, t, flow, ws, status, result, error=""):
         self.store.update(t["id"], status=status, result=result or "", error=error)
         if (t.get("session") or t["id"]) == t["id"]:  # the task's own session ends with it; a caller's lives on
-            self.kv.drop(t["id"])
+            self.kv.drop(self.segment(t, flow)[1])
         self.store.event(t["id"], "report", status + (f": {error[:300]}" if error else ""))
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: {status}\nresult: {(result or error)[:1500]}",
                            [("uses_flow", "flow", flow.name), ("in_workspace", "workspace", ws)])
@@ -735,6 +830,7 @@ def main(argv=None):
     r = sub.add_parser("revise"); r.add_argument("id"); r.add_argument("feedback")
     c = sub.add_parser("cancel"); c.add_argument("id")
     sub.add_parser("list")
+    sub.add_parser("sessions")
     sub.add_parser("serve")
     sub.add_parser("flows")
     args = ap.parse_args(argv)
@@ -761,6 +857,10 @@ def main(argv=None):
         st.revise(args.id, args.feedback); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "cancel":
         st.cancel(args.id); _print(st.get(args.id, events=False))
+    elif args.cmd == "sessions":
+        for s in st.sessions():
+            print(f"{s['name']:<28} {s['tasks']:>3} tasks  segment {s['segment']:<3} {s['flow'] or '-':<8} "
+                  f"{(s['summary'] or '').splitlines()[0][:60] if s['summary'] else ''}")
     elif args.cmd == "list":
         for t in st.list():
             print(f"{t['id']}  {t['status']:<17} {t['flow'] or '-':<8} {t['text']}")

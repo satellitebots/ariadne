@@ -17,7 +17,7 @@ CATALOG = paths.ROOT / "serving" / "models.yaml"
 PINS = paths.STATE / "model-pins.json"
 DEFAULT_ARGS = "-fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"          # agents also get -c <context.window>
 GENERATE_ARGS = "-c 16384 -fa on --jinja -ngl 99"
-CONTEXT = {"window": 98304, "compress_at": 70000}
+CONTEXT = {"window": 65536, "compress_at": 30000}
 KINDS = ("agent", "generate", "image", "embed")
 
 

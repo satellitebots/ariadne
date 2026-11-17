@@ -73,7 +73,7 @@ Sized for an 8 GB GPU with 32 GB of RAM; larger models run partly on the CPU.
 ## KV cache parking
 
 One GPU means models swap constantly - planner, coder, writer; this task, then that one. Every swap normally
-throws away the KV cache, and the next turn re-reads the whole conversation (minutes at 70K tokens on a 27B).
+throws away the KV cache, and the next turn re-reads the whole conversation (minutes on a 27B partly on the CPU).
 Ariadne parks it instead:
 
 - After every run, the model's KV cache is saved to disk under **session + step + model** (`plan`, `step-1-3`, ...),
@@ -83,15 +83,22 @@ Ariadne parks it instead:
 - Switching tasks, swapping models between steps, or resuming a conversation tomorrow costs a disk read.
 
 A cache belongs to one model (another model's weights cannot use it); the conversation itself carries across
-models in the Hermes session. Caches are capped at 40 GB (least recently used go first; `ARIADNE_KV_MAX_GB`),
+models through the session. Caches are capped at 40 GB (least recently used go first; `ARIADNE_KV_MAX_GB`),
 listed with `python -m ariadne kv`, and off with `ARIADNE_KV=off`.
 
-**Sessions.** Each task runs in one Hermes session (plan, revisions, execute). Pass `--session` (CLI) or
-`session` (MCP) to continue your own conversation across tasks; its caches stay parked between them.
+## Sessions and checkpoints
 
-**Context compression.** Models get a 96K window. Past 70K tokens the run pauses, the same model summarises the
-older turns (no model swap), the recent tail stays verbatim, and the run continues. Both numbers:
-`context` in `serving/models.yaml`.
+A **session** is a workstream: every task given in it, and the conversation that carries between them. Each task
+gets its own session unless you name one - `--session NAME` (CLI), `session` (MCP), or just chat: tasks given in
+`python -m ariadne chat` join that chat's session, and `chat --session NAME` continues a named one.
+`python -m ariadne sessions` lists them.
+
+Small local models work best with small contexts, so a session is compressed at every phase boundary - the drill
+again: the plan is approved, **checkpoint**; each step finishes, **checkpoint**; QA runs, **checkpoint**; then report
+or retry. At a checkpoint the model that just worked (still loaded, cache hot) writes a handoff brief - situation,
+done, state, open - and the next phase starts a fresh Hermes session seeded with it. A new task in the same
+session starts from the last brief. Inside a run, Hermes also compresses past 30K tokens (`context` in
+`serving/models.yaml`).
 
 ## Configure
 

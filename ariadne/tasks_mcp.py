@@ -107,6 +107,13 @@ def cancel_task(id: str) -> str:
 
 
 @server.tool()
+def list_sessions(limit: int = 10) -> str:
+    """Ariadne sessions (workstreams): name, tasks given in it, current segment, and the start of its last handoff
+    brief. Pass a name as submit_task(session=...) to continue it."""
+    return json.dumps(store().sessions(max(1, min(int(limit), 50))), indent=2, default=str)
+
+
+@server.tool()
 def list_tasks(limit: int = 10) -> str:
     """Recent tasks and their status."""
     return json.dumps(store().list(max(1, min(int(limit), 50))), indent=2, default=str)
