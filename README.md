@@ -45,6 +45,12 @@ python -m ariadne task approve <id> --model 2=gemma-4-12b   # change a step's mo
 python -m ariadne task wait <id>        # the report
 ```
 
+**Desktop** (Hermes's desktop app: chat with live tool output, previews, a file browser; needs Node.js)
+
+```sh
+python -m ariadne desktop     # first launch builds the app (minutes)
+```
+
 **MCP (Claude, other large models)**
 
 ```sh

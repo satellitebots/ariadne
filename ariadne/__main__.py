@@ -12,6 +12,7 @@
   chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
+  desktop [--cwd DIR] [--build]   the Hermes desktop app on Ariadne's terminal home (needs Node; first launch builds it)
   serve | profile | flows | token     lower-level pieces
 
 Every command except doctor and install first checks that the dependencies are there.
@@ -40,6 +41,21 @@ def _profile():
             shutil.rmtree(dst)
         shutil.copytree(skill, dst)
     print(f"terminal Hermes home: {home}")
+
+
+def _desktop(rest):
+    """Hermes Desktop against .hermes-home (the ariadne-tasks skill and tasks MCP server) and the pinned upstream:
+    chat with streaming tool output, previews of what the worker produced, a file browser."""
+    import shutil
+    if not shutil.which("node"):
+        sys.exit("Hermes Desktop needs Node.js: python -m ariadne install --system")
+    cwd = rest[rest.index("--cwd") + 1] if "--cwd" in rest else os.getcwd()
+    env = dict(os.environ, HERMES_HOME=str(paths.GATEWAY_HOME))
+    args = [str(paths.HERMES_EXE), "desktop", "--hermes-root", str(paths.UPSTREAM), "--cwd", cwd, "--local"]
+    if "--build" in rest:
+        args.append("--force-build")
+    print(f"Hermes Desktop on {paths.GATEWAY_HOME} (workspace {cwd}); the first launch builds the app, which takes minutes")
+    return subprocess.call(args, env=env)
 
 
 def main(argv=None):
@@ -82,6 +98,8 @@ def main(argv=None):
     if cmd == "task":
         from . import orchestrator
         return orchestrator.main(rest)
+    if cmd == "desktop":
+        return _desktop(rest)
     if cmd == "sessions":
         from . import orchestrator
         return orchestrator.main(["sessions"])
