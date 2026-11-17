@@ -71,6 +71,7 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
     if mcp_servers is not None:
         flows["coding"].mcp_servers = mcp_servers
     flows["coding"].checks = []
+    flows["coding"].execute_model = ""          # the mechanics tests below: steps without a model run on the planner
     return orch.Worker(store=orch.Store(tmp / "t.db"), memory=Memory(tmp / "m.db"), flows=flows, runner=runner,
                        llm_chat=lambda m, msgs: "coding", installer=installer, on_installed=lambda: None,
                        kv=kv or NoKVCache())
@@ -128,13 +129,16 @@ def test_fetch_pins_sha_on_first_fetch_and_refuses_a_changed_file(env, monkeypat
 def test_backbrief_carries_a_model_per_step(env):
     cat, fl = modellib.load(), flowlib.load_flows(REPO_FLOWS)["coding"]
     mp = orch.parse_model_plan(PLAN.replace("model: gemma-4-12b", "model: gpt-9"), fl, cat)
+    # the 27B plans; steps that name no model (or an unknown one) run on the flow's fast MoE execute model
+    assert (fl.model, fl.step_model, fl.reasoning["execute"]) == ("qwen3.8-27b", "qwen3.6-35b-a3b", "low")
     assert [s["model"] for s in mp["steps"]] == ["qwen3.8-27b", "gemma-4-26b-a4b", "qwen3.8-27b", "z-image-turbo",
-                                                  "qwen3.8-27b"]
-    assert "gpt-9" in mp["notes"][0]                       # unknown name -> the flow's model, and the backbrief says so
+                                                  "qwen3.6-35b-a3b"]
+    assert "gpt-9" in mp["notes"][0] and "qwen3.6-35b-a3b" in mp["notes"][0]
     assert orch.needed_servers(mp, cat) == ["image"]
     groups = orch.step_groups(orch.parse_model_plan(PLAN, fl, cat), cat)
-    assert [(a, [s["n"] for s in ss]) for a, ss in groups] == [
-        ("qwen3.8-27b", [1]), ("gemma-4-26b-a4b", [2]), ("qwen3.8-27b", [3, 4]), ("gemma-4-12b", [5])]
+    assert [(a, [s["n"] for s in ss]) for a, ss in groups] == [       # an image step is run by the execute model
+        ("qwen3.8-27b", [1]), ("gemma-4-26b-a4b", [2]), ("qwen3.8-27b", [3]), ("qwen3.6-35b-a3b", [4]),
+        ("gemma-4-12b", [5])]
 
 
 def test_overrides(env):

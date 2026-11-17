@@ -1,7 +1,9 @@
 name: coding
 description: Change code in a repository, prove it with its tests, and commit locally.
 when: fixing bugs, adding features, refactoring, writing or fixing tests - any change to code in a repository
-model: qwen3.8-27b       # the agent model when a step names none (serving/models.yaml)
+model: qwen3.8-27b              # plans (dense: the deepest reasoning; ~2 tok/s on an 8 GB GPU)
+execute_model: qwen3.6-35b-a3b  # runs steps that name no model (MoE, 3B active: ~10x faster here)
+reasoning: {execute: low}       # think less while executing an approved plan
 skills: [fix-and-verify]
 requires: []               # system tools the servers below need, e.g. [node, chrome] for browser
 mcp_servers: [memory, git] # optional: vscode (VS Code MCP extension running), browser (needs node + chrome)

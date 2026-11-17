@@ -38,7 +38,9 @@ class Flow:
     name: str
     description: str
     when: str
-    model: str = "qwen3.5-9b"   # agent model (serving/models.yaml) for steps that name none
+    model: str = "qwen3.5-9b"   # agent model (serving/models.yaml) that plans; also runs steps unless execute_model is set
+    execute_model: str = ""     # agent model for steps that name none (e.g. a fast MoE while a dense model plans)
+    reasoning: dict = field(default_factory=lambda: {"execute": "low"})   # Hermes --reasoning per phase ('' = default)
     status: str = "beta"        # beta (validated) or experimental (shipped, not yet validated)
     skills: list = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
@@ -52,6 +54,10 @@ class Flow:
     max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40})
     run_budget: dict = field(default_factory=lambda: {"plan": 900, "execute": 1800})
     folder: Path = None
+
+    @property
+    def step_model(self):
+        return self.execute_model or self.model
 
     @property
     def home(self):
@@ -77,7 +83,8 @@ def load_flow(folder):
         raise FlowError(f"{folder.name}/flow.yaml: name '{data['name']}' must match its folder")
     ts = data.get("toolsets") or {}
     fl = Flow(name=data["name"], description=data["description"].strip(), when=data["when"].strip(),
-              model=data.get("model", "qwen3.5-9b"), status=str(data.get("status") or "beta"),
+              model=data.get("model", "qwen3.5-9b"), execute_model=str(data.get("execute_model") or ""),
+              status=str(data.get("status") or "beta"),
               skills=list(data.get("skills") or []),
               mcp_servers=list(data.get("mcp_servers") or []),
               plan_toolsets=list(ts.get("plan") or ["file", "skills"]),
@@ -88,12 +95,17 @@ def load_flow(folder):
               real_logins=bool((data.get("browser") or {}).get("real_logins", True)),
               blocklist=[str(h).strip().lower() for h in (data.get("network") or {}).get("blocklist") or []])
     from . import models as modellib
-    try:
-        agent = modellib.load().get(fl.model)
-    except modellib.ModelError as e:
-        raise FlowError(f"{fl.name}: model: {e}")
-    if agent.kind != "agent":
-        raise FlowError(f"{fl.name}: model '{fl.model}' is a {agent.kind} model; a flow's model must be an agent model")
+    fl.reasoning.update(data.get("reasoning") or {})
+    for key in ("model", "execute_model"):
+        name = getattr(fl, key)
+        if not name:
+            continue
+        try:
+            agent = modellib.load().get(name)
+        except modellib.ModelError as e:
+            raise FlowError(f"{fl.name}: {key}: {e}")
+        if agent.kind != "agent":
+            raise FlowError(f"{fl.name}: {key} '{name}' is a {agent.kind} model; it must be an agent model")
     fl.max_turns.update(data.get("max_turns") or {})
     fl.run_budget.update(data.get("run_budget") or {})
     for s in fl.skills:

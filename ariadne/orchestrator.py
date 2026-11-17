@@ -242,6 +242,8 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
             cmd += ["-s", s]
         if model:
             cmd += ["-m", model]
+        if flow.reasoning.get(tools_phase):  # e.g. low for execute: think less, act more
+            cmd += ["--reasoning", flow.reasoning[tools_phase]]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
     env.pop("ARIADNE_GUARD_ALL_PROCS", None)
     log = qfile.with_suffix("").with_suffix(".log")
@@ -276,8 +278,8 @@ MODELS you may assign to steps (one per step; {default_model} if a step does not
 {models}
 Agent models do a step themselves. A generate model drafts text for a step (the agent asks it through
 generate_text); an image model renders images (generate_image). Prefer the MoE models: on this machine they read
-and write several times faster, so steps finish sooner. Use a dense model only for a step that needs the deepest
-reasoning (hard debugging, tricky design decisions), and say why in the step.
+and write several times faster, so steps finish sooner. You ({planner}) are the planner; assign yourself or another
+dense model only to a step that needs the deepest reasoning (hard debugging, tricky design decisions), and say why.
 
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 
@@ -333,10 +335,10 @@ def parse_model_plan(plan_text, flow, catalog):
         found = MODEL_RE.search(body)
         name = found.group(1).rstrip(".,;") if found else ""
         if name and name not in catalog.models:
-            notes.append(f"step {m.group(1)} named '{name}', which is not in the catalog; using {flow.model}")
+            notes.append(f"step {m.group(1)} named '{name}', which is not in the catalog; using {flow.step_model}")
             name = ""
-        steps.append({"n": int(m.group(1)), "text": body, "model": name or flow.model})
-    return {"steps": steps, "agent": flow.model, "notes": notes}
+        steps.append({"n": int(m.group(1)), "text": body, "model": name or flow.step_model})
+    return {"steps": steps, "agent": flow.step_model, "notes": notes}
 
 
 def apply_model_overrides(mp, overrides):
@@ -532,7 +534,7 @@ class Worker:
         prompt = PLAN_PROMPT.format(flow=name, source=t["source"], text=t["text"], workspace=ws,
                                     feedback=feedback, memory=format_hits(hits),
                                     exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
-                                    models=self.catalog.text(), default_model=flow.model)
+                                    models=self.catalog.text(), default_model=flow.step_model, planner=flow.model)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
         r = self.run(flow, "plan", prompt, ws, t, flow.model, "plan")
         if r.exit_code != 0 or not r.text:
@@ -638,7 +640,7 @@ class Worker:
         if not flow:
             self.store.update(t["id"], status="failed", error=f"flow '{t['flow']}' no longer exists")
             return
-        mp = json.loads(t["models"]) if t.get("models") else {"steps": [], "agent": flow.model, "notes": []}
+        mp = json.loads(t["models"]) if t.get("models") else {"steps": [], "agent": flow.step_model, "notes": []}
         problem = self.prepare(t, flow, mp)
         if problem:
             self.store.update(t["id"], status="needs_attention", result=problem)
