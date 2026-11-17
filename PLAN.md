@@ -17,7 +17,7 @@ skills and packaging.
    there; never create other remotes or repos.
 2. **Touch only `C:\repos\ariadne`.** Every other folder under `C:\repos` is the user's own project:
    read-only. In particular never write to `C:\repos\atlas`.
-3. **Never edit `upstream\` by hand.** It is a pristine Hermes checkout at the commit in `hermes.lock`.
+3. **Never edit `upstream\` by hand.** It is a git submodule pinned to one Hermes commit.
    A change Hermes cannot take through a plugin, hook, config or MCP server goes in `patches\` as a numbered
    patch applied by `tools\apply-patches.ps1`, with a note in WORKLOG saying why no extension point worked.
    Prefer, in order: config > MCP server > skill > plugin/hook > patch.
@@ -43,7 +43,7 @@ skills and packaging.
 | Machine | Windows 11, Ryzen 7 5800H, 32 GB RAM, RTX 3070 Laptop 8 GB, 127 GB free on C: (2026-11-16) |
 | Python | Ariadne venv `.venv` on uv-managed Python 3.14.8 in `.tools\python` (upstream lock resolves only for 3.14); deps via `uv sync --project upstream --frozen --no-dev` with `UV_PROJECT_ENVIRONMENT=.venv`; uv 0.13.1 |
 | Models (Ollama, `localhost:11434`) | qwen3.5:9b (6.6 GB), qwen3.5:4b (3.3 GB), qwen2.5:7b, qwen2.5vl:7b, qwen3-embedding:0.6b, nomic-embed-text |
-| Hermes | `upstream\` at the commit in `hermes.lock` (MIT, Nous Research) |
+| Hermes | `upstream\`, git submodule of NousResearch/hermes-agent at the recorded commit (MIT, Nous Research) |
 | Hermes home | `C:\repos\ariadne\.hermes-home` (gitignored) |
 | Local Ollama as provider | `provider: custom`, `base_url: http://localhost:11434/v1` (from upstream docs `guides/local-ollama-setup.md`) |
 
@@ -53,7 +53,7 @@ Bigger models (e.g. a 35B-A3B MoE with experts on CPU) are an experiment in A4, 
 
 ```
 ariadne\
-  PLAN.md  WORKLOG.md  README.md  hermes.lock  .gitignore
+  PLAN.md  WORKLOG.md  README.md  .gitmodules  .gitignore
   upstream\        pristine Hermes clone (own .git, gitignored by the Ariadne repo)
   plugins\         Ariadne Hermes plugins (graph memory, context engine, offline guard, ...)
   profiles\        one config per workflow: coding, designing, writing, investigating
@@ -66,14 +66,14 @@ ariadne\
 ```
 
 **Upgrade flow (the point of this layout):** `tools\bump-upstream.ps1 <commit>` fetches upstream, checks out
-the commit, re-applies `patches\`, runs all gates, and only then rewrites `hermes.lock`. A failing gate means
+the commit, re-applies `patches\`, runs all gates, and only then records the new commit (`git add upstream`). A failing gate means
 fix the plugin (or drop a patch that upstream made unnecessary), never edit upstream.
 
 ## 3. Regression gates (run at the start of every session and after any change)
 
 | Gate | Check | Pass if |
 |---|---|---|
-| G1 upstream intact | `git -C upstream rev-parse HEAD` and `git -C upstream status --short` | HEAD = `hermes.lock`; only files touched by `patches\` differ |
+| G1 upstream intact | `git submodule status upstream` and `git -C upstream status --short` | no `+` (HEAD = recorded commit); only files touched by `patches\` differ |
 | G2 smoke | Hermes, isolated home, local model, one prompt that needs one tool call | answers, tool call succeeds, exit 0 |
 | G3 egress | outbound connections during G2 | only loopback / LAN addresses |
 | G4 plugins | `hermes plugins doctor` on each Ariadne plugin | all pass |

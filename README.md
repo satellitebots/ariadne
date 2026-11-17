@@ -2,7 +2,7 @@
 
 A local-model agent harness built on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research.
 
-Ariadne does not fork Hermes. It runs a pinned, unmodified Hermes (`upstream\`, see `hermes.lock`) and adds
+Ariadne does not fork Hermes. It runs a pinned, unmodified Hermes (`upstream\`, a git submodule; clone with `--recursive`) and adds
 what sits around it: flows, a task orchestrator with a brief / backbrief / sign-off / execute drill, a durable
 shared memory, MCP servers, plugins and local model serving. Models are local only (llama.cpp via llama-swap,
 Ollama as fallback); tools and chat channels may use the internet.

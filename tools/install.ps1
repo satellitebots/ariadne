@@ -1,9 +1,9 @@
-# Install Ariadne on a Windows machine with an NVIDIA GPU, or check what is missing.
+﻿# Install Ariadne on a Windows machine with an NVIDIA GPU, or check what is missing.
 #   powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Check     # report only, change nothing
 #   powershell -ExecutionPolicy Bypass -File tools\install.ps1            # install whatever is missing
 #   ... -Slack                                                             # also the Slack channel dependencies
 # Supported entry points: Slack, the terminal (CLI) and MCP (Claude and other large models).
-# Every download is pinned: winget packages by id, Hermes by commit (hermes.lock), Python packages by upstream
+# Every download is pinned: winget packages by id, Hermes by commit (the upstream git submodule), Python packages by upstream
 # uv.lock, binaries by sha256 (serving\bin.lock), model files by sha256 (serving\models.lock), Ollama models by tag.
 param([switch]$Check, [switch]$Slack)
 $ErrorActionPreference = 'Stop'
@@ -30,11 +30,10 @@ Step 'Ollama' { Has ollama } { Winget 'Ollama.Ollama' } 'stores the model weight
 Step 'Google Chrome' { Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe' } { Winget 'Google.Chrome' } 'the visible browser'
 
 Write-Host "Hermes (pinned)"
-$lock = @{}; Get-Content (Join-Path $root 'hermes.lock') | ForEach-Object { $k, $v = $_.Split('=', 2); $lock[$k] = $v }
 $up = Join-Path $root 'upstream'
-Step "Hermes at $($lock.commit)" { (Test-Path "$up\.git") -and ((git -C $up rev-parse --short=10 HEAD) -eq $lock.commit) } {
-  if (-not (Test-Path "$up\.git")) { git clone $lock.repo $up }
-  git -C $up fetch origin; git -C $up checkout --detach $lock.commit } 'the agent engine, never edited'
+$pin = ((git -C $root ls-files -s upstream) -split '\s+')[1]   # commit recorded for the submodule
+Step "Hermes at $($pin.Substring(0, 10))" { (Test-Path "$up\.git") -and ((git -C $up rev-parse HEAD) -eq $pin) } {
+  git -C $root submodule update --init upstream } 'the agent engine (git submodule), never edited'
 $venvPy = Join-Path $root '.venv\Scripts\python.exe'
 $extras = @('--extra', 'mcp') + $(if ($Slack) { @('--extra', 'slack') } else { @() })
 Step 'Python env (.venv, Hermes + MCP)' { (Test-Path $venvPy) -and ((& $venvPy -c 'import mcp, ruamel.yaml; print(1)' 2>$null) -eq '1') } {
@@ -48,15 +47,15 @@ if ($Slack) { Step 'Slack SDK' { (& $venvPy -c 'import slack_bolt; print(1)' 2>$
 Write-Host "Serving binaries and models"
 $bin = Join-Path $root 'serving\bin'
 Get-Content (Join-Path $root 'serving\bin.lock') | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
-  $name, $ver = $_.Split('|')[0, 1]
-  $dir = switch ($name) { 'cudart' { "llama.cpp-$ver" } 'cudart-sd' { "sd.cpp-$ver" } default { "$name-$ver" } }
-  $marker = switch ($name) { 'cudart' { 'cudart64_12.dll' } 'cudart-sd' { 'cudart64_12.dll' } default { '*.exe' } }
-  Step "$name $ver" { @(Get-ChildItem (Join-Path $bin $dir) -Recurse -Filter $marker -ErrorAction SilentlyContinue).Count -gt 0 } {
-    & (Join-Path $PSScriptRoot 'fetch-serving-bins.ps1') -Only $name } 'pinned release, sha256-verified'
+  $bname, $ver = $_.Split('|')[0, 1]
+  $dir = switch ($bname) { 'cudart' { "llama.cpp-$ver" } 'cudart-sd' { "sd.cpp-$ver" } default { "$bname-$ver" } }
+  $marker = switch ($bname) { 'cudart' { 'cudart64_12.dll' } 'cudart-sd' { 'cudart64_12.dll' } default { '*.exe' } }
+  Step "$bname $ver" { @(Get-ChildItem (Join-Path $bin $dir) -Recurse -Filter $marker -ErrorAction SilentlyContinue).Count -gt 0 } {
+    & (Join-Path $PSScriptRoot 'fetch-serving-bins.ps1') -Only $bname } 'pinned release, sha256-verified'
 }
 Get-Content (Join-Path $root 'serving\models.lock') | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
-  $name = $_.Split('|')[0]
-  Step "model $name" { Test-Path (Join-Path $root "models\$name") } { & (Join-Path $PSScriptRoot 'fetch-models.ps1') -Only $name } 'pinned, sha256-verified'
+  $mname = $_.Split('|')[0]
+  Step "model $mname" { Test-Path (Join-Path $root "models\$mname") } { & (Join-Path $PSScriptRoot 'fetch-models.ps1') -Only $mname } 'pinned, sha256-verified'
 }
 foreach ($tag in 'qwen3.5:9b', 'qwen3.5:4b', 'qwen3-embedding:0.6b') {
   Step "Ollama model $tag" { (ollama list 2>$null | Select-String -SimpleMatch $tag) } { ollama pull $tag } 'weights llama-swap serves'
