@@ -4,6 +4,7 @@
   install [--system] [--models]   install what is missing (--system: git/uv/ollama/node via winget, brew or apt;
                              --models: also fetch the default models now instead of when a plan first picks them)
   models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
+  kv [list | drop SESSION]   parked KV caches, per session, step and model
   up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
@@ -56,6 +57,9 @@ def main(argv=None):
         for name, home in compile_all().items():
             print(f"{name}: {home}")
         return 0
+    if cmd == "kv":
+        from . import kvcache
+        return kvcache.main(rest)
     if cmd == "models":
         from . import models
         return models.main(rest)

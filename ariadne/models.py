@@ -4,6 +4,7 @@ A plan names a model per step; the person signs off on those choices; the worker
 installed before the first step runs. Weights live in models/<name>/ (Hugging Face) or are Ollama blobs.
 """
 import json
+import re
 import shutil
 import urllib.parse
 import urllib.request
@@ -14,7 +15,9 @@ from . import yamlio as yaml
 
 CATALOG = paths.ROOT / "serving" / "models.yaml"
 PINS = paths.STATE / "model-pins.json"
-DEFAULT_ARGS = "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"
+DEFAULT_ARGS = "-fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"          # agents also get -c <context.window>
+GENERATE_ARGS = "-c 16384 -fa on --jinja -ngl 99"
+CONTEXT = {"window": 98304, "compress_at": 70000}
 KINDS = ("agent", "generate", "image", "embed")
 
 
@@ -72,6 +75,7 @@ class Model:
 class Catalog:
     models: dict
     defaults: dict
+    context: dict = field(default_factory=lambda: dict(CONTEXT))
 
     def get(self, name):
         if name not in self.models:
@@ -102,7 +106,13 @@ def load(path=None):
     for role, name in defaults.items():
         if name not in models:
             raise ModelError(f"default for {role} is '{name}', which is not in the catalog")
-    return Catalog(models, defaults)
+    context = {**CONTEXT, **(data.get("context") or {})}
+    if not 0 < int(context["compress_at"]) < int(context["window"]):
+        raise ModelError("context.compress_at must be below context.window")
+    for m in models.values():
+        if m.kind == "agent" and re.search(r"(^|\s)(-c|--ctx-size)\s", m.args):
+            raise ModelError(f"model {m.name}: set the window in context.window, not with -c in args")
+    return Catalog(models, defaults, {k: int(v) for k, v in context.items()})
 
 
 # ---------- llama-swap entries ----------
@@ -115,8 +125,9 @@ def swap_entries(catalog=None):
     for m in cat.models.values():
         if m.kind == "image":
             continue
-        args = m.args or DEFAULT_ARGS
-        if m.kind == "agent":  # sessions can park their KV cache on disk (kvcache.py)
+        args = m.args or (GENERATE_ARGS if m.kind == "generate" else DEFAULT_ARGS)
+        if m.kind == "agent":
+            args = f"-c {cat.context['window']} " + args  # sessions can park their KV cache on disk (kvcache.py)
             args += f' --slot-save-path "{KV_DIR.as_posix()}"'
         out[m.name] = {"cmd": f'${{server}} ${{common}} {args} -m "{m.gguf().as_posix()}"', "ttl": 900}
     return out

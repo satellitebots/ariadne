@@ -70,9 +70,28 @@ Sized for an 8 GB GPU with 32 GB of RAM; larger models run partly on the CPU.
 | Images | Z-Image-Turbo | SD Turbo |
 | Routing, memory | Qwen3.5 4B, Qwen3 Embedding 0.6B | |
 
+## KV cache parking
+
+One GPU means models swap constantly - planner, coder, writer; this task, then that one. Every swap normally
+throws away the KV cache, and the next turn re-reads the whole conversation (minutes at 70K tokens on a 27B).
+Ariadne parks it instead:
+
+- After every run, the model's KV cache is saved to disk under **session + step + model** (`plan`, `step-1-3`, ...),
+  and becomes that session's **master** cache for the model.
+- Before a run, the step's own cache wakes (a retry or re-run of that step), else the session's master; prefill
+  is skipped for everything already seen.
+- Switching tasks, swapping models between steps, or resuming a conversation tomorrow costs a disk read.
+
+A cache belongs to one model (another model's weights cannot use it); the conversation itself carries across
+models in the Hermes session. Caches are capped at 40 GB (least recently used go first; `ARIADNE_KV_MAX_GB`),
+listed with `python -m ariadne kv`, and off with `ARIADNE_KV=off`.
+
 **Sessions.** Each task runs in one Hermes session (plan, revisions, execute). Pass `--session` (CLI) or
-`session` (MCP) to continue your own conversation across tasks. After each run the model's KV cache is saved to
-disk under the session, and restored when that session next runs on that model, so a model swap costs prefill once.
+`session` (MCP) to continue your own conversation across tasks; its caches stay parked between them.
+
+**Context compression.** Models get a 96K window. Past 70K tokens the run pauses, the same model summarises the
+older turns (no model swap), the recent tail stays verbatim, and the run continues. Both numbers:
+`context` in `serving/models.yaml`.
 
 ## Configure
 

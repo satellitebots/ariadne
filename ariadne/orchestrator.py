@@ -406,8 +406,8 @@ Reply with only the flow name."""
 class Worker:
     def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
                  catalog=None, installer=None, on_installed=None, kv=None):
-        from .kvcache import KVCache, NoKVCache
-        self.kv = kv or (KVCache() if runner is hermes_run else NoKVCache())
+        from . import kvcache
+        self.kv = kv or (kvcache.default() if runner is hermes_run else kvcache.NoKVCache())
         from . import models as modellib
         self.catalog = catalog or modellib.load()
         self.installer = installer or modellib.install
@@ -468,7 +468,7 @@ class Worker:
                                     exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
                                     models=self.catalog.text(), default_model=flow.model)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
-        r = self.run(flow, "plan", prompt, ws, t, flow.model)
+        r = self.run(flow, "plan", prompt, ws, t, flow.model, "plan")
         if r.exit_code != 0 or not r.text:
             self.store.update(t["id"], status="failed", error=f"plan run failed (exit {r.exit_code}); log {r.log}")
             self.store.event(t["id"], "plan", f"failed, log {r.log}")
@@ -480,14 +480,15 @@ class Worker:
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: awaiting sign-off",
                            [("uses_flow", "flow", name), ("in_workspace", "workspace", ws)])
 
-    def run(self, flow, phase, prompt, ws, t, model):
-        """One Hermes run in the task's session on `model`, with that session's KV cache woken first and parked after."""
+    def run(self, flow, phase, prompt, ws, t, model, scope):
+        """One Hermes run in the task's session on `model`. The KV cache for (session, step, model) is woken first
+        (the step's own, else the session's master for that model) and parked after (kvcache.py)."""
         session = t.get("session") or t["id"]
-        note = self.kv.restore(session, model)
+        note = self.kv.restore(session, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
         r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=session)
-        note = self.kv.save(session, model)
+        note = self.kv.save(session, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
         return r
@@ -545,7 +546,8 @@ class Worker:
                 attempts += 1
                 self.store.event(t["id"], "execute", f"{label} on {agent}, attempt {attempts}")
                 r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
-                                                                  plan=t["plan"], extra=scope + extra), ws, t, agent)
+                                                                  plan=t["plan"], extra=scope + extra), ws, t, agent,
+                             "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
                 if r.exit_code != 0 or not r.text:
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
                                         f"execute run failed (exit {r.exit_code}); log {r.log}")

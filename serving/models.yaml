@@ -10,7 +10,15 @@
 # weights: Hugging Face files (repo + file, or repo + dir for split GGUFs), fetched into models/<name>/.
 #          The LFS sha256 is pinned in .ariadne/model-pins.json on first fetch and verified on every fetch after;
 #          a sha256 here is enforced from the start. ollama: an Ollama model whose GGUF blob is served read-only.
-# args:  llama-server arguments for agent/generate models (defaults to the 64K chat settings, all on the GPU).
+# args:  llama-server arguments for agent/generate models (default: flash attention, q8 KV cache, all on the GPU).
+#        Agent models always get -c <context.window>.
+
+# Every agent model is served with this window, and Hermes compresses the conversation when it passes
+# compress_at: the run pauses, older turns become a summary (written by the same model, so no swap), the recent
+# tail stays verbatim, and the run continues.
+context:
+  window: 98304
+  compress_at: 70000
 
 defaults:
   coding: qwen3.8-27b
@@ -29,7 +37,7 @@ models:
     about: Qwen3.8 27B (dense, newest). Best local coder and planner here; 17.7 GB, so most of it runs on the CPU - slow.
     size_gb: 17.7
     weights: {repo: unsloth/Qwen3.8-27B-GGUF, file: Qwen3.8-27B-UD-Q4_K_XL.gguf}
-    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+    args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
 
   qwen3.6-35b-a3b:
     kind: agent
@@ -37,7 +45,7 @@ models:
     about: Qwen3.6 35B-A3B (MoE, 3B active). Agentic coding; experts sit in RAM, so it is much faster than the 27B here.
     size_gb: 22.4
     weights: {repo: unsloth/Qwen3.6-35B-A3B-GGUF, file: Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf}
-    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+    args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
 
   qwen3.5-9b:
     kind: agent
@@ -68,7 +76,7 @@ models:
     about: Gemma 4 12B. Design work - diagrams, architecture, UI layouts; 7.4 GB, mostly on the GPU.
     size_gb: 7.4
     weights: {repo: unsloth/gemma-4-12b-it-GGUF, file: gemma-4-12b-it-UD-Q4_K_XL.gguf}
-    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+    args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
 
   gemma-4-26b-a4b:
     kind: agent
@@ -76,7 +84,7 @@ models:
     about: Gemma 4 26B-A4B (MoE, 4B active). Writing - clear, well-structured prose; experts in RAM, reasonably fast.
     size_gb: 17.0
     weights: {repo: unsloth/gemma-4-26B-A4B-it-GGUF, file: gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf}
-    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+    args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
 
   gemma-4-31b:
     kind: agent
@@ -84,7 +92,7 @@ models:
     about: Gemma 4 31B (dense). Best local prose here, for long or important pieces; 18.8 GB, slow.
     size_gb: 18.8
     weights: {repo: unsloth/gemma-4-31B-it-GGUF, file: gemma-4-31B-it-UD-Q4_K_XL.gguf}
-    args: "-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
+    args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
 
   # ---- images ----
   z-image-turbo:

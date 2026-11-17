@@ -50,12 +50,12 @@ class FakeKV:
     def __init__(self):
         self.log = []
 
-    def restore(self, session, model):
-        self.log.append(("restore", session, model))
+    def restore(self, session, model, scope="master"):
+        self.log.append(("restore", session, model, scope))
         return ""
 
-    def save(self, session, model):
-        self.log.append(("save", session, model))
+    def save(self, session, model, scope="master"):
+        self.log.append(("save", session, model, scope))
         return "saved 10 tokens"
 
     def drop(self, session):
@@ -91,6 +91,7 @@ def test_swap_entries_serve_text_models_and_can_park_slots():
     e = modellib.swap_entries()
     assert "qwen3.8-27b" in e and "router" in e and "z-image-turbo" not in e
     assert "--fit on" in e["qwen3.8-27b"]["cmd"] and "--slot-save-path" in e["qwen3.8-27b"]["cmd"]
+    assert "-c 98304" in e["qwen3.8-27b"]["cmd"] and "-c 16384" in e["router"]["cmd"]
     assert "--slot-save-path" not in e["embed"]["cmd"]
 
 
@@ -166,7 +167,8 @@ def test_drill_with_models_fetches_before_step_one_and_runs_each_group_on_its_mo
     assert "generate_image(model='z-image-turbo'" in execs[2][2]
     # one Hermes session for the whole task; each run's KV cache parked after it; the task's own session dropped at the end
     assert {c[3] for c in run.calls} == {tid}
-    assert ("save", tid, "gemma-4-26b-a4b") in kv.log and kv.log[-1] == ("drop", tid)
+    assert ("save", tid, "qwen3.8-27b", "plan") in kv.log and ("save", tid, "gemma-4-26b-a4b", "step-2") in kv.log
+    assert ("restore", tid, "qwen3.8-27b", "step-3-4") in kv.log and kv.log[-1] == ("drop", tid)
     assert any("kv: qwen3.8-27b: saved" in e for e in t["events"])
 
 
@@ -217,7 +219,7 @@ def test_planning_model_missing_stops_before_planning(env):
 
 # ---------- KV parking ----------
 
-def test_kv_cache_parks_restores_drops_and_prunes(tmp_path):
+def test_kv_cache_parks_per_session_step_and_model(tmp_path):
     posts = []
 
     def post(model, action, filename):
@@ -225,15 +227,30 @@ def test_kv_cache_parks_restores_drops_and_prunes(tmp_path):
         if action == "save":
             (tmp_path / filename).write_bytes(b"x" * 600)
         return {"n_saved": 5, "n_restored": 5}
-    kv = KVCache(tmp_path, max_gb=1000 / 2**30, post=post)
-    assert kv.restore("s1", "m") == ""                      # nothing parked yet: plain prefill
-    assert kv.save("s1", "m") == "saved 5 tokens"
-    assert kv.restore("s1", "m") == "restored 5 tokens" and posts[-1][1] == "restore"
+    kv = KVCache(tmp_path, max_gb=1500 / 2**30, post=post)
+    assert kv.restore("s1", "m", "plan") == ""             # nothing parked yet: plain prefill
+    assert kv.save("s1", "m", "plan").startswith("parked 5 tokens as plan")
+    kv.save("s1", "m", "step-1")
+    assert kv.lookup("s1", "m", "plan") == "s1--plan--m.bin"        # a step wakes its own cache
+    assert kv.lookup("s1", "m", "step-2") == "s1--step-1--m.bin"    # a new step wakes the master (latest)
+    assert kv.lookup("s1", "other-model", "plan") == ""             # caches belong to one model
+    assert kv.restore("s1", "m", "step-2").startswith("woke 5 tokens from s1--step-1--m.bin")
     kv.save("s2", "m")                                       # over the cap: the least recently used goes
-    assert len(list(tmp_path.glob("*.bin"))) == 1
-    kv.drop("s2")
-    assert not list(tmp_path.glob("*.bin"))
+    assert sorted(f.name for f in tmp_path.glob("*.bin")) == ["s1--step-1--m.bin", "s2--master--m.bin"]
+    assert kv.lookup("s1", "m", "plan") == "s1--step-1--m.bin"    # its step cache was pruned: the master wakes
+    assert "s1" in "\n".join(kv.report())
+    kv.drop("s1"); kv.drop("s2")
+    assert not list(tmp_path.glob("*.bin")) and kv.report() == ["nothing parked"]
 
     def broken(*a):
         raise OSError("server down")
     assert "skipped" in KVCache(tmp_path, post=broken).save("s3", "m")   # never fails a task
+
+
+def test_compiled_flow_compresses_at_70k(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")
+    home = flowlib.compile_flow(flowlib.load_flows(REPO_FLOWS)["coding"], REPO_FLOWS)
+    from ariadne import yamlio
+    cfg = yamlio.safe_load((home / "config.yaml").read_text())
+    assert cfg["model"]["context_length"] == 98304
+    assert cfg["compression"]["threshold_tokens"] == 70000 and cfg["auxiliary"]["compression"]["provider"] == "auto"
