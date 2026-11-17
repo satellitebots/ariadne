@@ -13,11 +13,17 @@ model_catalog:
 # Passive startup/banner update check (upstream hermes_cli/source_check.py honours updates.check=false).
 updates:
   check: false
-# Gateway's periodic plugin update check; 0 disables (upstream config_defaults.py).
-plugins:
-  auto_update_check_hours: 0
 # Upstream default is already off; pinned here so an upstream default change cannot turn it on.
 telemetry:
   shared_metrics:
     enabled: false
     send: false
+# Tools whose only job is the internet: removed from the prompt entirely (A3). Upstream key.
+agent:
+  disabled_toolsets: [web, browser, browser-use, browser-cdp]
+
+plugins:
+  # Gateway's periodic plugin update check; 0 disables (upstream config_defaults.py).
+  auto_update_check_hours: 0
+  # Ariadne plugins (synced into HERMES_HOME\plugins by tools\use-profile.ps1). Opt-in upstream.
+  enabled: [offline_guard]

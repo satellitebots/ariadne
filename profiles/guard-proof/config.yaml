@@ -1,0 +1,27 @@
+# G3 guard-proof profile: base WITHOUT the A2 offline switches, so Hermes makes its stock outbound
+# catalog/update calls and the offline_guard plugin must be what stops them. Test-only; never use for work.
+# Ariadne base profile - local only. Copied into HERMES_HOME by tools\use-profile.ps1.
+model:
+  default: "ariadne-qwen3.5-9b"
+  provider: "custom"
+  base_url: "http://localhost:11434/v1"
+
+# --- Offline switches (A2 egress audit, see WORKLOG) ---
+# Background model-catalog refresh: fetched hermes-agent.nousresearch.com (+ nousresearch.github.io
+# fallback) and openrouter.ai/api/v1/models during a purely local task. refresh_catalogs() returns
+# early when this is false (upstream hermes_cli/model_catalog.py).
+# Passive startup/banner update check (upstream hermes_cli/source_check.py honours updates.check=false).
+# Upstream default is already off; pinned here so an upstream default change cannot turn it on.
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+# Tools whose only job is the internet: removed from the prompt entirely (A3). Upstream key.
+agent:
+  disabled_toolsets: [web, browser, browser-use, browser-cdp]
+
+plugins:
+  # Gateway's periodic plugin update check; 0 disables (upstream config_defaults.py).
+  auto_update_check_hours: 0
+  # Ariadne plugins (synced into HERMES_HOME\plugins by tools\use-profile.ps1). Opt-in upstream.
+  enabled: [offline_guard]

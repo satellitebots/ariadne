@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-16 22:35
+## Status - 2026-11-16 23:10
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -18,10 +18,10 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 |---|---|
 | Repo layout (`upstream\` + Ariadne folders) | Done (A0) |
 | Upstream pin | `458a0046ad` (hermes-agent main, 2026-11-16) |
-| Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`) |
+| Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`), G4 `hermes plugins doctor`, G5 `pytest plugins` |
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
 | Offline | Config closes all observed egress (3 hosts, one catalog refresh); see A2 table |
-| Next iteration | A3 - offline guard (defense in depth) |
+| Next iteration | A3 in progress: plugin + G4/G5 done; G2/G3 runs wait for the GPU (Atlas eval) |
 
 ## Iteration log
 
@@ -130,3 +130,41 @@ Decisions / surprises:
 - Hook limitation: raw-IP connects made by asyncio's proactor bypass socket.connect; name lookups are
   still caught. Acceptable for an audit; the A3 guard should block at a lower level.
 Commit: (see git log, tag a2-done)   Next: A3 offline guard.
+
+### 2026-11-16 22:55-23:10 - A3 Offline guard (part 1 of 2: CPU-side; interim checkpoint)
+Goal: defense in depth so a future upstream fetch is blocked and logged even if config misses it.
+State at start: G1 pass. G2/G3 NOT run: Atlas eval `p1c-q35-4b` holds the GPU (100% util, item 18/300 at
+~14 s/item at 22:58, ~65 min left). Rule 9: one GPU job at a time, so model runs wait.
+Did (from upstream docs `developer-guide/plugins/index.md`, `user-guide/features/hooks.md`,
+`user-guide/features/plugins.md`):
+- Plugins are opt-in (`plugins.enabled`), discovered in `<HERMES_HOME>/plugins/<name>/` (plugin.yaml +
+  `register(ctx)`). `pre_tool_call` is a policy hook: `{"action": "block", "message": ...}` wins over
+  approve. Toolsets can be removed in config with `agent.disabled_toolsets`.
+- Layer 1, config: `agent.disabled_toolsets: [web, browser, browser-use, browser-cdp]` in `profiles\base`.
+- Layer 2, `plugins\offline_guard` (Ariadne plugin, upstream untouched):
+  - `guard.py`: process-wide wrap of socket.getaddrinfo, socket.connect/connect_ex and asyncio
+    `sock_connect` (base, proactor, selector loops; closes the raw-IP asyncio gap the A2 hook had).
+    Non-local -> PermissionError (clients see a normal network error) + JSONL record with frames in
+    `<HERMES_HOME>/logs/offline_guard.jsonl`. Local = loopback, RFC 1918/ULA, link-local, single-label
+    names, .lan/.local/.home.arpa/.internal, `ARIADNE_ALLOW_HOSTS`. Modes via `ARIADNE_OFFLINE_GUARD`:
+    enforce (default) | log | off.
+  - `policy.py` (`pre_tool_call`): blocks web/browser tools; any argument URL with a non-local host;
+    networked commands (curl/wget/Invoke-WebRequest, pip/npm install, npx, uvx, git clone/fetch/pull/push,
+    ssh/scp, package managers) unless every URL they name is local. Covers children the socket guard
+    cannot see (terminal tool spawning curl).
+- `tools\use-profile.ps1` now syncs `plugins\<name>\` (without tests) into `.hermes-home\plugins\`.
+- `profiles\guard-proof`: base minus the A2 catalog/update switches, guard on. Test-only.
+- `tools\gate-egress.ps1 -ExpectGuardBlocks`: also requires >= 1 guard block, so the run proves the guard
+  (not config) stopped real Hermes egress. Rewritten whole after an in-place edit corrupted it (a `$_` in
+  a PowerShell -replace replacement string expands to the whole input); restored from a2-done first.
+- pytest 9.1.1 (version pinned in upstream uv.lock) installed into `.venv` for G5.
+Numbers:
+- G5 `python -m pytest plugins -q`: 40 passed in 0.36 s (19 host classifications, external DNS / raw-IP
+  socket / urllib / raw-IP asyncio all refused, local TCP round trip allowed, block logged, 14 tool
+  policy cases).
+- G4 `hermes plugins doctor plugins\offline_guard --ci`: OK (discovery, manifest, import, registration;
+  0 tools, 1 hook). `hermes plugins list`: offline_guard enabled, source user.
+Gates: G1 pass. G4 pass (live). G5 pass (live). G2, G3, G3 guard-proof: pending GPU.
+Remaining for A3: G2; G3 on base; G3 on guard-proof with -ExpectGuardBlocks (expected: 0 external,
+>= 1 guard block from the catalog refresh, task ok); dead-proxy decision; WORKLOG; tag a3-done.
+Commit: interim (see git log)   Next: finish A3 when the GPU is free.
