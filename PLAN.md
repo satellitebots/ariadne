@@ -93,7 +93,7 @@ first checkpoint committed.
 - **Pass:** G2 green 3 runs out of 3. Record time to first token and total time.
 - **Blocked:** if Windows install fails, try WSL2 only after asking.
 
-### A2. Egress audit
+### A2. Egress audit - done 2026-11-16
 - Run G2 while logging every TCP connection the Hermes process tree opens (`Get-NetTCPConnection` polling
   by PID, plus a dead `HTTPS_PROXY` run to surface hidden calls). Grep startup paths for update checks,
   telemetry, model discovery, remote config.
@@ -101,7 +101,7 @@ first checkpoint committed.
 - **Pass:** a list of every outbound host with its source; G3 written (may be red until A3).
 
 ### A3. Offline guard (first Ariadne plugin)
-- Turn off what config can turn off. For the rest, a `plugins\offline_guard` plugin (hooks / tool filter) that
+- A2 found config alone closes all observed egress (switches in `profiles\base`). A3 adds defense in depth: a `plugins\offline_guard` plugin (hooks / tool filter) that
   blocks non-local hosts and logs attempts. Patch only if neither works.
 - **Pass:** G3 green; G4 + G5 live for this plugin.
 

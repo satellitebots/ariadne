@@ -3,6 +3,9 @@
 # Pass: every run exits 0 and the answer contains the code word that only exists in the fixture file.
 param([int]$Runs = 3, [string]$Model = 'ariadne-qwen3.5-9b', [int]$MaxTurns = 8)
 $ErrorActionPreference = 'Stop'
+# One gate at a time: gates stop/start the Ariadne gateway, so two overlapping runs kill each other's gateway.
+$gateMutex = [System.Threading.Mutex]::new($false, 'Global\AriadneGate')
+if (-not $gateMutex.WaitOne(0)) { Write-Host 'another Ariadne gate is running; refusing to overlap'; exit 2 }
 $root = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot 'use-profile.ps1') base | Out-Null
 $env:HERMES_HOME = Join-Path $root '.hermes-home'

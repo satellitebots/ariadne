@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-16 22:10
+## Status - 2026-11-16 22:35
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -18,9 +18,10 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 |---|---|
 | Repo layout (`upstream\` + Ariadne folders) | Done (A0) |
 | Upstream pin | `458a0046ad` (hermes-agent main, 2026-11-16) |
-| Gates live | G1 (manual), G2 `tools\gate-smoke.ps1` (3/3 on ariadne-qwen3.5-9b) |
+| Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`) |
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
-| Next iteration | A2 - egress audit |
+| Offline | Config closes all observed egress (3 hosts, one catalog refresh); see A2 table |
+| Next iteration | A3 - offline guard (defense in depth) |
 
 ## Iteration log
 
@@ -78,3 +79,54 @@ Decisions / surprises:
   KV-cache quantisation, or 4B as main on this tier. Measure, don't assume.
 - No `%USERPROFILE%\.hermes` created: HERMES_HOME isolation holds.
 Commit: (see git log, tag a1-done)   Next: A2 egress audit.
+
+### 2026-11-16 22:09-22:35 - A2 Egress audit
+Goal: find every outbound host Hermes contacts during a local task; write G3.
+Did:
+- Static scan of upstream (2,334 .py files, tests excluded): no global offline switch. Network-capable
+  defaults found in `hermes_cli/config_defaults.py`: `updates.check: true`, `model_catalog.enabled: true`
+  (hermes-agent.nousresearch.com), `models_dev` (models.dev/api.json), `plugins.auto_update_check_hours: 24`,
+  `telemetry.shared_metrics` (already off by default).
+- Measurement: `tools\egress_hook.py`, loaded by `.venv\Lib\site-packages\ariadne_egress.pth`
+  (`tools\install-egress-hook.ps1`), logs every getaddrinfo, socket connect and subprocess spawn with pid
+  and the last 6 Hermes frames. Inert unless `ARIADNE_EGRESS_LOG` is set. It runs in every venv process,
+  which matters: the CLI auto-starts a background `gateway run --idle-exit` that does the model calls. The
+  first in-process-only probe missed it and wrongly reported zero egress.
+- `tools\egress_report.py` classifies endpoints (loopback / RFC 1918 / .lan = local) and flags networked
+  spawns. `tools\gate-egress.ps1` = G3: stops any Ariadne gateway, runs the smoke task with the hook, waits
+  20 s for background refreshes, stops the gateway, fails on any external host OR a failed task.
+Numbers (smoke task, ariadne-qwen3.5-9b, n=1 per row unless noted):
+
+| Run | External endpoints | Task | Time |
+|---|---|---|---|
+| Stock config (upstream defaults) | 6 (3 hosts) | ok | 43.7 s |
+| Stock config + dead HTTPS_PROXY (127.0.0.1:9) | 0 (all 3 hosts went to the dead proxy) | ok | 30.5 s |
+| Offline config (`profiles\base`), n=2 | 0, 0 | ok, ok | 43.1 s, 43.2 s |
+
+Outbound hosts with stock config (all from one background catalog refresh in the CLI process):
+
+| Host | Code | Needed? | Turned off by |
+|---|---|---|---|
+| hermes-agent.nousresearch.com:443 | `hermes_cli/model_catalog.py:129` (get_catalog <- refresh_catalogs) | No | `model_catalog.enabled: false` |
+| nousresearch.github.io:443 | same fetch, fallback URL | No | same |
+| openrouter.ai:443 (`/api/v1/models`) | `hermes_cli/models.py` fetch_openrouter_models(force_refresh) <- `model_catalog.py:306` | No | same (refresh_catalogs returns early) |
+
+Local endpoints seen: Ollama (127.0.0.1 / ::1 / localhost :11434), CLI<->gateway loopback ports, relay
+runtime loopback port. Spawns: git (29, all local read-only: rev-parse, status, describe, config),
+Git Bash for the terminal tool, `schtasks /Query` x2 (read-only check for a `Hermes_Gateway_*` autostart
+task; none exists), `pip --version`, python. No networked spawn.
+Gates: G1 pass. G2 pass (1/1 on the offline profile). G3 pass with offline config, n=2 (live from now).
+Decisions / surprises:
+- Config alone closes all observed egress. Offline switches now live in `profiles\base\config.yaml`
+  with the reason for each. A3 becomes defense in depth (a guard for hosts config can't name), not the fix.
+- Hermes's HTTP clients honour HTTPS_PROXY: a dead local proxy blocked all 3 hosts and the task still
+  worked. Cheap second layer for A3.
+- models.dev was not fetched in these runs (custom endpoint resolves context via Ollama /api/show).
+  It stays on the watch list: a different provider path could trigger it.
+- Incident: one of my tool calls returned no output but kept running detached; I started a second gate
+  run with the same tag and the two runs killed each other's gateway ("Gateway disconnected", Hermes
+  logged the gateway as exited uncleanly). Fix: a machine-wide mutex (`Global\AriadneGate`) in both gate
+  scripts; overlapping runs now refuse with exit 2. G3 also now fails when the task fails.
+- Hook limitation: raw-IP connects made by asyncio's proactor bypass socket.connect; name lookups are
+  still caught. Acceptable for an audit; the A3 guard should block at a lower level.
+Commit: (see git log, tag a2-done)   Next: A3 offline guard.
