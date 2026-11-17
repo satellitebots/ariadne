@@ -7,6 +7,9 @@
 #        image    - renders images (generate_image tool, stable-diffusion.cpp).
 #        embed    - shared-memory embeddings.
 # roles: the kinds of work the planner may suggest it for. defaults: the model suggested when a step names none.
+# active_b: billions of parameters active per token, for mixture-of-experts models. Prefill and generation cost
+#          scale with active parameters, so on this machine MoE models are the fast choice; the planner is told
+#          to prefer them and keep the dense 27B for steps that need the deepest reasoning.
 # weights: Hugging Face files (repo + file, or repo + dir for split GGUFs), fetched into models/<name>/.
 #          The LFS sha256 is pinned in .ariadne/model-pins.json on first fetch and verified on every fetch after;
 #          a sha256 here is enforced from the start. ollama: an Ollama model whose GGUF blob is served read-only.
@@ -23,7 +26,7 @@ context:
 
 defaults:
   coding: qwen3.8-27b
-  design: gemma-4-12b
+  design: gemma-4-26b-a4b
   writing: gemma-4-26b-a4b
   quick: qwen3.5-9b
   image: z-image-turbo
@@ -42,7 +45,8 @@ models:
 
   qwen3.6-35b-a3b:
     kind: agent
-    roles: [coding]
+    roles: [coding, quick]
+    active_b: 3
     about: Qwen3.6 35B-A3B (MoE, 3B active). Agentic coding; experts sit in RAM, so it is much faster than the 27B here.
     size_gb: 22.4
     weights: {repo: unsloth/Qwen3.6-35B-A3B-GGUF, file: Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf}
@@ -74,7 +78,7 @@ models:
   gemma-4-12b:
     kind: agent
     roles: [design, writing]
-    about: Gemma 4 12B. Design work - diagrams, architecture, UI layouts; 7.4 GB, mostly on the GPU.
+    about: Gemma 4 12B (dense). Design work when the MoE is not installed; 7.4 GB, mostly on the GPU.
     size_gb: 7.4
     weights: {repo: unsloth/gemma-4-12b-it-GGUF, file: gemma-4-12b-it-UD-Q4_K_XL.gguf}
     args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
@@ -82,6 +86,7 @@ models:
   gemma-4-26b-a4b:
     kind: agent
     roles: [writing, design]
+    active_b: 4
     about: Gemma 4 26B-A4B (MoE, 4B active). Writing - clear, well-structured prose; experts in RAM, reasonably fast.
     size_gb: 17.0
     weights: {repo: unsloth/gemma-4-26B-A4B-it-GGUF, file: gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf}

@@ -60,12 +60,12 @@ Tools: `submit_task`, `wait_task`, `approve_task`, `revise_task`, `cancel_task`,
 Each step of a plan gets a model; your sign-off locks them, and nothing runs until every chosen model and tool is
 installed. `python -m ariadne models` lists them.
 
-Sized for an 8 GB GPU with 32 GB of RAM; larger models run partly on the CPU.
+Sized for an 8 GB GPU with 32 GB of RAM; larger models run partly on the CPU. Plans favour the mixture-of-experts models (3-4B active parameters): they prefill and generate several times faster here.
 
 | Use | Default | Also |
 |---|---|---|
 | Coding | Qwen3.8 27B (slow) | Qwen3.6 35B-A3B (MoE, faster), Qwen3.5 9B (quick steps) |
-| Design | Gemma 4 12B | Gemma 4 26B-A4B |
+| Design | Gemma 4 26B-A4B (MoE) | Gemma 4 12B |
 | Writing | Gemma 4 26B-A4B (MoE) | Gemma 4 31B (best prose, slow) |
 | Images | Z-Image-Turbo | SD Turbo |
 | Routing, memory | Qwen3.5 4B, Qwen3 Embedding 0.6B | |

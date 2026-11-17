@@ -36,6 +36,11 @@ class Model:
     ollama: dict = field(default_factory=dict)    # {tag, blob}
     args: str = ""
     sd_args: str = ""
+    active_b: float = 0                          # MoE: billions of parameters active per token (0 = dense)
+
+    @property
+    def moe(self):
+        return self.active_b > 0
 
     @property
     def parts(self):
@@ -68,7 +73,8 @@ class Model:
 
     def line(self):
         state = "installed" if self.installed() else f"not installed, {self.size_gb:g} GB to fetch"
-        return f"- {self.name} [{self.kind}; for {', '.join(self.roles)}; {state}]: {self.about}"
+        arch = f"MoE, {self.active_b:g}B active, fast here; " if self.moe else ""
+        return f"- {self.name} [{self.kind}; {arch}for {', '.join(self.roles)}; {state}]: {self.about}"
 
 
 @dataclass
@@ -90,7 +96,8 @@ class Catalog:
         return [m for m in self.models.values() if m.kind in ("agent", "generate", "image") and "router" not in m.roles]
 
     def text(self):
-        return "\n".join(m.line() for m in self.pickable())
+        """The planner's menu: mixture-of-experts models first (cheaper prefill and generation here)."""
+        return "\n".join(m.line() for m in sorted(self.pickable(), key=lambda m: not m.moe))
 
 
 def load(path=None):
@@ -101,7 +108,8 @@ def load(path=None):
             raise ModelError(f"model {name}: kind must be one of {KINDS}")
         models[name] = Model(name=name, kind=d["kind"], roles=list(d.get("roles") or []), about=d.get("about", ""),
                              size_gb=float(d.get("size_gb") or 0), weights=d.get("weights") or {},
-                             ollama=d.get("ollama") or {}, args=d.get("args", ""), sd_args=d.get("sd_args", ""))
+                             ollama=d.get("ollama") or {}, args=d.get("args", ""), sd_args=d.get("sd_args", ""),
+                             active_b=float(d.get("active_b") or 0))
     defaults = dict(data.get("defaults") or {})
     for role, name in defaults.items():
         if name not in models:

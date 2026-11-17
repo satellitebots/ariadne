@@ -267,7 +267,9 @@ After sign-off the execute phase will have only these tools: {exec_tools}. Plan 
 MODELS you may assign to steps (one per step; {default_model} if a step does not need anything else):
 {models}
 Agent models do a step themselves. A generate model drafts text for a step (the agent asks it through
-generate_text); an image model renders images (generate_image). Pick the best model for each step, not the biggest.
+generate_text); an image model renders images (generate_image). Prefer the MoE models: on this machine they read
+and write several times faster, so steps finish sooner. Use a dense model only for a step that needs the deepest
+reasoning (hard debugging, tricky design decisions), and say why in the step.
 
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 

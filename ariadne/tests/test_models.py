@@ -78,7 +78,7 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
 
 def test_catalog_has_a_model_per_job_that_runs_here():
     cat = modellib.load()
-    assert cat.defaults == {"coding": "qwen3.8-27b", "design": "gemma-4-12b", "writing": "gemma-4-26b-a4b",
+    assert cat.defaults == {"coding": "qwen3.8-27b", "design": "gemma-4-26b-a4b", "writing": "gemma-4-26b-a4b",
                             "quick": "qwen3.5-9b", "image": "z-image-turbo", "router": "router", "embed": "embed"}
     assert "deepseek-v4.1-flash" not in cat.models and "fimbulvetr-11b" not in cat.models
     assert all(m.size_gb <= 23 for m in cat.models.values())        # 8 GB GPU + 32 GB RAM
@@ -87,6 +87,9 @@ def test_catalog_has_a_model_per_job_that_runs_here():
         assert m.ollama or all("repo" in p and ("file" in p or "dir" in p) for p in m.parts.values()), m.name
     with pytest.raises(modellib.ModelError):
         cat.get("nope")
+    menu = cat.text().splitlines()                                 # the planner sees the MoE models first
+    assert menu[0].startswith("- qwen3.6-35b-a3b") and "MoE, 3B active" in menu[0]
+    assert [m.moe for m in cat.pickable()].count(True) == 2
 
 
 def test_swap_entries_serve_text_models_and_can_park_slots():
