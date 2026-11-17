@@ -1,0 +1,14 @@
+name: coding
+description: Change code in a repository, prove it with its tests, and commit locally.
+when: fixing bugs, adding features, refactoring, writing or fixing tests - any change to code in a repository
+model: coder
+skills: [fix-and-verify]
+mcp_servers: [memory, git]
+toolsets:
+  plan: [file, skills]
+  execute: [file, terminal, skills, todo]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, git_status, git_diff, git_log, git_show]
+checks:
+  - {run: "\"{python}\" -m pytest -q", when_exists: "tests"}
+max_turns: {plan: 20, execute: 40}
+run_budget: {plan: 900, execute: 1800}

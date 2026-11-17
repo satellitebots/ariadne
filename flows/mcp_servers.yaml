@@ -1,0 +1,12 @@
+# MCP servers that flows can name in mcp_servers. Hermes mcp_servers format; {python} and {root} are filled in
+# when a flow is compiled. Add your own here (any stdio or HTTP MCP server), then list it in a flow.
+memory:   # the durable shared memory (ariadne/memory_mcp.py)
+  command: "{python}"
+  args: ["-m", "ariadne.memory_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 60
+git:      # local git: status, diff, log, show, add, commit (ariadne/git_mcp.py)
+  command: "{python}"
+  args: ["-m", "ariadne.git_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 120

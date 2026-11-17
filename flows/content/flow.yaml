@@ -1,0 +1,12 @@
+name: content
+description: Make content for a channel - angles, drafts per channel, review - saved as Markdown in the workspace.
+when: social posts, newsletters, blog posts, marketing copy, scripts, repurposing long content into short pieces
+model: coder
+skills: [channel-content]
+mcp_servers: [memory]
+toolsets:
+  plan: [file, skills]
+  execute: [file, skills, todo]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall]
+max_turns: {plan: 15, execute: 30}
+run_budget: {plan: 900, execute: 1800}

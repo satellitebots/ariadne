@@ -1,0 +1,31 @@
+# Ariadne profile: the Hermes gateway home (CLI, Desktop, Slack, VS Code chat). Local models from llama-swap, and
+# the ariadne-tasks MCP server so any of those channels can give Ariadne a task (brief -> backbrief -> sign-off ->
+# execute). Copied into HERMES_HOME by tools\use-profile.ps1 ariadne. Internet is allowed; models are local only.
+model:
+  default: "coder"
+  provider: "custom"
+  base_url: "http://127.0.0.1:8090/v1"
+  context_length: 65536
+model_catalog:
+  enabled: false
+models_dev:
+  url: "http://127.0.0.1:9/models-dev-disabled.json"
+updates:
+  check: false
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+plugins:
+  auto_update_check_hours: 0
+  enabled: []
+fallback_providers:
+  - provider: custom
+    model: ariadne-qwen3.5-4b
+    base_url: http://localhost:11434/v1
+mcp_servers:
+  ariadne_tasks:
+    command: 'C:\repos\ariadne\.venv\Scripts\python.exe'
+    args: ["-m", "ariadne.tasks_mcp"]
+    env: {PYTHONPATH: 'C:\repos\ariadne'}
+    timeout: 300

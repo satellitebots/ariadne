@@ -17,4 +17,14 @@ Get-ChildItem (Join-Path $root 'plugins') -Directory | Where-Object { Test-Path 
   Get-ChildItem $target -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
   Get-ChildItem $target -Directory -Filter 'tests' | Remove-Item -Recurse -Force
 }
+# Profile skills (profiles\<profile>\skills\<name>\SKILL.md) into <HERMES_HOME>\skills\<name>.
+$skills = Join-Path $root "profiles\$Profile\skills"
+if (Test-Path $skills) {
+  Get-ChildItem $skills -Directory | ForEach-Object {
+    $target = Join-Path $home_ "skills\$($_.Name)"
+    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+    New-Item -ItemType Directory (Split-Path $target) -Force | Out-Null
+    Copy-Item $_.FullName $target -Recurse
+  }
+}
 Write-Host "HERMES_HOME=$home_ profile=$Profile"

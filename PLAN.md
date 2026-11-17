@@ -10,8 +10,11 @@ skills and packaging.
 
 ## 1. Hard rules
 
-1. **Local only.** Nothing Ariadne does at runtime may call a host outside the machine or the LAN. No GitHub,
-   no cloud model providers, no OpenRouter. Never create remote repos or push anywhere.
+1. **Local models only.** No cloud model providers, no OpenRouter: every model call goes to llama-swap or
+   Ollama on this machine (or the LAN). Internet itself is allowed for tools (the visible browser) and chat
+   channels such as Slack (user, 2026-11-17 13:09). The code lives on GitHub at
+   https://github.com/satellitebots/ariadne (user, 2026-11-17 13:52): push finished, gated commits to `main`
+   there; never create other remotes or repos.
 2. **Touch only `C:\repos\ariadne`.** Every other folder under `C:\repos` is the user's own project:
    read-only. In particular never write to `C:\repos\atlas`.
 3. **Never edit `upstream\` by hand.** It is a pristine Hermes checkout at the commit in `hermes.lock`.
@@ -20,8 +23,9 @@ skills and packaging.
    Prefer, in order: config > MCP server > skill > plugin/hook > patch.
 4. **Isolated Hermes home.** Always run Hermes with `HERMES_HOME=C:\repos\ariadne\.hermes-home`. Never read
    or write `%USERPROFILE%\.hermes`.
-5. **Commits.** Local git only, in `C:\repos\ariadne`, under the user's own git identity (already configured).
-   No AI co-author lines, no attribution trailers. One commit per finished iteration.
+5. **Commits.** In `C:\repos\ariadne`, under the user's own git identity (already configured), pushed to
+   `origin` (the GitHub repo above). No AI co-author lines, no attribution trailers. One commit per finished
+   iteration.
 6. **Measure before you claim.** Every number goes in `WORKLOG.md` with n, method, model, date.
    Never tune a test until it passes. Never copy a number from memory; re-read the log.
 7. **One issue per iteration.** After each iteration: run the gates, update `WORKLOG.md`, commit, send the
@@ -171,6 +175,20 @@ Order:
 6. F3 writing + content generation flows.
 7. A7 reliability evals over the flows' golden tasks.
 8. A9 graph memory, A10 context engine, A11 routing, A12 offline bundle (as in section 4).
+
+## 4c. Architecture locked, POC built (2026-11-17 13:42, user: "good now iterate through and finish getting me a poc")
+
+The architecture in the Architecture doc is approved: sources (Slack, CLI, Desktop, VS Code chat via the Hermes
+gateway; Claude and other MCP clients via the ariadne-tasks MCP server) -> task orchestrator (brief, backbrief,
+sign-off) -> Hermes worker set up by the chosen flow -> local models + MCP tools, with one durable shared memory
+used by every task. The POC (`ariadne\`, `flows\`, `plugins\ariadne_phase\`, `profiles\ariadne\`) implements it;
+see README "Using the POC". Decisions taken by the user in the review: no egress guard in the design; models
+local only; internet allowed for tools and Slack; every task goes through brief -> backbrief -> sign-off -> execute.
+
+Next, in order: Slack channel live (needs the user's Slack app tokens), browser MCP in the flows (Playwright MCP,
+visible window), VS Code MCP extension for the coding flow, golden task per flow as gate G6, A6 upgrade drill,
+A7 reliability evals, A10 context engine, A11 per-step routing, A12 offline bundle, LAN exposure (user decision).
+
 ## 5. Checkpoints and progress records
 
 Every iteration (and every meaningful stopping point inside a long one) ends with a checkpoint:

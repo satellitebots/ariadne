@@ -1,0 +1,6 @@
+name: ariadne_phase
+version: 0.1.0
+description: Ariadne task phases - the plan phase may only call read-only tools; every tool call is logged
+author: Adnan Alam
+provides_hooks:
+  - pre_tool_call

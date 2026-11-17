@@ -10,20 +10,20 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-17 12:30
+## Status - 2026-11-17 14:30
 
-Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
+Working mode: architecture locked (Architecture doc), POC built and proven end to end; checkpoints continue.
 
 | Piece | State |
 |---|---|
-| Repo layout (`upstream\` + Ariadne folders) | Done (A0) |
-| Upstream pin | `458a0046ad` (hermes-agent main, 2026-11-16) |
-| Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`), G4 `hermes plugins doctor`, G5 `pytest plugins` |
-| Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
-| Offline | Config closes all observed egress (4 hosts: catalog refresh + models.dev); offline_guard plugin + all-process loader block anything else (proved: 4 blocks, 0 external with stock config) |
-| Model serving | llama-swap v273 + llama.cpp b12359 on 127.0.0.1:8090 (`tools\serve.ps1`): coder 9B text 64K q8 KV fits 8 GB at ~50 tok/s; router 4B; embed. Vision on Ollama. Profile `llamaswap` |
-| Fallback | llama-swap primary, Ollama 4B fallback; failover PASS in one session; every llama-swap start unloads Ariadne Ollama models (one model on the GPU) |
-| Next iteration | Architecture lock-down (user, 12:30): Hermes internals diagram, Ariadne-on-top diagram, browser access, workflow -> tools -> skills/MCP |
+| Repo | GitHub `satellitebots/ariadne` (origin, user 13:52); upstream Hermes pinned `458a0046ad`, untouched |
+| Gates | G1 upstream intact, G2 smoke (2/2 llamaswap), G4 plugin doctor (ariadne_phase, offline_guard), G5 pytest 60 passed. G3 egress gate kept for the base profile only: the design no longer blocks the internet (user 13:09) |
+| Models | Local only: llama-swap (coder 9B, router 4B, embed) on 127.0.0.1:8090, Ollama 4B fallback; one model on the GPU |
+| Flows | `flows\coding`, `flows\writing`, `flows\content` (+ `flows\mcp_servers.yaml`); compiled to one Hermes worker home each under `.ariadne\homes` |
+| Orchestrator | `ariadne\orchestrator.py`: brief -> route (router LLM) -> plan (read-only) -> backbrief -> sign-off -> execute -> checks (retry once) -> report; single worker process; off-plan goes back to the person |
+| Entry points | `ariadne-tasks` MCP server (Claude / any MCP client); Hermes gateway via `profiles\ariadne` + `ariadne-tasks` skill (CLI proven; Slack needs tokens); CLI `python -m ariadne.orchestrator` |
+| Shared memory | `ariadne\memory.py` (SQLite graph + FTS5) in `.ariadne\memory.db`; MCP server for workers; orchestrator records every task |
+| Next | Slack live (tokens), browser MCP, VS Code MCP extension, golden task gate G6, A6 upgrade drill, A7 evals (PLAN 4c) |
 
 ## Iteration log
 
@@ -324,3 +324,31 @@ agent.log; Ollama had the 4B loaded); llama-swap restarted; turn 3 21.7 s on lla
 launcher unloaded the 4B first).
 Not done: vision behind llama-swap (not tried); LAN exposure (user's decision; still loopback only).
 Commit: (see git log, tag a5-done)   Next: user redirected 12:30 to architecture first (see next entry).
+
+### 2026-11-17 13:42-14:30 - POC: orchestrator, flows, shared memory, MCP entry points
+
+Architecture approved by the user (13:42), then built as a POC on top of the pinned Hermes, no upstream edits.
+
+- Built: `ariadne\` (orchestrator, flows compiler, shared memory, tasks/memory/git MCP servers, CLI),
+  `flows\` (coding, writing, content with one skill each), `plugins\ariadne_phase` (plan phase may only call
+  read-only tools; every tool call logged), `profiles\ariadne` (gateway home with the ariadne_tasks MCP server and
+  skill), `tools\mcp_call.py` (MCP client standing in for Claude). Hermes `mcp` extra installed (mcp 2.3.0, pinned
+  in upstream uv.lock); pytest reinstalled (uv sync had removed it).
+- Hermes facts learned: MCP toolsets are `mcp-<server>` (the bare name collides with built-ins such as
+  `memory`); MCP tools are `mcp__<server>__<tool>` and may be deferred behind `tool_search`/`tool_call`; worker
+  homes need `_config_version: 12`; the venv has ruamel.yaml, not PyYAML.
+- Live runs (coder 9B + router 4B on llama-swap, n=1 each, 2026-11-17):
+  1. MCP client (stand-in for Claude), coding task "tests fail, fix and commit" in `scratch\poc-calc`:
+     routed coding; plan 2 m 33 s, 9 read-only tool calls, 1 write attempt (Hermes built-in memory) blocked by
+     the phase plugin; backbrief correct; after approval execute 1 m 55 s (patch, pytest, commit 276560e);
+     checks (pytest) passed; status done.
+  2. Hermes CLI through the gateway + ariadne-tasks skill, "add subtract() with a test": the chat submitted via
+     MCP (first tried bare tool names, then `mcp__ariadne_tasks__submit_task`), showed the backbrief; a resumed
+     chat approved it; commit fa6afcf; checks passed; 2 earlier tasks recalled from shared memory.
+  3. MCP client, writing task: routed writing; the plan used the terminal, which the writing flow does not have,
+     so execute stopped OFF-PLAN -> needs_attention (but the model still wrote a README in the wrong folder);
+     revise with feedback -> new backbrief in the right folder -> approved -> done. The note it wrote lists a
+     `divide` function that does not exist: small-model accuracy, for A7.
+  Fix from run 3: the plan prompt now lists the tools the execute phase will have.
+- Tests: G5 60 passed (41 offline_guard + 4 ariadne_phase + 15 orchestrator/flows/memory).
+
