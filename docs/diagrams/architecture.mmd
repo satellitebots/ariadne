@@ -1,0 +1,42 @@
+%%{init: {"theme": "base", "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 55, "padding": 12}, "themeVariables": {"fontFamily": "Arial, Helvetica, sans-serif", "fontSize": "15px", "lineColor": "#64748b", "edgeLabelBackground": "#ffffff", "clusterBkg": "#f8fafc", "clusterBorder": "#cbd5e1"}}}%%
+flowchart TB
+  CLISRC["Terminal (CLI)"]
+  MCPSRC["Claude, other large models (MCP)"]
+
+  GW[["Hermes chat"]]
+
+  subgraph ARI[Ariadne]
+    MCPS["MCP server (ariadne-tasks)"]
+    ORCH["Task orchestrator: brief, backbrief, sign-off"]
+    FLOWS[(Flow definitions)]
+  end
+
+  WORK[["Hermes worker, set up by the chosen flow"]]
+  MEM[("Shared memory: durable, used by every task")]
+  MODELS["Local models, one on the GPU"]
+  TOOLS["MCP servers and tools (Git, terminal, editor, browser)"]
+
+  CLISRC <--> GW
+  MCPSRC <--> MCPS
+  GW <--> ORCH
+  MCPS <--> ORCH
+  ORCH <==>|task, result| WORK
+  ORCH <-->|recall, record| MEM
+  WORK <-->|recall, record| MEM
+  WORK -->|prompt| MODELS
+  MODELS -->|output tokens| WORK
+  WORK -->|tool call| TOOLS
+  TOOLS -->|result| WORK
+
+  classDef src fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+  classDef hermes fill:#f1f5f9,stroke:#334155,stroke-width:2px,color:#0f172a
+  classDef ari fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef mem fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+  classDef tool fill:#ffedd5,stroke:#ea580c,color:#7c2d12
+  classDef model fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
+  class CLISRC,MCPSRC src
+  class GW,WORK hermes
+  class MCPS,ORCH,FLOWS ari
+  class MEM mem
+  class TOOLS tool
+  class MODELS model

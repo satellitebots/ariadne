@@ -275,6 +275,13 @@ class Worker:
     def plan(self, t):
         name, why = self.route(t)
         flow = self.flows[name]
+        missing = flowlib.missing_requirements(flow)
+        if missing:
+            msg = (f"flow '{name}' needs {', '.join(missing)}, which this machine does not have. "
+                   "Install them (python -m ariadne install --system), then revise the task to retry.")
+            self.store.update(t["id"], flow=name, status="needs_attention", result=msg)
+            self.store.event(t["id"], "route", f"{name}: missing {', '.join(missing)}")
+            return
         self.store.update(t["id"], flow=name)
         self.store.event(t["id"], "route", f"{name} ({why})")
         ws = self.workspace(t)
@@ -417,10 +424,12 @@ def ensure_worker():
 def ensure_llm(wait=120):
     if llm.is_up():
         return True
-    serve = paths.ROOT / "tools" / "serve.ps1"
-    print(f"llama-swap is down; starting it with {serve}", flush=True)
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(serve)],
-                   stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+    from . import serve as model_server
+    print("models are down; starting them", flush=True)
+    try:
+        model_server.start()
+    except SystemExit as e:
+        print(f"could not start the models: {e}", flush=True)
     start = time.time()
     while time.time() - start < wait:
         if llm.is_up():
@@ -438,6 +447,8 @@ def stop_gateway(home):
 
 
 def serve(idle_exit=1800):
+    from .deps import require
+    require()
     lock = _try_lock(LOCK)
     if lock is None:
         print("another Ariadne worker is running", flush=True)

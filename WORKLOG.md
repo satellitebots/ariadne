@@ -389,3 +389,17 @@ Architecture approved by the user (13:42), then built as a POC on top of the pin
   brief in `scratch\briefs\image_mcp.md`. Plan took ~8 min (first model call ~4 min: the browser MCP adds ~30 tool
   schemas to the prompt); backbrief approved 15:03; executing when paused. Its output is NOT committed: review first.
 - Known issue: the vscode MCP server fails to connect (VS Code not serving) and Hermes retries every ~70 s.
+
+### 2026-11-17 15:15-15:35 - Cross-platform CLI, dependency gate, coding flow beta, README
+
+- `python -m ariadne` (stdlib-only bootstrap): doctor, install [--system], up/down, serve, connect, token, task, chat,
+  profile, flows. Every command except doctor/install runs the dependency check first and stops with the fix.
+- PowerShell tooling removed (old gate/egress scripts kept in tools/legacy/). bin.lock now has windows-x64,
+  linux-x64 (CUDA 12.8) and darwin-arm64 (Metal) entries; llama-swap.yaml is a template rendered per machine.
+- Shipped scope: coding flow (beta) with memory + git servers; writing/content moved to flows/_experimental/; Slack TODO.
+- Delegation result: the image MCP task produced unusable code (wrong MCP API, ignored the brief); cancelled and
+  rewritten by hand (ariadne/image_mcp.py). Live: SD Turbo 512x512 -> 593,651-byte PNG.
+- Live on the new CLI: `serve` start/stop, `up` (/health ok), coding task "add divide()" plan -> approve -> done in
+  ~2 min, commit e435d8f, 5 tests pass. Unit tests 68 passed. Linux/macOS paths not yet run on real machines.
+- README rewritten: branding (Ariadne in Naxos, De Morgan 1877, public domain), architecture and lifecycle PNGs
+  (docs/diagrams/*.mmd rendered via mermaid.ink), install/run/connect only.

@@ -1,6 +1,6 @@
-# Ariadne profile: the Hermes gateway home (CLI, Desktop, Slack, VS Code chat). Local models from llama-swap, and
+# Ariadne profile: the Hermes home for the terminal (CLI) entry point (Slack: TODO). Local models from llama-swap, and
 # the ariadne-tasks MCP server so any of those channels can give Ariadne a task (brief -> backbrief -> sign-off ->
-# execute). Copied into HERMES_HOME by tools\use-profile.ps1 ariadne. Internet is allowed; models are local only.
+# execute). Written into .hermes-home by `python -m ariadne profile`, which fills in this machine's paths.
 model:
   default: "coder"
   provider: "custom"
@@ -25,7 +25,7 @@ fallback_providers:
     base_url: http://localhost:11434/v1
 mcp_servers:
   ariadne_tasks:
-    command: 'C:\repos\ariadne\.venv\Scripts\python.exe'
+    command: python   # replaced with .venv's Python
     args: ["-m", "ariadne.tasks_mcp"]
-    env: {PYTHONPATH: 'C:\repos\ariadne'}
+    env: {}           # PYTHONPATH set to the repo
     timeout: 300

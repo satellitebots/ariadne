@@ -1,8 +1,9 @@
-name: content
-description: Make content for a channel - angles, drafts per channel, review - saved as Markdown in the workspace.
-when: social posts, newsletters, blog posts, marketing copy, scripts, repurposing long content into short pieces
+name: writing
+description: Research and write a document - brief, outline, draft, edit pass - saved as Markdown in the workspace.
+when: writing or editing documents, reports, articles, emails, notes, documentation prose
 model: coder
-skills: [channel-content]
+skills: [draft-and-edit]
+requires: [node, chrome]   # for the browser server; checked before a task runs
 mcp_servers: [memory, browser, export]
 toolsets:
   plan: [file, skills]

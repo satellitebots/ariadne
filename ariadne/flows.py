@@ -45,6 +45,7 @@ class Flow:
     execute_toolsets: list = field(default_factory=lambda: ["file", "terminal", "skills", "todo"])
     plan_tools: list = field(default_factory=lambda: list(DEFAULT_PLAN_TOOLS))
     checks: list = field(default_factory=list)
+    requires: list = field(default_factory=list)   # system tools the flow's MCP servers need (deps.SYSTEM_TOOLS, chrome)
     real_logins: bool = True          # browser: use the person's real Chrome profile (logins) unless a flow turns it off
     blocklist: list = field(default_factory=list)   # network: hosts this flow may not reach (everything else allowed)
     max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40})
@@ -57,8 +58,12 @@ class Flow:
 
 
 def _mcp_registry(flows_dir):
-    f = Path(flows_dir) / "mcp_servers.yaml"
-    return yaml.safe_load(f.read_text(encoding="utf-8")) if f.exists() else {}
+    """flows/mcp_servers.yaml; a sub-folder of flows (e.g. _experimental) uses its parent's."""
+    for d in (Path(flows_dir), Path(flows_dir).parent):
+        f = d / "mcp_servers.yaml"
+        if f.exists():
+            return yaml.safe_load(f.read_text(encoding="utf-8"))
+    return {}
 
 
 def load_flow(folder):
@@ -77,6 +82,7 @@ def load_flow(folder):
               execute_toolsets=list(ts.get("execute") or ["file", "terminal", "skills", "todo"]),
               plan_tools=list(data.get("plan_tools") or DEFAULT_PLAN_TOOLS),
               checks=list(data.get("checks") or []), folder=folder,
+              requires=[str(x).lower() for x in data.get("requires") or []],
               real_logins=bool((data.get("browser") or {}).get("real_logins", True)),
               blocklist=[str(h).strip().lower() for h in (data.get("network") or {}).get("blocklist") or []])
     fl.max_turns.update(data.get("max_turns") or {})
@@ -90,6 +96,7 @@ def load_flow(folder):
 def load_flows(flows_dir=None):
     flows_dir = Path(flows_dir or paths.FLOWS_DIR)
     out = {}
+    # flows/_experimental/ holds flows that are not shipped yet; they load only when pointed at directly.
     for d in sorted(p for p in flows_dir.iterdir() if (p / "flow.yaml").exists()):
         fl = load_flow(d)
         out[fl.name] = fl
@@ -105,7 +112,8 @@ def load_flows(flows_dir=None):
 
 def _expand(value):
     if isinstance(value, str):
-        return value.replace("{python}", str(paths.PYTHON)).replace("{root}", str(paths.ROOT))
+        return (value.replace("{python}", str(paths.VENV_PY if paths.VENV_PY.exists() else paths.PYTHON))
+                .replace("{root}", str(paths.ROOT)).replace("{npx}", paths.npx()))
     if isinstance(value, list):
         return [_expand(v) for v in value]
     if isinstance(value, dict):
@@ -148,6 +156,22 @@ def compile_flow(fl, flows_dir=None):
     (home / "ariadne_flow.json").write_text(json.dumps(
         {"flow": fl.name, "plan_tools": fl.plan_tools, "blocklist": fl.blocklist}, indent=2), encoding="utf-8")
     return home
+
+
+def missing_requirements(fl):
+    """The flow's `requires` that this machine lacks (empty = ready)."""
+    from . import deps
+    out = []
+    for r in fl.requires:
+        if r == "chrome":
+            ok = bool(deps.chrome_path())
+        elif r in deps.SYSTEM_TOOLS:
+            ok = deps.has_tool(r)
+        else:
+            ok = bool(__import__("shutil").which(r))
+        if not ok:
+            out.append(r)
+    return out
 
 
 def compile_all(flows_dir=None):

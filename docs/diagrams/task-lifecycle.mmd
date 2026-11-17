@@ -1,0 +1,36 @@
+%%{init: {"theme": "base", "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 55, "padding": 12}, "themeVariables": {"fontFamily": "Arial, Helvetica, sans-serif", "fontSize": "15px", "lineColor": "#64748b", "edgeLabelBackground": "#ffffff", "clusterBkg": "#f8fafc", "clusterBorder": "#cbd5e1"}}}%%
+flowchart TB
+  BRIEF([Brief: task comes in])
+  ROUTE[Router LLM picks the flow]
+  PLAN["Plan with read-only tools"]
+  BACK["Backbrief: mission, flow, steps, models, tools, risks"]
+  SIGN{Sign-off?}
+  EXEC["Execute with the flow's model, skills and MCP servers"]
+  CHECK{Checks pass?}
+  DONE([Report and callback])
+  STOP([Cancelled])
+
+  BRIEF ==> ROUTE
+  ROUTE ==> PLAN
+  PLAN ==> BACK
+  BACK ==>|sent to whoever gave the task| SIGN
+  SIGN -.->|revise| PLAN
+  SIGN -->|reject| STOP
+  SIGN ==>|approve| EXEC
+  EXEC ==> CHECK
+  CHECK ==>|yes| DONE
+  CHECK -.->|no, retry| EXEC
+  CHECK -.->|stuck or off-plan| BACK
+
+  classDef src fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+  classDef ari fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef model fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
+  classDef gate fill:#fef9c3,stroke:#ca8a04,color:#713f12
+  classDef stop fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+  classDef done fill:#dcfce7,stroke:#16a34a,color:#14532d
+  class BRIEF src
+  class ROUTE,PLAN,BACK ari
+  class SIGN,CHECK gate
+  class EXEC model
+  class DONE done
+  class STOP stop

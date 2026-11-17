@@ -1,7 +1,7 @@
 """MCP server: export documents with Pandoc (stdio), for the writing and content flows.
 Run: python -m ariadne.export_mcp
 
-Pandoc is the pinned release in serving\\bin.lock (tools\\fetch-serving-bins.ps1 -Only pandoc). PDF needs a PDF
+Pandoc is the pinned release in serving/bin.lock (python -m ariadne install). PDF needs a PDF
 engine (LaTeX, Typst, wkhtmltopdf), which is not installed: export to docx and print to PDF from Word for now."""
 import subprocess
 from pathlib import Path
@@ -15,10 +15,11 @@ FORMATS = {"docx": "docx", "html": "html", "odt": "odt", "epub": "epub", "rtf": 
 
 
 def pandoc_exe():
-    found = sorted((paths.ROOT / "serving" / "bin").glob("pandoc-*/pandoc-*/pandoc.exe"))
-    if not found:
-        raise FileNotFoundError("Pandoc is not installed: run tools\\fetch-serving-bins.ps1 -Only pandoc")
-    return found[-1]
+    from .deps import find_bin
+    exe = find_bin("pandoc", "pandoc")
+    if not exe:
+        raise FileNotFoundError("Pandoc is not installed: run  python -m ariadne install")
+    return exe
 
 
 @server.tool()

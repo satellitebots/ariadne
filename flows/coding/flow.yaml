@@ -3,7 +3,8 @@ description: Change code in a repository, prove it with its tests, and commit lo
 when: fixing bugs, adding features, refactoring, writing or fixing tests - any change to code in a repository
 model: coder
 skills: [fix-and-verify]
-mcp_servers: [memory, git, vscode, browser]
+requires: []               # system tools the servers below need, e.g. [node, chrome] for browser
+mcp_servers: [memory, git] # optional: vscode (VS Code MCP extension running), browser (needs node + chrome)
 toolsets:
   plan: [file, skills]
   execute: [file, terminal, skills, todo]

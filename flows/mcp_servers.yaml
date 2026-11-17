@@ -13,7 +13,7 @@ git:      # local git: status, diff, log, show, add, commit (ariadne/git_mcp.py)
 browser:  # Chrome, visible, through Chrome DevTools MCP (pinned). real_logins: attaches to your running Chrome
           # (one-time: chrome://inspect/#remote-debugging -> allow; Chrome asks before each connection).
           # isolated: a fresh temporary profile with no logins.
-  command: "npx.cmd"
+  command: "{npx}"
   args: ["-y", "chrome-devtools-mcp@1.13.0", "--no-usage-statistics", "--no-performance-crux"]
   args_when:
     real_logins: ["--autoConnect"]
@@ -31,3 +31,8 @@ export:   # Pandoc document export (ariadne/export_mcp.py; Pandoc pinned in serv
   args: ["-m", "ariadne.export_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 300
+image:    # SD Turbo images via stable-diffusion.cpp (ariadne/image_mcp.py; frees the GPU first)
+  command: "{python}"
+  args: ["-m", "ariadne.image_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 600

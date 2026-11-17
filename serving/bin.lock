@@ -1,12 +1,20 @@
-# Pinned serving binaries. Official GitHub releases only; sha256 = GitHub's published asset digest.
-# Fetched and verified by tools\fetch-serving-bins.ps1 into serving\bin\ (gitignored). Never run an unverified file.
-# llama.cpp v1.0.0 == build b12359 (from the v1.0.0 release's nightly-tag.txt). CUDA 12.4 build: driver 591.59
-# reports CUDA 13.1, which does not cover the 13.5 build.
-llama.cpp|b12359|https://github.com/ggml-org/llama.cpp/releases/download/b12359/llama-b12359-bin-win-cuda-12.4-x64.zip|e9c0abf442e8339c06728366c1ad2c711332f9939c0c00603fb75d85fd44c914
-cudart|b12359|https://github.com/ggml-org/llama.cpp/releases/download/b12359/cudart-llama-bin-win-cuda-12.4-x64.zip|8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6
-llama-swap|v273|https://github.com/mostlygeek/llama-swap/releases/download/v273/llama-swap_273_windows_amd64.zip|1374a333ecdc52499bc7ad2ccde2b17b9a8ee0ffeda54e82e98e0ac5088866dd
-# Pandoc: document export for the writing and content flows (ariadne\export_mcp.py).
-pandoc|3.14|https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-windows-x86_64.zip|0144b96e8c7b023fd382ec5ef5bdc475e873f1019d6fa72502492df2c9a94a3b
-# stable-diffusion.cpp: SD Turbo image generation (images flow tools). CUDA 12 build + its CUDA runtime.
-sd.cpp|master-1106-532d2c1|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/sd-master-532d2c1-bin-win-cuda12-x64.zip|b087219145a382cc1b1e826318289e1f672b9bb6965977734ef0deb85fe2d03a
-cudart-sd|master-1106-532d2c1|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/cudart-sd-bin-win-cu12-x64.zip|fe20366827d357c00797eebb58244dddab7fd9a348d70090c3871004c320f38d
+# Pinned binaries: name|version|platform|url|sha256. Official GitHub releases only; sha256 = GitHub's asset digest.
+# `python -m ariadne install` fetches the entries for this machine's platform into serving/bin/<name>-<version>/
+# (gitignored), verifies sha256, then extracts. Never run an unverified file. Platforms: windows-x64, linux-x64,
+# darwin-arm64. GPU builds: CUDA on Windows/Linux (NVIDIA), Metal on macOS (built into the macOS binaries).
+# A "-rt" entry is a runtime that is extracted next to its engine (CUDA DLLs/libs).
+llama.cpp|b12359|windows-x64|https://github.com/ggml-org/llama.cpp/releases/download/b12359/llama-b12359-bin-win-cuda-12.4-x64.zip|e9c0abf442e8339c06728366c1ad2c711332f9939c0c00603fb75d85fd44c914
+llama.cpp-rt|b12359|windows-x64|https://github.com/ggml-org/llama.cpp/releases/download/b12359/cudart-llama-bin-win-cuda-12.4-x64.zip|8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6
+llama.cpp|b12359|linux-x64|https://github.com/ggml-org/llama.cpp/releases/download/b12359/llama-b12359-bin-ubuntu-cuda-12.8-x64.tar.gz|50c937bec5bbd9f74c99138034f7403283ee21f1943f2429d7b1e4c079eafc11
+llama.cpp-rt|b12359|linux-x64|https://github.com/ggml-org/llama.cpp/releases/download/b12359/cudart-llama-b12359-bin-ubuntu-cuda-12.8-x64.tar.gz|75a12d227f44a391608992329241765343bd143ee9445b90dc62e154ee726e5d
+llama.cpp|b12359|darwin-arm64|https://github.com/ggml-org/llama.cpp/releases/download/b12359/llama-b12359-bin-macos-arm64.tar.gz|82b00abc740160e1b9980e6cc79c117345fa34af058c80e6c0a69aa8ddccde75
+llama-swap|v273|windows-x64|https://github.com/mostlygeek/llama-swap/releases/download/v273/llama-swap_273_windows_amd64.zip|1374a333ecdc52499bc7ad2ccde2b17b9a8ee0ffeda54e82e98e0ac5088866dd
+llama-swap|v273|linux-x64|https://github.com/mostlygeek/llama-swap/releases/download/v273/llama-swap_273_linux_amd64.tar.gz|68ffcd890a89288d544be15436feadf41eed3ed7910193c112fffdf5f96dd22e
+llama-swap|v273|darwin-arm64|https://github.com/mostlygeek/llama-swap/releases/download/v273/llama-swap_273_darwin_arm64.tar.gz|06fc388f41772c3c54e54c7523b63dfaaccbdd726fa0e02731bb4deb995bd1cf
+pandoc|3.14|windows-x64|https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-windows-x86_64.zip|0144b96e8c7b023fd382ec5ef5bdc475e873f1019d6fa72502492df2c9a94a3b
+pandoc|3.14|linux-x64|https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-linux-amd64.tar.gz|c5f4720cdefb3f7bdc5d07202ef579feef0d1370773c873804dd8fdaa8c4f1b8
+pandoc|3.14|darwin-arm64|https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-arm64-macOS.zip|58d6593884fec9d4424b641b92503c316d9c36decb2891ff8d73ae74dd3b6304
+sd.cpp|master-1106-532d2c1|windows-x64|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/sd-master-532d2c1-bin-win-cuda12-x64.zip|b087219145a382cc1b1e826318289e1f672b9bb6965977734ef0deb85fe2d03a
+sd.cpp-rt|master-1106-532d2c1|windows-x64|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/cudart-sd-bin-win-cu12-x64.zip|fe20366827d357c00797eebb58244dddab7fd9a348d70090c3871004c320f38d
+sd.cpp|master-1106-532d2c1|linux-x64|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/sd-master-532d2c1-bin-Linux-Ubuntu-26.04-x86_64-vulkan.zip|ca30fe17f1735cdfb4c8561b75799070c25cc86a9e5438f4c0e1b163baae4e12
+sd.cpp|master-1106-532d2c1|darwin-arm64|https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1106-532d2c1/sd-master-532d2c1-bin-Darwin-macOS-26.7.2-arm64.zip|8146d6ffc75f8ff8f64b62a80fffee8fb714ab65e368e202084135fa07cc6f36

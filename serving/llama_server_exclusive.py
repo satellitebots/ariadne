@@ -4,8 +4,8 @@ llama-swap runs this instead of llama-server directly:
     python serving\\llama_server_exclusive.py <path\\to\\llama-server.exe> <llama-server args...>
 1. Unloads Ariadne's own Ollama models (names starting with ARIADNE_OLLAMA_PREFIX, default "ariadne-") via
    Ollama's keep_alive=0 and waits until they are gone. Never touches other models (Atlas shares Ollama).
-2. Starts llama-server inside a Windows job object with KILL_ON_JOB_CLOSE, so when llama-swap stops this
-   wrapper on a swap, llama-server dies with it (no orphan holding VRAM). Exit code is passed through.
+2. Windows: starts llama-server inside a job object with KILL_ON_JOB_CLOSE, so when llama-swap stops this
+   wrapper on a swap, llama-server dies with it (no orphan holding VRAM). POSIX: exec()s llama-server in place.
 Why: A5 measured an Ollama 9B left loaded (5 min keep-alive) next to llama-swap's 9B: 1.8 GB spilled to
 shared memory and one model call took 99.8 s instead of ~12 s.
 """
@@ -82,6 +82,8 @@ def _kill_on_close_job():
 def main():
     exe, args = sys.argv[1], sys.argv[2:]
     unload_ariadne_ollama_models()
+    if os.name != "nt":  # POSIX: become llama-server, so llama-swap's stop signal reaches it directly
+        os.execv(exe, [exe, *args])
     k32, job = _kill_on_close_job()
     proc = subprocess.Popen([exe, *args])
     k32.OpenProcess.restype = wintypes.HANDLE

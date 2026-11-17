@@ -49,10 +49,11 @@ def test_memory_ignores_empty_queries(env):
 
 def test_repo_flows_load_and_compile(env):
     fl = flowlib.load_flows(REPO_FLOWS)
-    assert {"coding", "writing", "content"} <= set(fl)
+    assert set(fl) == {"coding"}                        # shipped: coding (beta)
     home = flowlib.compile_flow(fl["coding"], REPO_FLOWS)
     cfg = (home / "config.yaml").read_text()
     assert "ariadne.memory_mcp" in cfg and "ariadne.git_mcp" in cfg and "ariadne_phase" in cfg
+    assert set(flowlib.load_flows(REPO_FLOWS / "_experimental")) == {"writing", "content"}
     assert (home / "skills" / "fix-and-verify" / "SKILL.md").exists()
     assert (home / "plugins" / "ariadne_phase" / "phase.py").exists()
     assert "git_status" in json.loads((home / "ariadne_flow.json").read_text())["plan_tools"]
@@ -83,6 +84,7 @@ class FakeRunner:
 
 def make_worker(env, runner, route_answer="coding"):
     flows = flowlib.load_flows(REPO_FLOWS)
+    flows.update(flowlib.load_flows(REPO_FLOWS / "_experimental"))   # two+ flows so routing is exercised
     return orch.Worker(store=orch.Store(env / "t.db"), memory=Memory(env / "m.db"), flows=flows,
                        runner=runner, llm_chat=lambda model, msgs: route_answer)
 

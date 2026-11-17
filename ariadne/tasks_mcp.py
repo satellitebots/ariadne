@@ -107,6 +107,8 @@ def list_tasks(limit: int = 10) -> str:
 
 
 def main():
+    from .deps import require
+    require()
     server.run("stdio")
 
 
