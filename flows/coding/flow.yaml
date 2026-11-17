@@ -3,12 +3,18 @@ description: Change code in a repository, prove it with its tests, and commit lo
 when: fixing bugs, adding features, refactoring, writing or fixing tests - any change to code in a repository
 model: coder
 skills: [fix-and-verify]
-mcp_servers: [memory, git]
+mcp_servers: [memory, git, vscode, browser]
 toolsets:
   plan: [file, skills]
   execute: [file, terminal, skills, todo]
-plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, git_status, git_diff, git_log, git_show]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, git_status, git_diff, git_log, git_show,
+             list_files_code, read_file_code, get_diagnostics_code, search_symbols_code, get_document_symbols_code,
+             get_symbol_definition_code, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 checks:
   - {run: "\"{python}\" -m pytest -q", when_exists: "tests"}
 max_turns: {plan: 20, execute: 40}
 run_budget: {plan: 900, execute: 1800}
+browser:
+  real_logins: true        # use your Chrome logins; set false for a clean temporary profile
+network:
+  blocklist: []            # hosts this flow must not reach, e.g. [example.com]; everything else is allowed

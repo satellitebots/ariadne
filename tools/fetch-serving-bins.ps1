@@ -1,5 +1,8 @@
 # Download the binaries pinned in serving\bin.lock, verify sha256, then extract into serving\bin\<name>-<version>\.
 # A file whose hash does not match is deleted and the script stops; nothing unverified is extracted or run.
+# Usage: tools\fetch-serving-bins.ps1 [-Only <name>]   (-Only re-fetches one entry, e.g. pandoc, without touching
+#   binaries that may be running)
+param([string]$Only = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $bin = Join-Path $root 'serving\bin'; $dl = Join-Path $bin '_downloads'
@@ -7,6 +10,7 @@ New-Item -ItemType Directory $dl -Force | Out-Null
 $ProgressPreference = 'SilentlyContinue'
 Get-Content (Join-Path $root 'serving\bin.lock') | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
   $name, $ver, $url, $sha = $_.Split('|')
+  if ($Only -and $name -ne $Only) { return }
   $zip = Join-Path $dl (Split-Path $url -Leaf)
   if (-not (Test-Path $zip)) { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing }
   $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()

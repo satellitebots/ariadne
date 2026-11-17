@@ -3,10 +3,14 @@ description: Make content for a channel - angles, drafts per channel, review - s
 when: social posts, newsletters, blog posts, marketing copy, scripts, repurposing long content into short pieces
 model: coder
 skills: [channel-content]
-mcp_servers: [memory]
+mcp_servers: [memory, browser, export]
 toolsets:
   plan: [file, skills]
   execute: [file, skills, todo]
-plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 max_turns: {plan: 15, execute: 30}
 run_budget: {plan: 900, execute: 1800}
+browser:
+  real_logins: true        # use your Chrome logins; set false for a clean temporary profile
+network:
+  blocklist: []            # hosts this flow must not reach, e.g. [example.com]; everything else is allowed

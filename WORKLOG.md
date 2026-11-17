@@ -23,7 +23,8 @@ Working mode: architecture locked (Architecture doc), POC built and proven end t
 | Orchestrator | `ariadne\orchestrator.py`: brief -> route (router LLM) -> plan (read-only) -> backbrief -> sign-off -> execute -> checks (retry once) -> report; single worker process; off-plan goes back to the person |
 | Entry points | `ariadne-tasks` MCP server (Claude / any MCP client); Hermes gateway via `profiles\ariadne` + `ariadne-tasks` skill (CLI proven; Slack needs tokens); CLI `python -m ariadne.orchestrator` |
 | Shared memory | `ariadne\memory.py` (SQLite graph + FTS5) in `.ariadne\memory.db`; MCP server for workers; orchestrator records every task |
-| Next | Slack live (tokens), browser MCP, VS Code MCP extension, golden task gate G6, A6 upgrade drill, A7 evals (PLAN 4c) |
+| Tools in flows | Chrome DevTools MCP (real logins by default, `browser.real_logins: false` per flow), VS Code MCP extension (JuehangQin.vscode-mcp-server 0.4.0, installed), Pandoc 3.14 export server; per-flow `network.blocklist` |
+| Next | SD Turbo (needs the user's OK: > 2 GB download), Slack live (tokens), golden task gate G6, A6 upgrade drill, A7 evals (PLAN 4c) |
 
 ## Iteration log
 
@@ -351,4 +352,24 @@ Architecture approved by the user (13:42), then built as a POC on top of the pin
      `divide` function that does not exist: small-model accuracy, for A7.
   Fix from run 3: the plan prompt now lists the tools the execute phase will have.
 - Tests: G5 60 passed (41 offline_guard + 4 ariadne_phase + 15 orchestrator/flows/memory).
+
+### 2026-11-17 14:23-14:45 - User decisions applied: Chrome, logins, VS Code extension, Pandoc, blocklist
+
+- Decisions (user 14:23, recorded in the Architecture doc): Chrome; real logins by default with a flow.yaml
+  switch; VS Code MCP server extension; Pandoc export; SD Turbo images; network open with a per-flow blocklist.
+- `flows\mcp_servers.yaml`: `browser` = chrome-devtools-mcp 1.13.0 via npx (`--autoConnect` when the flow uses real
+  logins, `--isolated` otherwise; usage statistics, CrUX and update checks off); `vscode` = the extension's
+  streamable HTTP endpoint 127.0.0.1:3000/mcp; `export` = `ariadne\export_mcp.py` (Pandoc).
+- `flow.yaml` gains `browser.real_logins` and `network.blocklist`; the compiler picks the browser args per flow and
+  writes the blocklist into the worker home; `ariadne_phase` blocks any tool call that names a blocked host
+  (URL, command or bare domain; subdomains included), in every phase. Coding flow: memory, git, vscode, browser;
+  writing and content: memory, browser, export. Read-only browser and editor tools added to the plan allowlists.
+- Pandoc 3.14 added to `serving\bin.lock` (GitHub release, sha256 0144b96e...); `fetch-serving-bins.ps1 -Only`
+  fetches one entry without re-extracting running binaries. Export smoke test: poc-calc.md -> docx, 11,115 bytes.
+- VS Code extension JuehangQin.vscode-mcp-server 0.4.0 installed with `code --install-extension`.
+- Not yet run live: the browser server (my smoke test of chrome-devtools-mcp was refused by this session's
+  permission check; needs the user to run it or allow it) and the VS Code server (needs VS Code open with the
+  server switched on). SD Turbo waits for the user's OK on the download (sd_turbo.safetensors 4.86 GB, or fp16
+  parts ~2.4 GB, plus stable-diffusion.cpp CUDA build ~0.9 GB).
+- Tests: G5 62 passed (2 new blocklist tests).
 

@@ -185,8 +185,13 @@ used by every task. The POC (`ariadne\`, `flows\`, `plugins\ariadne_phase\`, `pr
 see README "Using the POC". Decisions taken by the user in the review: no egress guard in the design; models
 local only; internet allowed for tools and Slack; every task goes through brief -> backbrief -> sign-off -> execute.
 
-Next, in order: Slack channel live (needs the user's Slack app tokens), browser MCP in the flows (Playwright MCP,
-visible window), VS Code MCP extension for the coding flow, golden task per flow as gate G6, A6 upgrade drill,
+User decisions 2026-11-17 14:23: browser = Chrome; real logins on by default, `browser.real_logins: false` in a
+flow.yaml turns them off; VS Code = the VS Code MCP server extension; export = Pandoc; images = SD Turbo;
+network = everything allowed, per-flow `network.blocklist` in flow.yaml. Done the same day: Chrome DevTools MCP,
+VS Code extension, Pandoc export, blocklist (see WORKLOG). Waiting on the user: SD Turbo download (> 2 GB, rule 8).
+
+Next, in order: Slack channel live (needs the user's Slack app tokens), SD Turbo image server, golden task per flow
+as gate G6, A6 upgrade drill,
 A7 reliability evals, A10 context engine, A11 per-step routing, A12 offline bundle, LAN exposure (user decision).
 
 ## 5. Checkpoints and progress records

@@ -10,3 +10,24 @@ git:      # local git: status, diff, log, show, add, commit (ariadne/git_mcp.py)
   args: ["-m", "ariadne.git_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 120
+browser:  # Chrome, visible, through Chrome DevTools MCP (pinned). real_logins: attaches to your running Chrome
+          # (one-time: chrome://inspect/#remote-debugging -> allow; Chrome asks before each connection).
+          # isolated: a fresh temporary profile with no logins.
+  command: "npx.cmd"
+  args: ["-y", "chrome-devtools-mcp@1.13.0", "--no-usage-statistics", "--no-performance-crux"]
+  args_when:
+    real_logins: ["--autoConnect"]
+    isolated: ["--isolated"]
+  env: {CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS: "1"}
+  timeout: 180
+  connect_timeout: 120
+vscode:   # VS Code MCP server extension (JuehangQin.vscode-mcp-server) in your running VS Code: the editor's files,
+          # edits, diagnostics and symbols for the open workspace. Turn it on from its VS Code status bar item.
+  url: "http://127.0.0.1:3000/mcp"
+  timeout: 120
+  connect_timeout: 10
+export:   # Pandoc document export (ariadne/export_mcp.py; Pandoc pinned in serving/bin.lock)
+  command: "{python}"
+  args: ["-m", "ariadne.export_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 300

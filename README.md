@@ -75,6 +75,25 @@ Slack: create a Slack app with Socket Mode (bot token `xoxb-`, app token `xapp-`
 (`uv sync --project upstream --frozen --no-dev --extra mcp --extra slack`) and run `hermes gateway run`. Upstream guide:
 `upstream\website\docs\user-guide\messaging\slack.md`.
 
+## Flow settings you control (flow.yaml)
+
+```yaml
+mcp_servers: [memory, git, vscode, browser]   # from flows\mcp_servers.yaml: memory, git, vscode, browser, export
+browser:
+  real_logins: true        # Chrome with your logins; false = clean temporary profile
+network:
+  blocklist: []            # hosts this flow must not reach (subdomains included); everything else is allowed
+```
+
+One-time setup for the tools:
+- **Chrome (browser server, Chrome DevTools MCP 1.13.0 via npx):** with `real_logins: true` it attaches to your
+  running Chrome. Open `chrome://inspect/#remote-debugging` once and allow remote debugging; Chrome asks you to
+  allow each new connection.
+- **VS Code (vscode server):** the `JuehangQin.vscode-mcp-server` extension is installed; open the workspace in VS
+  Code and switch the server on from its status bar item (it listens on 127.0.0.1:3000 only).
+- **Export (export server):** Pandoc 3.14, pinned in `serving\bin.lock`:
+  `tools\fetch-serving-bins.ps1 -Only pandoc`. Formats: docx, html, odt, epub, rtf, md, txt (PDF: from docx).
+
 ## Tests
 
 `.venv\Scripts\python.exe -m pytest -q ariadne plugins`
