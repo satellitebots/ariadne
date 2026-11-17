@@ -373,3 +373,19 @@ Architecture approved by the user (13:42), then built as a POC on top of the pin
   parts ~2.4 GB, plus stable-diffusion.cpp CUDA build ~0.9 GB).
 - Tests: G5 62 passed (2 new blocklist tests).
 
+
+### 2026-11-17 14:51-15:10 - Hosting, install, SD Turbo, first delegation (paused at the user's request)
+
+- Hosting: `ariadne\host.py` serves the ariadne-tasks MCP server over streamable HTTP on 127.0.0.1:8791 (`-Lan`:
+  all interfaces) behind a bearer token (`.ariadne\token`); verified: /health 200, /mcp without token 401, with
+  token list_tools + list_tasks OK. `tools\host.ps1` starts models + endpoint, `-Install` adds a logon task.
+  Port 8765 was taken by another local app, hence 8791.
+- Install: `tools\install.ps1 -Check` reports every dependency; on this machine all present (SD Turbo then
+  missing, now fetched). Native, not containerised (GPU + desktop browser/editor tools).
+- SD Turbo: stable-diffusion.cpp master-1106-532d2c1 (CUDA 12) and sd_turbo.safetensors (5.21 GB, sha256 verified,
+  HF commit b261bac6) installed.
+- Entry points narrowed by the user: Slack, terminal, MCP.
+- First delegation to Ariadne: task t1117-145455-0d79 (coding flow) writes `ariadne\image_mcp.py` + tests from a
+  brief in `scratch\briefs\image_mcp.md`. Plan took ~8 min (first model call ~4 min: the browser MCP adds ~30 tool
+  schemas to the prompt); backbrief approved 15:03; executing when paused. Its output is NOT committed: review first.
+- Known issue: the vscode MCP server fails to connect (VS Code not serving) and Hermes retries every ~70 s.
