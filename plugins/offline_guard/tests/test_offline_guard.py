@@ -103,3 +103,10 @@ def test_blocks_are_logged(installed):
 def test_policy(tool, args, blocked):
     out = policy.pre_tool_call(tool_name=tool, args=args, task_id="t")
     assert (out is not None and out["action"] == "block") is blocked
+
+def test_second_install_does_not_rewrap():
+    """The .pth loader and the Hermes plugin both call install(); only the first may wrap sockets."""
+    before_gai, before_connect = socket.getaddrinfo, socket.socket.connect
+    guard.install(mode="enforce")
+    assert socket.getaddrinfo is before_gai and socket.socket.connect is before_connect
+    assert getattr(socket, "_ariadne_offline_guard", False) is True

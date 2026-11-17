@@ -19,6 +19,8 @@ function Stop-AriadneGateway {
 & (Join-Path $PSScriptRoot 'use-profile.ps1') $Profile | Out-Null
 Stop-AriadneGateway
 $env:HERMES_HOME = Join-Path $root '.hermes-home'
+& (Join-Path $PSScriptRoot 'install-guard-pth.ps1') | Out-Null
+$env:ARIADNE_GUARD_ALL_PROCS = '1'  # guard every Ariadne Python process, the CLI included
 if ($DeadProxy) { $env:HTTPS_PROXY = 'http://127.0.0.1:9'; $env:HTTP_PROXY = 'http://127.0.0.1:9'; $env:NO_PROXY = 'localhost,127.0.0.1,::1' }
 $py = Join-Path $root '.venv\Scripts\python.exe'
 $hermes = Join-Path $root '.venv\Scripts\hermes.exe'

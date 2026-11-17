@@ -82,6 +82,11 @@ def install(log_path=None, mode=None, allow=None):
     _state["allow"] = {a.strip().lower() for a in extra if a and a.strip()}
     if _state["mode"] == "off" or _installed:
         return _state["mode"]
+    # One guard per process: the .pth loader (tools\install-guard-pth.ps1) and the Hermes plugin load this file
+    # as two different modules; the marker on the socket module stops the second from wrapping again.
+    if getattr(socket, "_ariadne_offline_guard", False):
+        _installed = True
+        return _state["mode"]
 
     orig_gai = socket.getaddrinfo
     def getaddrinfo(host, port, *a, **k):
@@ -112,6 +117,7 @@ def install(log_path=None, mode=None, allow=None):
                 return await o(self, sock, address)
             return sock_connect
         cls.sock_connect = make(orig)
+    socket._ariadne_offline_guard = True
     _installed = True
     return _state["mode"]
 

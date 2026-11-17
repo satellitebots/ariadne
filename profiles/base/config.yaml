@@ -4,12 +4,17 @@ model:
   provider: "custom"
   base_url: "http://localhost:11434/v1"
 
-# --- Offline switches (A2 egress audit, see WORKLOG) ---
+# --- Offline switches (A2 egress audit + A3, see WORKLOG) ---
 # Background model-catalog refresh: fetched hermes-agent.nousresearch.com (+ nousresearch.github.io
 # fallback) and openrouter.ai/api/v1/models during a purely local task. refresh_catalogs() returns
 # early when this is false (upstream hermes_cli/model_catalog.py).
 model_catalog:
   enabled: false
+# models.dev registry (upstream agent/models_dev.py): refetched when the 4 h disk cache is stale; no
+# on/off switch, only this URL override. A closed loopback port makes the refresh fail locally and
+# Hermes serves the stale cache. A12 will ship a local snapshot instead.
+models_dev:
+  url: "http://127.0.0.1:9/models-dev-disabled.json"
 # Passive startup/banner update check (upstream hermes_cli/source_check.py honours updates.check=false).
 updates:
   check: false

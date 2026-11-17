@@ -9,6 +9,8 @@ if (-not $gateMutex.WaitOne(0)) { Write-Host 'another Ariadne gate is running; r
 $root = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot 'use-profile.ps1') base | Out-Null
 $env:HERMES_HOME = Join-Path $root '.hermes-home'
+& (Join-Path $PSScriptRoot 'install-guard-pth.ps1') | Out-Null
+$env:ARIADNE_GUARD_ALL_PROCS = '1'  # guard every Ariadne Python process, the CLI included
 $hermes = Join-Path $root '.venv\Scripts\hermes.exe'
 $scratch = Join-Path $root 'scratch'; New-Item -ItemType Directory $scratch -Force | Out-Null
 $logs = Join-Path $root 'logs'; New-Item -ItemType Directory $logs -Force | Out-Null

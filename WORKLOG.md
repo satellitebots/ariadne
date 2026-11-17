@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-16 23:10
+## Status - 2026-11-17 10:10
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -20,8 +20,8 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 | Upstream pin | `458a0046ad` (hermes-agent main, 2026-11-16) |
 | Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`), G4 `hermes plugins doctor`, G5 `pytest plugins` |
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
-| Offline | Config closes all observed egress (3 hosts, one catalog refresh); see A2 table |
-| Next iteration | A3 in progress: plugin + G4/G5 done; G2/G3 runs wait for the GPU (Atlas eval) |
+| Offline | Config closes all observed egress (4 hosts: catalog refresh + models.dev); offline_guard plugin + all-process loader block anything else (proved: 4 blocks, 0 external with stock config) |
+| Next iteration | A4 - model serving on this machine |
 
 ## Iteration log
 
@@ -168,3 +168,58 @@ Gates: G1 pass. G4 pass (live). G5 pass (live). G2, G3, G3 guard-proof: pending 
 Remaining for A3: G2; G3 on base; G3 on guard-proof with -ExpectGuardBlocks (expected: 0 external,
 >= 1 guard block from the catalog refresh, task ok); dead-proxy decision; WORKLOG; tag a3-done.
 Commit: interim (see git log)   Next: finish A3 when the GPU is free.
+
+### 2026-11-17 09:50-10:10 - A3 Offline guard (part 2 of 2) - done
+Goal: prove the guard on real Hermes traffic; finish A3.
+GPU check 09:50: Atlas newest job `p3s8` done 09:34, no unfinished Atlas log in the last 30 min, Atlas
+python idle (CPU 0). GPU at ~25% / 2.5 GB = display + idle qwen3-embedding:0.6b, not a job. Proceeded.
+Did / found:
+- **New egress the A2 audit missed: models.dev.** First G3 on base this morning: 0 external but 1 guard
+  block, `dns models.dev:443` from the gateway (`agent/models_dev.py:364`, requests). Cause:
+  `.hermes-home\models_dev_cache.json` (6.7 MB) was written 2026-11-16 21:32 during A1 (stock config,
+  before any egress logging); its TTL is 4 h (`_MODELS_DEV_CACHE_TTL`), so it was fresh during A2
+  (22:09-22:35) and no fetch happened. A2's "config closes all observed egress" held only for what A2
+  observed. models.dev has no on/off switch, only `models_dev.url`.
+  Fix (config first): `models_dev.url: http://127.0.0.1:9/models-dev-disabled.json` in `profiles\base`.
+  The stale refresh now fails locally (egress log: 127.0.0.1:9 from models_dev.py:364) and Hermes serves
+  the stale cache; cache file untouched. A12: ship a local models.dev snapshot.
+- **Guard coverage gap: the CLI does not load plugins.** In the first guard-proof run all 4 blocks came
+  from the gateway (which also made the 23 Ollama calls) and logged "offline guard active"; the CLI pid
+  never did. No leak (egress hook: 0 external in both pids), but a future CLI-side fetch would be unguarded.
+  Fix inside Ariadne's venv only: `tools\guard_loader.py` + `tools\install-guard-pth.ps1` write
+  `.venv\Lib\site-packages\ariadne_offline_guard.pth`, which starts the guard in every venv Python process
+  when `ARIADNE_GUARD_ALL_PROCS=1` (set by both gate scripts). A process-wide marker
+  (`socket._ariadne_offline_guard`) stops the plugin and the loader wrapping twice; new G5 test for it.
+  First .pth version was broken (`\r` in `C:\repos` became a carriage return inside an exec string and
+  every venv process printed a .pth error); replaced with the egress-hook pattern within minutes.
+- Loader check: without the env var, inert (marker False); with it, `getaddrinfo('example.com')` in a bare
+  venv python -> PermissionError + JSONL record; localhost allowed.
+Numbers (ariadne-qwen3.5-9b, RTX 3070 Laptop 8 GB):
+
+| Run | External | Guard blocks | Task | Time |
+|---|---|---|---|---|
+| G2 base x3 (guard plugin on) | - | - | 3/3 | 54 (cold), 18.9, 18.4 s |
+| G3 base, before models_dev fix | 0 | 1 (models.dev) | ok | 31.8 s |
+| G3 base, models_dev -> loopback | 0 | 0 | ok | 41.0 s |
+| G3 guard-proof (stock catalog/update/models.dev), plugin only | 0 | 4 | ok | 30.0 s |
+| G3 guard-proof, plugin + all-process loader | 0 | 4 | ok | 42.7 s |
+| G3 base final #1 | 0 | 0 | FAIL (answer "A5 part 1") | 28.8 s |
+| G2 base x1 | - | - | 1/1 | - |
+| G3 base final #2 | 0 | 0 | ok | 31.0 s |
+
+Guard-proof blocks (both runs, gateway pid): models.dev, hermes-agent.nousresearch.com,
+raw.githubusercontent.com (a catalog fallback URL A2 never saw; A2's fallback went to
+nousresearch.github.io), openrouter.ai. With the loader, every socket event in both pids (CLI 1/1,
+gateway 22/22) passed through guard.py.
+Gates: G1 pass. G2 pass. G3 pass (base, final #2; final #1 failed on answer content only). G3
+guard-proof pass. G4 pass. G5 pass (41 tests).
+Decisions / surprises:
+- G3 base final #1: model called read_file correctly (2.04 s, 163 chars) and then answered "A5 part 1".
+  Hermes runs with cwd C:\repos\ariadne, so repo files (PLAN/WORKLOG naming A1..A12) reach the context.
+  Small-model reliability issue, not a guard issue. For A7: run evals from a neutral cwd, track this rate.
+- Dead local HTTPS_PROXY: not adopted now. It blocked all 3 proxy-aware calls in A2, but the guard now
+  covers every Ariadne Python process and the policy covers networked commands; the proxy only adds
+  proxy-aware non-Python children, and costs a NO_PROXY entry for every LAN model host (A5). Revisit in
+  the A12 launcher with NO_PROXY generated from the guard allow-list. Real enforcement for children =
+  OS outbound firewall rule: changes the user's system, ask first (A12).
+Commit: (see git log, tag a3-done)   Next: A4 model serving on this machine.

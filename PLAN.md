@@ -100,7 +100,7 @@ first checkpoint committed.
 - Write `tools\gate-egress.ps1` (G3) and a table in WORKLOG: host, which code, needed?, how to turn off.
 - **Pass:** a list of every outbound host with its source; G3 written (may be red until A3).
 
-### A3. Offline guard (first Ariadne plugin)
+### A3. Offline guard (first Ariadne plugin) - done 2026-11-17
 - A2 found config alone closes all observed egress (switches in `profiles\base`). A3 adds defense in depth: a `plugins\offline_guard` plugin (hooks / tool filter) that
   blocks non-local hosts and logs attempts. Patch only if neither works.
 - **Pass:** G3 green; G4 + G5 live for this plugin.
@@ -140,6 +140,9 @@ first checkpoint committed.
 
 ### A12. Offline bundle
 - Vendored wheels, model manifest with sha256, SBOM, one installer; install on a machine with no network.
+- Ship a local models.dev snapshot (A3: refresh is pointed at a dead loopback port today).
+- `ariadne` launcher: sets HERMES_HOME and ARIADNE_GUARD_ALL_PROCS=1; decide dead HTTPS_PROXY with NO_PROXY
+  from the guard allow-list; offer (ask first) an OS outbound firewall rule for the venv and its children.
 - **Pass:** fresh install passes G1-G5 offline.
 
 ## 5. Checkpoints and progress records
