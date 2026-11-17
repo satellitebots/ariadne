@@ -36,6 +36,11 @@ image:    # images with a catalog image model (Z-Image-Turbo, SD Turbo) via stab
   args: ["-m", "ariadne.image_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 600
+diagram:  # Mermaid: check syntax, render SVG/PNG/PDF with the pinned Mermaid CLI on your Chrome (ariadne/diagram_mcp.py)
+  command: "{python}"
+  args: ["-m", "ariadne.diagram_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 240
 text:     # drafts by a generate-kind catalog model, e.g. Fimbulvetr for prose (ariadne/text_mcp.py)
   command: "{python}"
   args: ["-m", "ariadne.text_mcp"]

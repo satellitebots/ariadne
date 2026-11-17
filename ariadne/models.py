@@ -109,12 +109,15 @@ def load(path=None):
 
 def swap_entries(catalog=None):
     """llama-swap `models:` entries for every agent/generate/embed model (they start only when asked for)."""
+    from .kvcache import KV_DIR
     cat = catalog or load()
     out = {}
     for m in cat.models.values():
         if m.kind == "image":
             continue
         args = m.args or DEFAULT_ARGS
+        if m.kind == "agent":  # sessions can park their KV cache on disk (kvcache.py)
+            args += f' --slot-save-path "{KV_DIR.as_posix()}"'
         out[m.name] = {"cmd": f'${{server}} ${{common}} {args} -m "{m.gguf().as_posix()}"', "ttl": 900}
     return out
 

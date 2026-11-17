@@ -39,6 +39,7 @@ class Flow:
     description: str
     when: str
     model: str = "qwen3.5-9b"   # agent model (serving/models.yaml) for steps that name none
+    status: str = "beta"        # beta (validated) or experimental (shipped, not yet validated)
     skills: list = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
     plan_toolsets: list = field(default_factory=lambda: ["file", "skills"])
@@ -58,7 +59,7 @@ class Flow:
 
 
 def _mcp_registry(flows_dir):
-    """flows/mcp_servers.yaml; a sub-folder of flows (e.g. _experimental) uses its parent's."""
+    """flows/mcp_servers.yaml; a flows folder elsewhere (tests) falls back to its parent's."""
     for d in (Path(flows_dir), Path(flows_dir).parent):
         f = d / "mcp_servers.yaml"
         if f.exists():
@@ -76,7 +77,8 @@ def load_flow(folder):
         raise FlowError(f"{folder.name}/flow.yaml: name '{data['name']}' must match its folder")
     ts = data.get("toolsets") or {}
     fl = Flow(name=data["name"], description=data["description"].strip(), when=data["when"].strip(),
-              model=data.get("model", "qwen3.5-9b"), skills=list(data.get("skills") or []),
+              model=data.get("model", "qwen3.5-9b"), status=str(data.get("status") or "beta"),
+              skills=list(data.get("skills") or []),
               mcp_servers=list(data.get("mcp_servers") or []),
               plan_toolsets=list(ts.get("plan") or ["file", "skills"]),
               execute_toolsets=list(ts.get("execute") or ["file", "terminal", "skills", "todo"]),
@@ -103,7 +105,6 @@ def load_flow(folder):
 def load_flows(flows_dir=None):
     flows_dir = Path(flows_dir or paths.FLOWS_DIR)
     out = {}
-    # flows/_experimental/ holds flows that are not shipped yet; they load only when pointed at directly.
     for d in sorted(p for p in flows_dir.iterdir() if (p / "flow.yaml").exists()):
         fl = load_flow(d)
         out[fl.name] = fl

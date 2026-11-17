@@ -31,7 +31,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT, text TEXT, workspace TEXT, flow TEXT,
   status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
-  models TEXT DEFAULT '');
+  models TEXT DEFAULT '', session TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
 """
 
@@ -47,8 +47,10 @@ class Store:
             paths.ensure()
         with self._conn() as c:
             c.executescript(SCHEMA)
-            if "models" not in [r["name"] for r in c.execute("PRAGMA table_info(tasks)")]:
-                c.execute("ALTER TABLE tasks ADD COLUMN models TEXT DEFAULT ''")
+            have = [r["name"] for r in c.execute("PRAGMA table_info(tasks)")]
+            for col in ("models", "session"):
+                if col not in have:
+                    c.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
 
     @contextmanager
     def _conn(self):
@@ -64,15 +66,17 @@ class Store:
         with self._conn() as c:
             c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), kind, str(detail)[:4000]))
 
-    def submit(self, text, source="cli", workspace="", flow=""):
+    def submit(self, text, source="cli", workspace="", flow="", session=""):
+        """session: a Hermes session to continue (the caller's conversation); default: one session per task."""
         text = (text or "").strip()
         if not text:
             raise TaskError("the task text is empty")
         tid = time.strftime("t%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         now = time.time()
         with self._conn() as c:
-            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status) "
-                      "VALUES (?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", "new"))
+            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", "new",
+                                                     (session or "").strip() or tid))
         self.event(tid, "brief", f"from {source}: {text[:300]}")
         return tid
 
@@ -177,7 +181,7 @@ def _clean_output(out):
     return "\n".join(lines).strip()
 
 
-def hermes_run(flow, phase, prompt, workspace, tid, model=None):
+def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     """One headless Hermes run in the flow's worker home."""
     home = flow.home
     (home / "ariadne_phase").write_text(phase, encoding="utf-8")
@@ -192,6 +196,8 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None):
         cmd += ["-s", s]
     if model:
         cmd += ["-m", model]
+    if session:  # Hermes's own sessions (state.db in the flow's home): plan, revisions and execute share one
+        cmd += ["--continue", session, "--create-if-missing", "--no-restore-cwd"]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
     env.pop("ARIADNE_GUARD_ALL_PROCS", None)
     log = qfile.with_suffix("").with_suffix(".log")
@@ -399,7 +405,9 @@ Reply with only the flow name."""
 
 class Worker:
     def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
-                 catalog=None, installer=None, on_installed=None):
+                 catalog=None, installer=None, on_installed=None, kv=None):
+        from .kvcache import KVCache, NoKVCache
+        self.kv = kv or (KVCache() if runner is hermes_run else NoKVCache())
         from . import models as modellib
         self.catalog = catalog or modellib.load()
         self.installer = installer or modellib.install
@@ -460,7 +468,7 @@ class Worker:
                                     exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
                                     models=self.catalog.text(), default_model=flow.model)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
-        r = self.runner(flow, "plan", prompt, ws, t["id"], model=flow.model)
+        r = self.run(flow, "plan", prompt, ws, t, flow.model)
         if r.exit_code != 0 or not r.text:
             self.store.update(t["id"], status="failed", error=f"plan run failed (exit {r.exit_code}); log {r.log}")
             self.store.event(t["id"], "plan", f"failed, log {r.log}")
@@ -471,6 +479,18 @@ class Worker:
         self.store.event(t["id"], "backbrief", "ready for sign-off")
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: awaiting sign-off",
                            [("uses_flow", "flow", name), ("in_workspace", "workspace", ws)])
+
+    def run(self, flow, phase, prompt, ws, t, model):
+        """One Hermes run in the task's session on `model`, with that session's KV cache woken first and parked after."""
+        session = t.get("session") or t["id"]
+        note = self.kv.restore(session, model)
+        if note:
+            self.store.event(t["id"], "kv", f"{model}: {note}")
+        r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=session)
+        note = self.kv.save(session, model)
+        if note:
+            self.store.event(t["id"], "kv", f"{model}: {note}")
+        return r
 
     def run_checks(self, flow, ws):
         failures = []
@@ -524,9 +544,8 @@ class Worker:
             while True:
                 attempts += 1
                 self.store.event(t["id"], "execute", f"{label} on {agent}, attempt {attempts}")
-                r = self.runner(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
-                                                                     plan=t["plan"], extra=scope + extra),
-                                ws, t["id"], model=agent)
+                r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
+                                                                  plan=t["plan"], extra=scope + extra), ws, t, agent)
                 if r.exit_code != 0 or not r.text:
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
                                         f"execute run failed (exit {r.exit_code}); log {r.log}")
@@ -550,6 +569,8 @@ class Worker:
 
     def _finish(self, t, flow, ws, status, result, error=""):
         self.store.update(t["id"], status=status, result=result or "", error=error)
+        if (t.get("session") or t["id"]) == t["id"]:  # the task's own session ends with it; a caller's lives on
+            self.kv.drop(t["id"])
         self.store.event(t["id"], "report", status + (f": {error[:300]}" if error else ""))
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: {status}\nresult: {(result or error)[:1500]}",
                            [("uses_flow", "flow", flow.name), ("in_workspace", "workspace", ws)])
@@ -703,6 +724,7 @@ def main(argv=None):
     s.add_argument("--file", default="", help="read the task text from a file (long briefs, no shell quoting)")
     s.add_argument("--workspace", default="")
     s.add_argument("--flow", default=""); s.add_argument("--wait", type=int, default=0)
+    s.add_argument("--session", default="", help="continue this Hermes session (default: a new one for the task)")
     g = sub.add_parser("get"); g.add_argument("id")
     w = sub.add_parser("wait"); w.add_argument("id"); w.add_argument("--timeout", type=int, default=600)
     a = sub.add_parser("approve"); a.add_argument("id")
@@ -723,7 +745,7 @@ def main(argv=None):
     st = Store()
     if args.cmd == "submit":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else args.text
-        tid = st.submit(text, "cli", args.workspace, args.flow)
+        tid = st.submit(text, "cli", args.workspace, args.flow, args.session)
         ensure_worker()
         _print(st.wait(tid, args.wait) if args.wait else {"id": tid, "status": "new"})
     elif args.cmd == "get":

@@ -26,7 +26,8 @@ def store():
 
 
 def _view(t):
-    keep = ("id", "status", "flow", "source", "text", "workspace", "plan", "models", "result", "error", "events")
+    keep = ("id", "status", "flow", "session", "source", "text", "workspace", "plan", "models", "result", "error",
+            "events")
     v = {k: t.get(k) for k in keep if t.get(k)}
     if t["status"] == "awaiting_signoff":
         v["next"] = ("Show the backbrief (plan, including its MODEL PLAN) to the person. They approve (approve_task, "
@@ -47,11 +48,13 @@ def _guard(fn):
 
 
 @server.tool()
-def submit_task(text: str, workspace: str = "", flow: str = "", source: str = "mcp") -> str:
+def submit_task(text: str, workspace: str = "", flow: str = "", source: str = "mcp", session: str = "") -> str:
     """Brief: give Ariadne a task. workspace: folder it applies to (e.g. a repo path). flow: optional, else the
-    router picks (coding, writing, content, ...). Returns the task id; then call wait_task for the backbrief."""
+    router picks (coding, design, writing, content). session: pass your own conversation id to continue one
+    worker conversation across tasks (it remembers earlier tasks in it); default: a new session per task.
+    Returns the task id; then call wait_task for the backbrief."""
     def go():
-        tid = store().submit(text, source or "mcp", workspace, flow)
+        tid = store().submit(text, source or "mcp", workspace, flow, session)
         ensure_worker()
         return json.dumps({"id": tid, "status": "new", "next": "call wait_task(id) to get the backbrief"})
     return _guard(go)
