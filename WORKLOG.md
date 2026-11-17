@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-17 11:10
+## Status - 2026-11-17 11:35
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -22,7 +22,7 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
 | Offline | Config closes all observed egress (4 hosts: catalog refresh + models.dev); offline_guard plugin + all-process loader block anything else (proved: 4 blocks, 0 external with stock config) |
 | Model serving | llama-swap v273 + llama.cpp b12359 on 127.0.0.1:8090 (`tools\serve.ps1`): coder 9B text 64K q8 KV fits 8 GB at ~50 tok/s; router 4B; embed. Vision on Ollama. Profile `llamaswap` |
-| Next iteration | A5 - LAN provider + fallback |
+| Next iteration | A5 in progress: fallback chain + failover test written; model runs wait for the GPU (Atlas explorer in use) |
 
 ## Iteration log
 
@@ -282,3 +282,21 @@ Decisions / surprises:
 - Server is stopped at the end of the iteration so the GPU is free for Atlas (ttl would hold the coder
   for 15 min otherwise).
 Commit: (see git log, tag a4-done)   Next: A5 LAN provider + fallback.
+
+### 2026-11-17 11:22-11:35 - A5 LAN provider + fallback (part 1: CPU-side; interim checkpoint)
+GPU check 11:22: no Atlas batch job, GPU 0%, but Atlas's explorer server (`serve-prod.log`, written 11:22)
+is in use and holds qwen3-embedding:0.6b (1.2 GB, ~28 min keep-alive). 2.25 GB in use, so the 6.5 GB coder
+would not fit. Not competing with it and not unloading Atlas's model: model runs deferred.
+Did:
+- Read upstream `user-guide/features/fallback-providers.md`: top-level `fallback_providers` list; custom
+  entries take `base_url`; triggers on 429/5xx/401/403/404/invalid responses and (per `hermes fallback list`)
+  connection errors; turn-scoped (each new message retries the primary); history kept across the switch.
+- `profiles\llamaswap`: `fallback_providers: [custom ariadne-qwen3.5-4b @ http://localhost:11434/v1]`.
+  4B not 9B because on Ollama the 9B spills to CPU (7.8 tok/s) while the 4B fits (77.5 tok/s) (A4).
+- `hermes fallback list`: chain of 1 entry parsed. `hermes fallback check` (static, no inference): ready.
+- `tools\test-failover.ps1`: one Hermes session over three turns (`--resume <session_id>`): turn 1 on
+  llama-swap; llama-swap stopped; turn 2 must answer via fallback (evidence: Ollama has the fallback model
+  loaded + new agent.log fallback lines); llama-swap restarted; turn 3 must hit llama-swap again (its log
+  grows). Mutex-guarded like the gates. Not run yet (GPU).
+Gates: not run this part (GPU busy as above; G1 unchanged, no code under test changed upstream).
+Next: run gates + failover test when the GPU is free; vision alias; LAN exposure needs the user's decision.

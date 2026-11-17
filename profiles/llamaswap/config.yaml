@@ -36,3 +36,11 @@ plugins:
   auto_update_check_hours: 0
   # Ariadne plugins (synced into HERMES_HOME\plugins by tools\use-profile.ps1). Opt-in upstream.
   enabled: [offline_guard]
+
+# A5: primary = llama-swap (coder, llama.cpp). If it fails (down, 5xx, 404), Hermes switches to Ollama for the rest of
+# that turn and retries the primary on the next message (upstream docs: user-guide/features/fallback-providers.md).
+# 4B, not 9B: on Ollama the 9B spills to CPU (7.8 tok/s, A4) while the 4B fits (77.5 tok/s).
+fallback_providers:
+  - provider: custom
+    model: ariadne-qwen3.5-4b
+    base_url: http://localhost:11434/v1
