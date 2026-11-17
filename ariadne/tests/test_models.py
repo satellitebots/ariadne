@@ -43,9 +43,11 @@ class Runner:
 
     def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
         self.calls.append((phase, model, prompt, session))
+        sid = session or f"h{len(self.calls)}"          # Hermes prints the session id it used
         if phase.startswith("checkpoint"):
-            return orch.RunResult(f"SITUATION: summary {len(self.calls)}", 0, "log")
-        return orch.RunResult(self.plan if phase == "plan" else (self.results.pop(0) if self.results else "ok"), 0, "log")
+            return orch.RunResult(f"SITUATION: summary {len(self.calls)}", 0, "log", sid)
+        return orch.RunResult(self.plan if phase == "plan" else (self.results.pop(0) if self.results else "ok"), 0,
+                              "log", sid)
 
 
 class FakeKV:
@@ -174,7 +176,10 @@ def test_drill_with_models_fetches_before_step_one_and_runs_each_group_on_its_mo
                    ("checkpoint:execute", "gemma-4-26b-a4b"), ("checkpoint:execute", "qwen3.8-27b"),
                    ("checkpoint:execute", "qwen3.5-9b")]
     assert all(c[2].startswith("SESSION HANDOFF") for c in execs)    # every step starts from a handoff brief
-    assert [c[3] for c in execs] == [f"{tid}~2", f"{tid}~3", f"{tid}~4", f"{tid}~5"]
+    assert [c[3] for c in execs] == [None, None, None, None]          # each step: a new Hermes session
+    for i, c in enumerate(run.calls):                                  # each checkpoint resumes the run it closes
+        if c[0].startswith("checkpoint"):
+            assert c[3] == f"h{i}", (i, c[0], c[3])
     assert "NOW DO STEP 1 ONLY" in execs[0][2] and "NOW DO STEPS 3, 4 ONLY" in execs[2][2]
     assert "generate_image(model='z-image-turbo'" in execs[2][2]
     # caches are parked per segment, step and model; a segment's caches go when it is compressed
@@ -193,7 +198,7 @@ def test_callers_session_is_continued_and_kept(env):
     tid = w.store.submit("x", "mcp", str(tmp), session="claude-conv-42")
     w.run_once(); w.store.approve(tid); w.run_once()
     assert w.store.get(tid)["status"] == "done"
-    assert {c[3].split("~")[0] for c in run.calls} == {"claude-conv-42"}
+    assert w.store.session("claude-conv-42")["segment"] > 1
     assert not [e for e in kv.log if e[0] == "drop" and e[1] == f"claude-conv-42~{w.store.session('claude-conv-42')['segment']}"]
     # the next task in the same session starts from the last handoff brief
     tid2 = w.store.submit("y", "mcp", str(tmp), session="claude-conv-42")

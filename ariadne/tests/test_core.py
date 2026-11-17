@@ -81,7 +81,7 @@ class FakeRunner:
     def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
         self.calls.append((flow.name, phase, prompt, model))
         if phase.startswith("checkpoint"):
-            return orch.RunResult("SITUATION: x\nDONE: y", 0, "log")
+            return orch.RunResult("SITUATION: x\nDONE: y", 0, "log", session or "h")
         text = self.plan if phase == "plan" else self.results.pop(0)
         return orch.RunResult(text, 0, "log")
 

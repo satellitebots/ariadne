@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT)
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
   segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', summary TEXT DEFAULT '',
-  fresh INTEGER DEFAULT 0, dirty INTEGER DEFAULT 0);
+  fresh INTEGER DEFAULT 0, dirty INTEGER DEFAULT 0, hermes_id TEXT DEFAULT '');
 """
 
 
@@ -55,6 +55,8 @@ class Store:
             for col in ("models", "session"):
                 if col not in have:
                     c.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
+            if "hermes_id" not in [r["name"] for r in c.execute("PRAGMA table_info(sessions)")]:
+                c.execute("ALTER TABLE sessions ADD COLUMN hermes_id TEXT DEFAULT ''")
 
     @contextmanager
     def _conn(self):
@@ -199,6 +201,7 @@ class RunResult:
     text: str
     exit_code: int
     log: str
+    session_id: str = ""     # the Hermes session the run used (printed by -Q)
 
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -214,8 +217,12 @@ def _clean_output(out):
     return "\n".join(lines).strip()
 
 
+_SESSION_ID = re.compile(r"session_id:\s*(\S+)")
+
+
 def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
-    """One headless Hermes run in the flow's worker home."""
+    """One headless Hermes run in the flow's worker home. session: a Hermes session id to resume (it keeps the model,
+    toolsets, skills and turn limit it was started with - Hermes refuses overrides on resume); None starts one."""
     home = flow.home
     # A checkpoint ("checkpoint:plan" / "checkpoint:execute") keeps the toolsets of the phase it closes (same system
     # prompt, so the parked KV cache still matches) but runs read-only, with a few turns.
@@ -226,15 +233,15 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     # Hermes names an MCP server's toolset "mcp-<server>" (the bare name can collide with a built-in, e.g. memory).
     toolsets = (flow.plan_toolsets if tools_phase == "plan" else flow.execute_toolsets) + [f"mcp-{m}" for m in flow.mcp_servers]
     turns, budget = flow.max_turns.get(phase, 3), flow.run_budget.get(phase, 900)
-    cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool",
-           "--max-turns", str(turns), "--run-budget", str(budget),
-           "-t", ",".join(toolsets)]
-    for s in flow.skills:
-        cmd += ["-s", s]
-    if model:
-        cmd += ["-m", model]
-    if session:  # Hermes's own sessions (state.db in the flow's home): plan, revisions and execute share one
-        cmd += ["--continue", session, "--create-if-missing", "--no-restore-cwd"]
+    cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool", "--run-budget", str(budget)]
+    if session:
+        cmd += ["--resume", session, "--no-restore-cwd"]
+    else:
+        cmd += ["--max-turns", str(turns), "-t", ",".join(toolsets)]
+        for s in flow.skills:
+            cmd += ["-s", s]
+        if model:
+            cmd += ["-m", model]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
     env.pop("ARIADNE_GUARD_ALL_PROCS", None)
     log = qfile.with_suffix("").with_suffix(".log")
@@ -246,7 +253,8 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     except subprocess.TimeoutExpired as e:
         out, code = f"(timed out)\n{e.stdout or ''}", 124
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
-    return RunResult(_clean_output(p.stdout if code != 124 else out), code, str(log))
+    sid = _SESSION_ID.findall(out)
+    return RunResult(_clean_output(p.stdout if code != 124 else out), code, str(log), sid[-1] if sid else "")
 
 
 # ---------- prompts ----------
@@ -544,7 +552,8 @@ class Worker:
         s = self.store.session(t.get("session") or t["id"], t.get("source", ""))
         if s["flow"] != flow.name:
             seg = s["segment"] + 1 if s["flow"] else s["segment"]
-            self.store.session_update(s["name"], flow=flow.name, segment=seg, fresh=1 if s["summary"] else 0)
+            self.store.session_update(s["name"], flow=flow.name, segment=seg, fresh=1 if s["summary"] else 0,
+                                      hermes_id="")
             s = self.store.session(s["name"])
         return s, f"{s['name']}~{s['segment']}"
 
@@ -558,12 +567,19 @@ class Worker:
         note = self.kv.restore(title, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
-        r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=title)
+        # Within a segment the Hermes session is resumed (same model and tools by construction: a segment is one
+        # phase on one model); a new segment starts a new Hermes session.
+        # The stored id is "<phase>/<model>|<hermes id>": resume only a session started for the same phase and model.
+        sig = f"{phase.split(':')[-1]}/{model}"
+        stored_sig, _, stored_id = (s["hermes_id"] or "").partition("|")
+        resume = stored_id if stored_id and stored_sig == sig else None
+        r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=resume)
         note = self.kv.save(title, model, scope)
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
         if r.exit_code == 0:
-            self.store.session_update(s["name"], fresh=0, dirty=0 if phase.startswith("checkpoint") else 1)
+            self.store.session_update(s["name"], fresh=0, dirty=0 if phase.startswith("checkpoint") else 1,
+                                      hermes_id=f"{sig}|{r.session_id}" if r.session_id else s["hermes_id"])
         return r
 
     def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
@@ -578,7 +594,8 @@ class Worker:
         if r.exit_code != 0 or not r.text.strip():
             self.store.event(t["id"], "compress", f"{reason}: skipped (exit {r.exit_code}); continuing uncompressed")
             return
-        self.store.session_update(s["name"], segment=s["segment"] + 1, summary=r.text.strip()[:12000], fresh=1, dirty=0)
+        self.store.session_update(s["name"], segment=s["segment"] + 1, summary=r.text.strip()[:12000], fresh=1, dirty=0,
+                                  hermes_id="")
         self.kv.drop(title)
         self.store.event(t["id"], "compress", f"{reason}: {title} -> {s['name']}~{s['segment'] + 1} "
                                               f"(handoff {len(r.text)} chars)")
