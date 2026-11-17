@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-17 11:35
+## Status - 2026-11-17 12:30
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -22,7 +22,8 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
 | Offline | Config closes all observed egress (4 hosts: catalog refresh + models.dev); offline_guard plugin + all-process loader block anything else (proved: 4 blocks, 0 external with stock config) |
 | Model serving | llama-swap v273 + llama.cpp b12359 on 127.0.0.1:8090 (`tools\serve.ps1`): coder 9B text 64K q8 KV fits 8 GB at ~50 tok/s; router 4B; embed. Vision on Ollama. Profile `llamaswap` |
-| Next iteration | A5 in progress: fallback chain + failover test written; model runs wait for the GPU (Atlas explorer in use) |
+| Fallback | llama-swap primary, Ollama 4B fallback; failover PASS in one session; every llama-swap start unloads Ariadne Ollama models (one model on the GPU) |
+| Next iteration | Architecture lock-down (user, 12:30): Hermes internals diagram, Ariadne-on-top diagram, browser access, workflow -> tools -> skills/MCP |
 
 ## Iteration log
 
@@ -300,3 +301,26 @@ Did:
   grows). Mutex-guarded like the gates. Not run yet (GPU).
 Gates: not run this part (GPU busy as above; G1 unchanged, no code under test changed upstream).
 Next: run gates + failover test when the GPU is free; vision alias; LAN exposure needs the user's decision.
+
+### 2026-11-17 12:18-12:30 - A5 Fallback (part 2) - done
+User direction 12:18: cancel schedules, run straight through (PLAN section 4b). Scheduled retry deleted.
+GPU 12:19: free (1.7 GB, nothing loaded in Ollama, Atlas idle since 11:42).
+Gates: G1 pass; G5 41 passed; G4 pass; G2 base 1/1; G2 llamaswap 1/1 (115.7 s, see below); G3 llamaswap
+0 external, 0 blocks (60.3 s, same cause).
+Found: **two models on the GPU at once.** G2 base left Ollama's ariadne-qwen3.5-9b loaded (8.7 GB, 5 min
+keep-alive); llama-swap then loaded its 9B coder beside it. Windows showed 1.8 GB in shared GPU memory and the
+first coder call took 99.8 s (expected ~12 s).
+Fix (serving layer, not the tests): `serving\llama_server_exclusive.py`. llama-swap now starts every model
+through it: it unloads Ariadne's own Ollama models (`ariadne-*` only, keep_alive=0; never Atlas's), then runs
+llama-server inside a Windows job object with KILL_ON_JOB_CLOSE.
+Checks (12:24): Ollama 4B loaded -> request coder via llama-swap -> Ollama empty, shared usage 319 MB, coder
+45.3 tok/s gen / 1,651 tok/s prompt (wall 23.4 s incl. load); swap to router -> one Ariadne llama-server left;
+killing only the venv python launcher -> interpreter and llama-server both exit, VRAM back to 1.3 GB, llama-swap
+stays up. (My first attempt at that check matched its own shell by command-line text and killed itself;
+redone with an exact process selection.)
+Failover (`tools\test-failover.ps1`, one session, 3 turns): PASS. Turn 1 llama-swap 35.8 s; llama-swap
+stopped; turn 2 20.7 s on the fallback ("Fallback activated: coder -> ariadne-qwen3.5-4b (custom)" in
+agent.log; Ollama had the 4B loaded); llama-swap restarted; turn 3 21.7 s on llama-swap (its log grew; the
+launcher unloaded the 4B first).
+Not done: vision behind llama-swap (not tried); LAN exposure (user's decision; still loopback only).
+Commit: (see git log, tag a5-done)   Next: user redirected 12:30 to architecture first (see next entry).

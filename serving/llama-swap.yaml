@@ -6,7 +6,9 @@
 # Run: tools\serve.ps1   (binaries pinned in serving\bin.lock)
 healthCheckTimeout: 180
 macros:
-  server: 'C:\repos\ariadne\serving\bin\llama.cpp-b12359\llama-server.exe'
+  # Every model start goes through llama_server_exclusive.py: unloads Ariadne's Ollama models first (one model on the
+  # GPU at a time) and ties llama-server to a kill-on-close job so a swap never leaves it running. A5.
+  server: 'C:\repos\ariadne\.venv\Scripts\python.exe C:\repos\ariadne\serving\llama_server_exclusive.py C:\repos\ariadne\serving\bin\llama.cpp-b12359\llama-server.exe'
   blobs: 'C:\Users\alama\.ollama\models\blobs'
   common: '--host 127.0.0.1 --port ${PORT} -ngl 99 -np 1'
   chat64k: '-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja'

@@ -110,7 +110,7 @@ first checkpoint committed.
   llama.cpp or Ollama. Measure: swap time per model, tokens/s, VRAM. Try one MoE with CPU-offloaded experts.
 - **Pass:** all four aliases answer through one URL; numbers recorded; a recommendation for the 8 GB tier.
 
-### A5. LAN provider + fallback
+### A5. LAN provider + fallback - fallback done 2026-11-17 (LAN exposure pending user)
 - From A4: make llama-swap (profile llamaswap, aliases coder/router/embed) primary and Ollama the fallback; put the
   vision alias behind the same gateway; bind for the LAN only after the guard allow-list and auth are in place.
 - Point Hermes at the serving gateway by alias; local Ollama as `fallback_chain`. Kill the gateway mid-session.
@@ -147,6 +147,30 @@ first checkpoint committed.
   from the guard allow-list; offer (ask first) an OS outbound firewall rule for the venv and its children.
 - **Pass:** fresh install passes G1-G5 offline.
 
+## 4b. Revised order (2026-11-17 12:18, user: cancel schedules, one-shot run to the end)
+
+User direction from the design debrief: flows are the first-class unit (coding, writing, content generation;
+extensible by dropping a folder), VS Code's MCP server replaces Serena for coding, and Claude offloads tasks to
+Ariadne through an MCP server with one model on the GPU at a time. No more 30-minute pauses: iterations run back to
+back; checkpoints (gates, WORKLOG, commit, tag) stay. When Atlas holds the GPU, wait inside the session.
+
+Defaults taken while the user's open questions are unanswered (change any of them on request):
+- Callbacks are local only: `wait_task` long-poll + scheduled check-ins. No push to Anthropic from the machine.
+- Loopback only: no LAN binding, no firewall changes.
+- Offloaded `agent` jobs run only inside `C:\repos\ariadne\workspaces\<name>`.
+- Commits stay under this machine's git identity.
+
+Order:
+1. A5 finish: failover test (llama-swap -> Ollama -> back), vision check.
+2. A6 upgrade drill: `tools\bump-upstream.ps1`.
+3. F1 flows framework: `flows\<name>\flow.yaml` -> generated Hermes profile + skills + MCP config; validator;
+   golden task per flow as its gate (G6).
+4. F2 coding flow: VS Code MCP server extension (pinned .vsix) + Git MCP server (pinned, pre-installed).
+5. T1 `ariadne-tasks` MCP server: submit/wait/get/list/cancel/gpu_status; single worker; jobs grouped by model;
+   unload between servers; Atlas-aware; registered for Claude Desktop.
+6. F3 writing + content generation flows.
+7. A7 reliability evals over the flows' golden tasks.
+8. A9 graph memory, A10 context engine, A11 routing, A12 offline bundle (as in section 4).
 ## 5. Checkpoints and progress records
 
 Every iteration (and every meaningful stopping point inside a long one) ends with a checkpoint:
