@@ -1,0 +1,8 @@
+upstream/
+.venv/
+.hermes-home/
+logs/
+scratch/
+__pycache__/
+*.pyc
+models/
