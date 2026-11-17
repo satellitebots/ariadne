@@ -10,7 +10,7 @@ A local-only agent harness built on a pinned upstream Hermes Agent plus Ariadne 
 routed local models, shared graph memory, LAN model serving, workflows for coding, designing, writing and
 investigating. Must keep taking upstream Hermes updates with a scripted bump, not a rewrite.
 
-## Status - 2026-11-17 10:10
+## Status - 2026-11-17 11:10
 
 Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) after each, 30-minute pause.
 
@@ -21,7 +21,8 @@ Working mode: one issue per iteration, checkpoint (gates, log, commit, tag) afte
 | Gates live | G1 (manual), G2 `tools\gate-smoke.ps1`, G3 `tools\gate-egress.ps1` (0 external hosts with `profiles\base`), G4 `hermes plugins doctor`, G5 `pytest plugins` |
 | Hermes running locally | Yes: `.venv` (Python 3.14.8), isolated `.hermes-home`, Ollama tags with 64K context |
 | Offline | Config closes all observed egress (4 hosts: catalog refresh + models.dev); offline_guard plugin + all-process loader block anything else (proved: 4 blocks, 0 external with stock config) |
-| Next iteration | A4 - model serving on this machine |
+| Model serving | llama-swap v273 + llama.cpp b12359 on 127.0.0.1:8090 (`tools\serve.ps1`): coder 9B text 64K q8 KV fits 8 GB at ~50 tok/s; router 4B; embed. Vision on Ollama. Profile `llamaswap` |
+| Next iteration | A5 - LAN provider + fallback |
 
 ## Iteration log
 
@@ -223,3 +224,61 @@ Decisions / surprises:
   the A12 launcher with NO_PROXY generated from the guard allow-list. Real enforcement for children =
   OS outbound firewall rule: changes the user's system, ask first (A12).
 Commit: (see git log, tag a3-done)   Next: A4 model serving on this machine.
+
+### 2026-11-17 10:34-11:10 - A4 Model serving on this machine - done
+Goal: one local URL serving coder / router / embed (vision noted), measured; make the main model fit 8 GB.
+GPU check 10:34: Atlas `p4-replay` done 10:15, nothing loaded, 0% util. Gates at start: G1, G5 (41),
+G4, G2 1/1, G3 (0 external, 0 blocks) pass.
+Did:
+- `tools\bench_ollama.py`: Ollama baseline per alias (native API timings; 20,163-token synthetic prompt,
+  128 generated tokens; model unloaded first so loads are cold).
+- Found why the 9B spilled: Ollama's qwen3.5 tags carry a vision projector layer (9B: 5.63 GB text +
+  0.92 GB projector; 4B: 2.65 + 0.68 GB) and load it too. Display holds ~1.0-1.2 GB, so ~6.8 GB is free.
+- Pinned serving binaries (`serving\bin.lock`, `tools\fetch-serving-bins.ps1`): llama.cpp v1.0.0 = build
+  b12359 (from the v1.0.0 release's nightly-tag.txt; v1.0.0 itself ships no binaries; every numbered
+  build is flagged prerelease), CUDA 12.4 x64 build + cudart (driver 591.59 reports CUDA 13.1, so not the
+  13.5 build); llama-swap v273. 734.6 MB total, all three sha256 = GitHub's published digests, verified
+  before extraction. `serving/bin/` gitignored.
+- llama.cpp reads Ollama's GGUF blobs directly (read-only, no second copy of weights).
+- `serving\llama-swap.yaml`: aliases coder (9B text), router (4B text), embed (0.6B), all llama-server
+  `-ngl 99 -np 1`; chat aliases `-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja`; ttl 900 s; 127.0.0.1 only.
+  `tools\serve.ps1` starts/stops it on 127.0.0.1:8090 (log `logs\llama-swap.log`).
+- `profiles\llamaswap`: base profile with model `coder` at 127.0.0.1:8090 and `context_length: 65536`.
+  Gates take a profile now: `gate-smoke.ps1 -Profile`, and `-Model` empty = profile default in both gates.
+Numbers (RTX 3070 Laptop 8 GB; prompt 20,163 tokens; 128 generated; n=1 per row):
+
+| Alias | Server | Resident / GPU in use | GPU share | Prompt tok/s | Gen tok/s | Load |
+|---|---|---|---|---|---|---|
+| coder 9B 64K | Ollama (with projector) | 8.75 GB resident | 64% | 932 | 7.8 | 5.5 s cold |
+| coder 9B text 64K q8 KV | llama-server direct | 7.60 GB in use* | 100% | 2,002 | 47.2 | ~6 s to healthy |
+| coder 9B text 64K q8 KV | via llama-swap | 7.47 GB in use* | 100% | 2,047 / 2,030 | 50.8 / 50.2 | ~7.3 s cold, ~7.9 s swap back |
+| router 4B 64K | Ollama | 5.22 GB resident | 100% | 3,261 | 77.5 | 6.0 s |
+| router 4B text 64K q8 KV | via llama-swap | 5.16 GB in use* | 100% | 3,283 | 73.9 | ~5.2 s swap |
+| vision qwen2.5vl 7B | Ollama (4K default ctx) | 5.35 GB resident | 100% | 2,275 (2,050-tok prompt) | 67.7 | 8.0 s |
+| embed qwen3-embedding 0.6B | Ollama | 1.23 GB | 100% | 53 embeds/s | - | 2.8 s |
+| embed qwen3-embedding 0.6B | via llama-swap | 2.65 GB in use* | 100% | 137 embeds/s (256 texts) | - | 3.2 s incl. first call |
+
+*nvidia-smi total including ~1.0-1.2 GB display. Load via llama-swap = wall time minus server prompt and
+generation time. Windows "Shared Usage" counter during the 9B run: ~212 MB (no meaningful spill).
+qwen3.5 answers were empty in the 128-token benches: the model spends them on reasoning first.
+
+Hermes on the new path (profile llamaswap, alias coder):
+- G2 x3: 3/3 pass, 20.5 (cold) / 7.8 / 8.2 s. Same 9B on Ollama: 18-19 s warm. 4B on Ollama: 3/3,
+  31.8 / 10.4 / 8.4 s.
+- G3: 0 external, 0 guard blocks, task ok, 18.6 s; model traffic only to 127.0.0.1:8090 via the guard.
+Gates: G1 pass. G2 pass (base and llamaswap). G3 pass (base and llamaswap). G4 pass. G5 pass (41).
+Decisions / surprises:
+- 8 GB tier: coder = 9B text on llama.cpp (fits, ~50 tok/s, 6.5x Ollama). The 9B stays main; the 4B
+  is the router, not the main model. Quality comparison is still A7's job.
+- Base profile stays on Ollama until A5 makes llama-swap primary with Ollama as fallback.
+- Vision stays on Ollama: the qwen2.5vl tag is a single combined file; llama.cpp support for it untested.
+- No KV-quant change to Ollama: OLLAMA_KV_CACHE_TYPE / flash attention are server-wide and would change
+  Atlas's models too. Per-model flags in llama.cpp avoid that.
+- Coder + router cannot both stay loaded on 8 GB (7.47 + 5.16 GB); swaps cost ~5-8 s. Embed (2.65 GB
+  with display) could co-reside with the router via a llama-swap matrix: later, measured.
+- Launcher bug: first serve.ps1 used Start-Process; llama-swap inherited the caller's stdout pipe, so a
+  caller piping the script (`| Select-Object -Last 4`) waited forever. Now launched via
+  Win32_Process.Create through cmd with a log file; returns in 2 s even when piped.
+- Server is stopped at the end of the iteration so the GPU is free for Atlas (ttl would hold the coder
+  for 15 min otherwise).
+Commit: (see git log, tag a4-done)   Next: A5 LAN provider + fallback.

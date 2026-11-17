@@ -1,0 +1,7 @@
+# Pinned serving binaries. Official GitHub releases only; sha256 = GitHub's published asset digest.
+# Fetched and verified by tools\fetch-serving-bins.ps1 into serving\bin\ (gitignored). Never run an unverified file.
+# llama.cpp v1.0.0 == build b12359 (from the v1.0.0 release's nightly-tag.txt). CUDA 12.4 build: driver 591.59
+# reports CUDA 13.1, which does not cover the 13.5 build.
+llama.cpp|b12359|https://github.com/ggml-org/llama.cpp/releases/download/b12359/llama-b12359-bin-win-cuda-12.4-x64.zip|e9c0abf442e8339c06728366c1ad2c711332f9939c0c00603fb75d85fd44c914
+cudart|b12359|https://github.com/ggml-org/llama.cpp/releases/download/b12359/cudart-llama-bin-win-cuda-12.4-x64.zip|8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6
+llama-swap|v273|https://github.com/mostlygeek/llama-swap/releases/download/v273/llama-swap_273_windows_amd64.zip|1374a333ecdc52499bc7ad2ccde2b17b9a8ee0ffeda54e82e98e0ac5088866dd

@@ -1,0 +1,38 @@
+# Ariadne profile: base, but models from llama-swap (tools\serve.ps1) instead of Ollama. A4.
+# (derived from the base profile) - local only. Copied into HERMES_HOME by tools\use-profile.ps1.
+model:
+  default: "coder"
+  provider: "custom"
+  base_url: "http://127.0.0.1:8090/v1"
+  # llama-swap serves llama.cpp with -c 65536 (serving\llama-swap.yaml); stated so Hermes's >= 64K check
+  # does not depend on probing the endpoint.
+  context_length: 65536
+
+# --- Offline switches (A2 egress audit + A3, see WORKLOG) ---
+# Background model-catalog refresh: fetched hermes-agent.nousresearch.com (+ nousresearch.github.io
+# fallback) and openrouter.ai/api/v1/models during a purely local task. refresh_catalogs() returns
+# early when this is false (upstream hermes_cli/model_catalog.py).
+model_catalog:
+  enabled: false
+# models.dev registry (upstream agent/models_dev.py): refetched when the 4 h disk cache is stale; no
+# on/off switch, only this URL override. A closed loopback port makes the refresh fail locally and
+# Hermes serves the stale cache. A12 will ship a local snapshot instead.
+models_dev:
+  url: "http://127.0.0.1:9/models-dev-disabled.json"
+# Passive startup/banner update check (upstream hermes_cli/source_check.py honours updates.check=false).
+updates:
+  check: false
+# Upstream default is already off; pinned here so an upstream default change cannot turn it on.
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+# Tools whose only job is the internet: removed from the prompt entirely (A3). Upstream key.
+agent:
+  disabled_toolsets: [web, browser, browser-use, browser-cdp]
+
+plugins:
+  # Gateway's periodic plugin update check; 0 disables (upstream config_defaults.py).
+  auto_update_check_hours: 0
+  # Ariadne plugins (synced into HERMES_HOME\plugins by tools\use-profile.ps1). Opt-in upstream.
+  enabled: [offline_guard]

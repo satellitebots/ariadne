@@ -1,0 +1,26 @@
+# Ariadne local model serving (A4). One OpenAI-compatible URL; the request's `model` picks the alias and
+# llama-swap starts/stops llama-server to match (one model at a time unless a matrix is added).
+# Weights: Ollama's GGUF blobs, read-only (no second copy). Text-only aliases skip the qwen3.5 vision
+# projector (0.92 GB for 9B), which is what lets the 9B fit in 8 GB with a 64K q8_0 KV cache.
+# Hermes needs >= 64K context (A1). Loopback only; LAN exposure is A5.
+# Run: tools\serve.ps1   (binaries pinned in serving\bin.lock)
+healthCheckTimeout: 180
+macros:
+  server: 'C:\repos\ariadne\serving\bin\llama.cpp-b12359\llama-server.exe'
+  blobs: 'C:\Users\alama\.ollama\models\blobs'
+  common: '--host 127.0.0.1 --port ${PORT} -ngl 99 -np 1'
+  chat64k: '-c 65536 -fa on -ctk q8_0 -ctv q8_0 --jinja'
+
+models:
+  coder:
+    # qwen3.5:9b text weights (Ollama layer application/vnd.ollama.image.model, 5.63 GB)
+    cmd: ${server} ${common} ${chat64k} -m ${blobs}\sha256-02d45dc1cf451ba2475ac33b301c2dd8f985abe4c182ce04a1f2f5bf0260278d
+    ttl: 900
+  router:
+    # qwen3.5:4b text weights (2.65 GB)
+    cmd: ${server} ${common} ${chat64k} -m ${blobs}\sha256-a9d0a3e1d8c91732a3812becd31f8d4a8ff57414903f226306069f0437e2ac50
+    ttl: 900
+  embed:
+    # qwen3-embedding:0.6b (0.64 GB)
+    cmd: ${server} ${common} -c 8192 --embedding --pooling last -m ${blobs}\sha256-06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439
+    ttl: 900

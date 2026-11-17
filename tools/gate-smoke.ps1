@@ -1,19 +1,22 @@
 # G2 smoke gate: isolated Hermes home + local model + one task that needs a file-read tool call.
-# Usage: tools\gate-smoke.ps1 [-Runs 3] [-Model qwen3.5:9b]
+# Usage: tools\gate-smoke.ps1 [-Runs 3] [-Profile base] [-Model <name>]
+#   -Model empty (default) = the profile's model.default; set it to override for this run only.
 # Pass: every run exits 0 and the answer contains the code word that only exists in the fixture file.
-param([int]$Runs = 3, [string]$Model = 'ariadne-qwen3.5-9b', [int]$MaxTurns = 8)
+param([int]$Runs = 3, [string]$Profile = 'base', [string]$Model = '', [int]$MaxTurns = 8)
 $ErrorActionPreference = 'Stop'
 # One gate at a time: gates stop/start the Ariadne gateway, so two overlapping runs kill each other's gateway.
 $gateMutex = [System.Threading.Mutex]::new($false, 'Global\AriadneGate')
 if (-not $gateMutex.WaitOne(0)) { Write-Host 'another Ariadne gate is running; refusing to overlap'; exit 2 }
 $root = Split-Path $PSScriptRoot -Parent
-& (Join-Path $PSScriptRoot 'use-profile.ps1') base | Out-Null
+& (Join-Path $PSScriptRoot 'use-profile.ps1') $Profile | Out-Null
 $env:HERMES_HOME = Join-Path $root '.hermes-home'
 & (Join-Path $PSScriptRoot 'install-guard-pth.ps1') | Out-Null
 $env:ARIADNE_GUARD_ALL_PROCS = '1'  # guard every Ariadne Python process, the CLI included
 $hermes = Join-Path $root '.venv\Scripts\hermes.exe'
 $scratch = Join-Path $root 'scratch'; New-Item -ItemType Directory $scratch -Force | Out-Null
 $logs = Join-Path $root 'logs'; New-Item -ItemType Directory $logs -Force | Out-Null
+$modelArgs = @(); if ($Model) { $modelArgs = @('-m', $Model) }
+$label = if ($Model) { $Model } else { "profile $Profile default" }
 $results = @()
 for ($i = 1; $i -le $Runs; $i++) {
   $word = 'ARIADNE-' + (Get-Random -Minimum 100000 -Maximum 999999)
@@ -23,7 +26,7 @@ for ($i = 1; $i -le $Runs; $i++) {
   $log = Join-Path $logs "g2-run$i.log"
   $sw = [Diagnostics.Stopwatch]::StartNew()
   $ErrorActionPreference = 'Continue'
-  $out = & $hermes chat -q $q --oneshot -Q -m $Model --max-turns $MaxTurns 2>&1 | Out-String
+  $out = & $hermes chat -q $q --oneshot -Q @modelArgs --max-turns $MaxTurns 2>&1 | Out-String
   $code = $LASTEXITCODE; $sw.Stop()
   $ErrorActionPreference = 'Stop'
   Set-Content $log $out
@@ -32,5 +35,5 @@ for ($i = 1; $i -le $Runs; $i++) {
 }
 $results | Format-Table -AutoSize | Out-String | Write-Host
 $passed = @($results | Where-Object pass).Count
-Write-Host "G2: $passed/$Runs passed (model $Model)"
+Write-Host "G2: $passed/$Runs passed ($label, profile $Profile)"
 if ($passed -ne $Runs) { exit 1 } else { exit 0 }

@@ -1,11 +1,11 @@
 # G3 egress gate: run the G2 smoke task with the egress hook active in every Ariadne Python process
 # (CLI + auto-started gateway + Python children); fail on any non-local host.
-# Usage: tools\gate-egress.ps1 [-Profile base] [-Model ariadne-qwen3.5-9b] [-DeadProxy] [-Tag g3] [-TailSecs 20] [-ExpectGuardBlocks]
+# Usage: tools\gate-egress.ps1 [-Profile base] [-Model <override>] [-DeadProxy] [-Tag g3] [-TailSecs 20] [-ExpectGuardBlocks]
 # -DeadProxy also points HTTP(S)_PROXY at a closed local port so proxied calls fail fast instead of leaving.
 # -TailSecs keeps the gateway alive after the answer to catch background refreshes, then stops it.
 # -ExpectGuardBlocks additionally requires >= 1 offline_guard block (use with -Profile guard-proof: proves
 #  the guard, not config, stopped the egress).
-param([string]$Profile = 'base', [string]$Model = 'ariadne-qwen3.5-9b', [switch]$DeadProxy,
+param([string]$Profile = 'base', [string]$Model = '', [switch]$DeadProxy,
       [string]$Tag = 'g3', [int]$TailSecs = 20, [switch]$ExpectGuardBlocks)
 # One gate at a time: gates stop/start the Ariadne gateway, so two overlapping runs kill each other's gateway.
 $gateMutex = [System.Threading.Mutex]::new($false, 'Global\AriadneGate')
@@ -35,7 +35,8 @@ Set-Content $fixture "The code word is $word." -Encoding ascii
 $q = "Use your file reading tool to read $fixture and reply with only the code word written in it."
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $ErrorActionPreference = 'Continue'
-$out = & $hermes chat -q $q --oneshot -Q -m $Model --max-turns 8 2>&1 | Out-String
+$modelArgs = @(); if ($Model) { $modelArgs = @('-m', $Model) }  # empty = the profile's model.default
+$out = & $hermes chat -q $q --oneshot -Q @modelArgs --max-turns 8 2>&1 | Out-String
 $code = $LASTEXITCODE; $sw.Stop()
 Start-Sleep -Seconds $TailSecs
 Stop-AriadneGateway

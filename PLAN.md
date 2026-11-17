@@ -105,12 +105,14 @@ first checkpoint committed.
   blocks non-local hosts and logs attempts. Patch only if neither works.
 - **Pass:** G3 green; G4 + G5 live for this plugin.
 
-### A4. Model serving on this machine
+### A4. Model serving on this machine - done 2026-11-17
 - llama-swap (pinned, checksum-verified) in `serving\` with aliases `coder`, `router`, `vision`, `embed` over
   llama.cpp or Ollama. Measure: swap time per model, tokens/s, VRAM. Try one MoE with CPU-offloaded experts.
 - **Pass:** all four aliases answer through one URL; numbers recorded; a recommendation for the 8 GB tier.
 
 ### A5. LAN provider + fallback
+- From A4: make llama-swap (profile llamaswap, aliases coder/router/embed) primary and Ollama the fallback; put the
+  vision alias behind the same gateway; bind for the LAN only after the guard allow-list and auth are in place.
 - Point Hermes at the serving gateway by alias; local Ollama as `fallback_chain`. Kill the gateway mid-session.
 - **Pass:** session continues on fallback; switch logged.
 
