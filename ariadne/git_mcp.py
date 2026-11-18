@@ -19,6 +19,9 @@ def _git(repo, *args):
     return out if p.returncode == 0 else f"git {args[0]} failed (exit {p.returncode}):\n{out}"
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "git")
+
 @server.tool()
 def git_status(repo: str) -> str:
     """Short status of the working tree (branch, changed and untracked files)."""

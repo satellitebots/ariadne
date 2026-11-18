@@ -266,3 +266,30 @@ def test_clean_output_drops_tool_previews_and_session_lines():
     raw = ("\x1b[2m│\x1b[0m \x1b[1mcalc.py\x1b[0m\n│ -    return a - b\n"
            "Fixed calc.py; tests pass.\nSession ID: 20261117_abc\n")
     assert orch._clean_output(raw) == "Fixed calc.py; tests pass."
+
+
+def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkeypatch):
+    from ariadne import activity
+    monkeypatch.setattr(activity, "LOG", env / "activity.log")
+    st = orch.Store(env / "t.db", require_gates=False)
+    tid = st.submit("x", "test")
+
+    class Server:
+        def tool(self):
+            return lambda fn: fn
+    srv = activity.instrument(Server(), "demo")
+
+    @srv.tool()
+    def add(a: int, b: int = 1) -> int:
+        """Add."""
+        return a + b
+    assert add(2, b=3) == 5 and add.__doc__ == "Add."
+    text = (env / "activity.log").read_text()
+    assert f"[task {tid}] brief: from test: x" in text
+    assert "[mcp:demo] add(2, b=3)" in text and "[mcp:demo] add done in" in text
+    tool = ("2026-11-17 22:09:26,706 INFO [local-c6] agent.tool_executor: tool terminal completed (1.66s, 74 chars)")
+    call = ("2026-11-17 17:11:13,260 INFO [local-6] agent.conversation_loop: API call #1: model=qwen3.5-9b provider=custom "
+            "in=4033 out=206 total=4239 latency=4.9s cache=4008/4033 (99%) id=x")
+    assert activity._hermes_line("coding", tool) == "22:09:26 [coding] tool terminal completed (1.66s, 74 chars)"
+    assert activity._hermes_line("coding", call) == ("17:11:13 [coding] model qwen3.5-9b call 1: 4033 tokens in, 206 out, "
+                                                     "4.9s, cached 4008/4033")

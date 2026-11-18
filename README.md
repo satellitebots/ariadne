@@ -43,6 +43,7 @@ python -m ariadne task submit "Diagram the auth flow" --flow design --session au
 python -m ariadne task approve <id>     # or: revise <id> "feedback" / cancel <id>
 python -m ariadne task approve <id> --model 2=gemma-4-12b   # change a step's model, then lock the plan
 python -m ariadne task wait <id>        # the report
+python -m ariadne watch                 # live: task events, MCP tool calls, the workers' tool and model calls
 ```
 
 **Desktop** (Hermes's desktop app: chat with live tool output, previews, a file browser; needs Node.js)

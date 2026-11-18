@@ -22,6 +22,9 @@ def pandoc_exe():
     return exe
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "export")
+
 @server.tool()
 def export_document(source: str, to: str = "docx", output: str = "") -> str:
     """Convert the file at `source` to `to` (docx, html, odt, epub, rtf, md, txt). `output` defaults to the

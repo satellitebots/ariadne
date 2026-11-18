@@ -49,6 +49,9 @@ def _guard(fn):
         return json.dumps({"error": str(e)})
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "tasks")
+
 @server.tool()
 def submit_task(text: str, gates: list[str] | None = None, workspace: str = "", flow: str = "", source: str = "mcp",
                 session: str = "") -> str:

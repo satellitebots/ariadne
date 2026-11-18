@@ -13,6 +13,7 @@
   chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
+  watch                      live activity: task events, MCP tool calls, the workers' tool and model calls
   desktop [--cwd DIR] [--build]   the Hermes desktop app on Ariadne's terminal home (needs Node; first launch builds it)
   serve | profile | flows | token     lower-level pieces
 
@@ -78,6 +79,9 @@ def main(argv=None):
         for name, home in compile_all().items():
             print(f"{name}: {home}")
         return 0
+    if cmd == "watch":
+        from . import activity
+        return activity.main(rest)
     if cmd == "resources":
         from . import resources
         return resources.main(rest)

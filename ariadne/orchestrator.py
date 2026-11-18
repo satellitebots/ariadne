@@ -114,6 +114,8 @@ class Store:
     def event(self, tid, kind, detail=""):
         with self._conn() as c:
             c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), kind, str(detail)[:4000]))
+        from .activity import log
+        log(f"task {tid}", f"{kind}: {detail}")
 
     def submit(self, text, source="cli", workspace="", flow="", session="", gates=None):
         """session: a Hermes session to continue (the caller's conversation); default: one session per task.

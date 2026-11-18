@@ -19,6 +19,9 @@ def mem():
     return _mem
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "memory")
+
 @server.tool()
 def memory_recall(query: str, limit: int = 5) -> str:
     """Search the shared memory. Returns the best matching notes with their links."""

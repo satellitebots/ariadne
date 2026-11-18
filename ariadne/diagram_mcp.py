@@ -41,6 +41,9 @@ def _first_error(text):
     return "\n".join(lines[:12])[-1500:]
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "diagram")
+
 @server.tool()
 def check_diagram(source: str) -> str:
     """Check Mermaid source. Returns 'ok' or the parse error (line and what was expected). Changes nothing."""

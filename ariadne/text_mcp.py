@@ -9,6 +9,9 @@ from . import llm, models
 server = MCPServer("ariadne-text", instructions="Draft text with a local writing model chosen in the plan.")
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "text")
+
 @server.tool()
 def generate_text(prompt: str, model: str = "", system: str = "", max_tokens: int = 1500) -> str:
     """Have `model` (a catalog model; default: the writing default) write a response to `prompt`. Returns the text.

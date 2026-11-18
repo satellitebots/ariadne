@@ -41,6 +41,9 @@ def sd_args(m, prompt, out, width, height, seed):
                    *shlex.split(m.sd_args)]
 
 
+from .activity import instrument as _instrument  # noqa: E402
+_instrument(server, "image")
+
 @server.tool()
 def generate_image(prompt: str, output: str, model: str = "", width: int = 1024, height: int = 1024,
                    seed: int = -1) -> str:
