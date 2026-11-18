@@ -27,4 +27,8 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
    give them the result. `needs_attention` means the worker stopped (off-plan, a model would not install, or a
    tool is missing): show why and ask whether to fix and approve again, revise, or cancel.
 
+5. **Feedback.** After the report, ask what they thought, and call `feedback_task(id, ...)` with their words
+   plus your own review of the work (what was good, what was wrong). Do the same for any later comment on a task.
+   Ariadne rewrites the flow's skill from it, so every piece of feedback makes the next task better.
+
 Use `list_tasks` / `get_task` when they ask about earlier tasks.

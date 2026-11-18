@@ -56,6 +56,12 @@ class Flow:
     folder: Path = None
 
     @property
+    def learned_skills(self):
+        """Skills Ariadne learned for this flow from feedback (.ariadne/skills/<flow>/<name>/SKILL.md)."""
+        d = paths.STATE / "skills" / self.name
+        return sorted(p.parent.name for p in d.glob("*/SKILL.md")) if d.exists() else []
+
+    @property
     def step_model(self):
         return self.execute_model or self.model
 
@@ -185,9 +191,19 @@ def compile_flow(fl, flows_dir=None):
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(fl.folder / "skills" / s, dst)
+    for s in fl.learned_skills:
+        install_learned_skill(fl, s)
     (home / "ariadne_flow.json").write_text(json.dumps(
         {"flow": fl.name, "plan_tools": fl.plan_tools, "blocklist": fl.blocklist}, indent=2), encoding="utf-8")
     return home
+
+
+def install_learned_skill(fl, name):
+    """Copy a learned skill (SKILL.md only, not its history) into the flow's Hermes home."""
+    src = paths.STATE / "skills" / fl.name / name / "SKILL.md"
+    dst = fl.home / "skills" / name / "SKILL.md"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def missing_requirements(fl):

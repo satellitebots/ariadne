@@ -82,6 +82,9 @@ class FakeRunner:
         self.calls.append((flow.name, phase, prompt, model))
         if phase.startswith("checkpoint"):
             return orch.RunResult("SITUATION: x\nDONE: y", 0, "log", session or "h")
+        if phase.startswith("learn"):
+            name = f"{flow.name}-lessons"
+            return orch.RunResult(f"Here it is.\n---\nname: {name}\ndescription: lessons\n---\n- keep tests green", 0, "log")
         text = self.plan if phase == "plan" else self.results.pop(0)
         return orch.RunResult(text, 0, "log")
 
@@ -105,7 +108,16 @@ def test_full_drill_brief_backbrief_signoff_execute(env):
     assert w.run_once()                                     # execute
     t = w.store.get(tid)
     assert t["status"] == "done" and "tests pass" in t["result"]
-    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute"]
+    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute", "learn:execute"]
+    # every finished task feeds the flow's learned skill, which every later run of the flow loads
+    skill = paths.STATE / "skills" / "coding" / "coding-lessons" / "SKILL.md"
+    assert skill.read_text().startswith("---\nname: coding-lessons") and "coding-lessons" in w.flows["coding"].learned_skills
+    assert (w.flows["coding"].home / "skills" / "coding-lessons" / "SKILL.md").exists()
+    # feedback after the report: recorded, and the worker rewrites the skill from it (the old one goes to history)
+    w.store.feedback(tid, "use pathlib, not os.path")
+    assert w.run_once() and "use pathlib" in run.calls[-1][2] and run.calls[-1][1] == "learn:execute"
+    assert len(list((skill.parent / "history").glob("*.md"))) == 1
+    assert not w.run_once()                                  # nothing left to learn
     assert "APPROVED PLAN" in run.calls[2][2] and "MISSION: fix it" in run.calls[2][2]
     assert run.calls[2][2].startswith("SESSION HANDOFF")      # execute starts from the plan's handoff brief
     assert "terminal" in run.calls[0][2] and "git (MCP)" in run.calls[0][2]   # planner knows the execute tools

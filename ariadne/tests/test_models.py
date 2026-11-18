@@ -46,6 +46,8 @@ class Runner:
         sid = session or f"h{len(self.calls)}"          # Hermes prints the session id it used
         if phase.startswith("checkpoint"):
             return orch.RunResult(f"SITUATION: summary {len(self.calls)}", 0, "log", sid)
+        if phase.startswith("learn"):
+            return orch.RunResult(f"---\nname: {flow.name}-lessons\ndescription: x\n---\n- lesson", 0, "log", sid)
         return orch.RunResult(self.plan if phase == "plan" else (self.results.pop(0) if self.results else "ok"), 0,
                               "log", sid)
 

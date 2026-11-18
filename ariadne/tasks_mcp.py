@@ -98,6 +98,18 @@ def revise_task(id: str, feedback: str) -> str:
 
 
 @server.tool()
+def feedback_task(id: str, feedback: str) -> str:
+    """Feedback on a task's plan, work or report, at any time (also after it is done): what was good, what was
+    wrong, preferences. The flow's skill is rewritten from it, so later tasks go better. Pass the person's words, and
+    add your own review of the work when you have one."""
+    def go():
+        store().feedback(id, feedback)
+        ensure_worker()
+        return json.dumps({"id": id, "next": "recorded; the worker updates the flow's skill"})
+    return _guard(go)
+
+
+@server.tool()
 def cancel_task(id: str) -> str:
     """Sign-off: the person cancelled the task."""
     def go():

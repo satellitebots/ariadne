@@ -16,7 +16,7 @@ plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, gi
 checks:
   - {run: "\"{python}\" -m pytest -q", when_exists: "tests"}
 max_turns: {plan: 20, execute: 40}
-run_budget: {plan: 900, execute: 1800}
+run_budget: {plan: 2700, execute: 3600}   # seconds; the 27B plans at ~2 tok/s
 browser:
   real_logins: true        # use your Chrome logins; set false for a clean temporary profile
 network:
