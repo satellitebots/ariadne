@@ -10,9 +10,16 @@ From reviews of backbriefs and runs during validation (todo app, RAG design).
 - Every step leaves its output in files. Steps on different models run in separate sessions that only get a
   summary of earlier steps, so never plan a "think only" step whose result another model has to write down.
 - Switch models only where it clearly pays: a swap costs a reload and a prefill. Trivial steps (mkdir, git
-  commit) stay on the model already loaded.
+  commit) stay on the model already loaded. One codebase or one document is one model by default; a plan
+  that hops between models (RAG build: 3 models, 5 switches) gets overridden to a single model at sign-off.
 - When the workspace already has work from an earlier run, start by checking it (smoke test) instead of
   rewriting it.
+
+- Order steps so evidence comes after the run that produces it: run the real command (ingest, ask, eval)
+  first, then write the README section that quotes its output. Never plan documentation of results before
+  the step that creates them.
+- Stay inside the brief: no extra deliverables (e.g. rendering diagrams in a coding task that did not ask for
+  them).
 
 ## Gates
 - Map every gate to the step that makes it pass, and add the check itself as a step (run the tests, render the
