@@ -110,6 +110,9 @@ def main(argv=None):
     if cmd == "park":
         from . import park
         return park.main(rest)
+    if cmd == "casestudy":
+        from . import casestudy
+        return casestudy.main(rest)
     if cmd == "stop":
         from .orchestrator import stop_all
         stopped = stop_all()

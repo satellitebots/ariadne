@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant S as Source
+    participant E as Sync Engine
+    participant P as Parser
+    participant I as Index
+
+    S ->> E: Change detected (New/Mod/Del)
+    E ->> S: Fetch content
+    E ->> P: Send content
+    P ->> P: Parse & Chunk
+    P ->> I: Upsert (Embeddings + Metadata)
+    E ->> I: Update/Delete entries

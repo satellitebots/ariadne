@@ -1,0 +1,24 @@
+erDiagram
+    DOCUMENT ||--o{ CHUNK : "contains"
+    CHUNK ||--o{ PRINCIPAL : "governed_by"
+
+    DOCUMENT {
+        string id PK
+        string source_path
+        string checksum
+        datetime last_modified
+    }
+
+    CHUNK {
+        string id PK
+        string doc_id FK
+        string text_content
+        vector dense_embedding
+        vector sparse_embedding
+        list~string~ principals
+    }
+
+    PRINCIPAL {
+        string id PK
+        string type "user | group"
+    }

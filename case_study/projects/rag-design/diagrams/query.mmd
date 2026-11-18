@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant U as User
+    participant QE as Query Engine
+    participant IDP as Identity Provider
+    participant R as Retriever
+    participant Q as Qdrant (Vector+Keyword+ACL)
+    participant G as Generator
+
+    U ->> QE: Query + Auth Token
+    QE ->> IDP: Resolve Identity (Token)
+    IDP -->> QE: Returns Principals [user_id, group_A, group_B]
+    
+    QE ->> R: Search(Query, Filter: principals IN [user_id, group_A, group_B])
+    R ->> Q: Hybrid Search (Dense + Sparse) + Principal Filter
+    Q -->> R: Top-k Chunks
+    R -->> QE: Context + Citations
+    
+    QE ->> G: Prompt(Query + Context)
+    G -->> QE: Answer
+    QE -->> U: Answer + Citations

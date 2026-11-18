@@ -1,0 +1,25 @@
+# Corpus and index data
+corpus/
+*.db
+*.sqlite
+*.index
+rag/index.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+.venv/
+venv/
+
+# Eval output
+eval/results*.json
+
+# ACL config (optional, but don't commit if it has sensitive data)
+# acl.yaml

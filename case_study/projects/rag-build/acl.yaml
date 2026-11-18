@@ -1,0 +1,18 @@
+# ACL configuration for the RAG system
+#
+# rules: maps source_path prefixes to lists of allowed principals
+# principals: maps user names to lists of group names
+
+principals:
+  alice:
+    - security
+    - platform
+  bob:
+    - platform
+
+rules:
+  "":
+    - platform
+  "concepts/security/":
+    - security
+    - platform

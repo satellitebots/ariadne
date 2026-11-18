@@ -7,7 +7,8 @@ execute, QA, report), and it surfaced most of the harness bugs that the later RA
 **Machine:** RTX 3070 Laptop (8 GB VRAM), 32 GB RAM, Windows 11. llama.cpp b12359 behind llama-swap, Hermes pinned
 at `458a0046ad`. Run date: 17 November 2026.
 
-**Result:** done. Every gate passed after 3 QA rounds: 18 tests, a README and a clean commit (`8480a7e`).
+**Result:** done. Every gate passed after 3 QA rounds: 18 tests, a README and a clean commit (`8480a7e`). The code
+the models wrote is in [projects/todo-app](projects/todo-app/).
 
 ## The brief and its gates
 

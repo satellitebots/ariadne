@@ -16,6 +16,9 @@ at `458a0046ad`. Run dates: 17-18 November 2026.
 | RAG design (design flow) | Done. About 85%, which clears the 80% bar set for it. |
 | RAG build v1 (coding flow) | In progress: QA iteration 3. The core library and 24 tests are done. The real ingest, README transcripts and eval are not done yet, held back by model swap thrash (see below). |
 
+What the models produced is checked in: the design in [projects/rag-design](projects/rag-design/) and the build so
+far in [projects/rag-build](projects/rag-build/).
+
 ![The task queue](img/term-task-list.png)
 
 ![Timeline of the run](img/timeline.png)

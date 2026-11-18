@@ -1,0 +1,49 @@
+flowchart LR
+    subgraph Sources
+        SMB[SMB Share]
+        SP[SharePoint]
+        Git[Git Repos]
+        Local[Local Drives]
+    end
+
+    subgraph Ingestion
+        Sync[Sync Engine]
+        Parser[Parser: marker]
+        Chunker[Chunker: 512t, 10% ovl]
+        Embed[Embedder: embed]
+    end
+
+    subgraph Index [Qdrant Engine]
+        direction TB
+        VS[Dense Vector Store]
+        KS[Sparse/Keyword Index]
+        ACL[ACL/Metadata Store]
+    end
+
+    subgraph Query
+        User[User]
+        QE[Query Engine]
+        IDP[Identity Provider: AD/LDAP]
+        Ret[Retriever]
+        Rank[Re-ranker: BGE]
+        Gen[Generator: qwen3.6-35b-a3b]
+    end
+
+    SMB & SP & Git & Local --> Sync
+    Sync --> Parser
+    Parser --> Chunker
+    Chunker --> Embed
+    
+    Embed --> VS
+    Chunker --> KS
+    Chunker --> ACL
+    
+    User --> QE
+    QE <--> IDP
+    QE --> Ret
+    Ret -->|Query + Principal Filter| VS & KS & ACL
+    VS & KS & ACL --> Ret
+    Ret --> Rank
+    Rank --> Gen
+    Gen --> QE
+    QE --> User

@@ -1,0 +1,52 @@
+# Golden set for RAG evaluation on Kubernetes documentation
+# Each question should be answerable from the concepts corpus.
+# expected_urls: list of kubernetes.io URLs that contain the answer
+
+questions:
+  - question: "What is a Pod in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/workloads/pods/"
+
+  - question: "What is a Container Runtime in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/architecture/container-runtime/"
+
+  - question: "What is a Node in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/architecture/node/"
+
+  - question: "What is the difference between a Deployment and a ReplicaSet?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/"
+
+  - question: "What is a Service in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/services-networking/service/"
+
+  - question: "What is ConfigMap used for?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/configuration/configmap/"
+
+  - question: "What are Labels and Selectors in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/"
+
+  - question: "What is an Namespace in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/overview/namespaces/"
+
+  - question: "What is a Volume in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/storage/volumes/"
+
+  - question: "How do you define resource requests and limits?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+
+  - question: "What is a Secret in Kubernetes?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/configuration/secret/"
+
+  - question: "What is a DaemonSet?"
+    expected_urls:
+      - "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/"
