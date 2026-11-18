@@ -1,8 +1,13 @@
 """Resource profiles: how much of this machine the local models may take.
 
-  max     everything for Ariadne: GPU memory plus ~90% of Windows shared GPU memory, high priority, model pinned in
-          RAM (no paging). Other apps will feel it.
-  shared  as much as possible while you keep working: GPU memory plus half of shared GPU memory, normal priority.
+  max     everything for Ariadne: VRAM filled to the brim, the rest of the model on the CPU in RAM, pinned there
+          (no paging), high priority. Other apps will feel it.
+  shared  as much as possible while you keep working: VRAM with a little headroom, the rest on the CPU in RAM,
+          normal priority.
+
+Neither pushes model weights into Windows "shared GPU memory": measured on an 8 GB RTX 3070 with the 27B, placing
+14.6 GB there made decoding ~6x slower (0.35 vs 2.17 tok/s) because the GPU reads it over PCIe on every token. RAM
+is used by the CPU half of the model instead - same memory, much faster.
   light   a budget: at most 80% of GPU memory and 50% of RAM for a model, low priority; models that do not fit
           that budget are not offered to the planner.
 
@@ -76,19 +81,19 @@ def budget(profile, vram=None, ram=None):
     ram = ram_gb() if ram is None else ram
     shared = shared_gpu_gb(ram)
     if profile == "max":
-        fit_mib, prio, extra, cap = -int(shared * 0.9 * 1024), 2, "-lm mmap+mlock", vram + ram * 0.9
+        fit_mib, prio, extra, cap = 256, 2, "-lm mmap+mlock", vram + ram * 0.9
     elif profile == "light":
         fit_mib, prio, extra, cap = int(vram * 0.2 * 1024), -1, "", vram * 0.8 + ram * 0.5
     else:
-        fit_mib, prio, extra, cap = -int(shared * 0.5 * 1024), 0, "", vram + ram * 0.75
+        fit_mib, prio, extra, cap = 768, 0, "", vram + ram * 0.75
     args = f"--fit-target {fit_mib} --prio {prio}" + (f" {extra}" if extra else "")
     return {"profile": profile, "vram_gb": vram, "ram_gb": ram, "shared_gpu_gb": shared,
             "fit_args": args, "max_model_gb": round(cap, 1)}
 
 
 def describe(b):
-    use = {"max": "GPU memory + ~90% of shared GPU memory, high priority, model pinned in RAM",
-           "shared": "GPU memory + half of shared GPU memory, normal priority",
+    use = {"max": "VRAM to the brim, the rest on the CPU in RAM (pinned), high priority",
+           "shared": "VRAM with headroom, the rest on the CPU in RAM, normal priority",
            "light": "at most 80% of GPU memory and 50% of RAM, low priority"}[b["profile"]]
     return (f"{b['profile']}: {use}\n  machine: {b['vram_gb']} GB GPU, {b['ram_gb']} GB RAM "
             f"({b['shared_gpu_gb']} GB shareable with the GPU)\n  llama-server: {b['fit_args']}\n"

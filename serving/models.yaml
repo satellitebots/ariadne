@@ -26,7 +26,8 @@ context:
 
 # How much of the machine the models may take (ariadne/resources.py): max | shared | light.
 # Change it any time with `python -m ariadne resources <profile>`; the worker applies it between tasks.
-# Models with --fit on are placed by llama.cpp: GPU first, then (max/shared) Windows shared GPU memory, then CPU.
+# Models with --fit on are placed by llama.cpp: GPU first, the rest on the CPU in RAM (never in Windows shared GPU
+# memory: measured ~6x slower for the 27B on an 8 GB card).
 resources:
   profile: shared
 
