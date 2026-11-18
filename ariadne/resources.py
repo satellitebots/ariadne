@@ -1,7 +1,7 @@
 """Resource profiles: how much of this machine the local models may take.
 
   max     everything for Ariadne: VRAM filled to the brim, the rest of the model on the CPU in RAM, pinned there
-          (no paging), high priority. Other apps will feel it.
+          (no paging), high priority - but model weights get at most 80% of RAM, so Windows keeps room.
   shared  as much as possible while you keep working: VRAM with a little headroom, the rest on the CPU in RAM,
           normal priority.
 
@@ -23,6 +23,9 @@ from . import paths
 
 PROFILES = ("max", "shared", "light")
 CHOICE = paths.STATE / "resources"
+LIMITS = paths.STATE / "limits.json"
+MAX_GPU_SHARE = 1.0   # max profile: all of GPU memory (llama.cpp keeps its own 256 MiB margin)
+MAX_RAM_SHARE = 0.8   # max profile: at most this share of RAM for model weights
 
 
 def vram_gb():
@@ -81,7 +84,10 @@ def budget(profile, vram=None, ram=None):
     ram = ram_gb() if ram is None else ram
     shared = shared_gpu_gb(ram)
     if profile == "max":
-        fit_mib, prio, extra, cap = 256, 2, "-lm mmap+mlock", vram + ram * 0.9
+        # Everything for Ariadne, inside one hard limit: all of the GPU, but at most 80% of RAM for model weights, so
+        # Windows and the rest of the machine keep room (pinning 90% of RAM crashed the PC).
+        fit_mib, prio, extra = max(256, int(vram * (1 - MAX_GPU_SHARE) * 1024)), 2, "-lm mmap+mlock"
+        cap = vram * MAX_GPU_SHARE + ram * MAX_RAM_SHARE
     elif profile == "light":
         fit_mib, prio, extra, cap = int(vram * 0.2 * 1024), -1, "", vram * 0.8 + ram * 0.5
     else:
@@ -92,12 +98,31 @@ def budget(profile, vram=None, ram=None):
 
 
 def describe(b):
-    use = {"max": "VRAM to the brim, the rest on the CPU in RAM (pinned), high priority",
+    use = {"max": f"all of GPU memory, at most {MAX_RAM_SHARE:.0%} of RAM (pinned), high priority",
            "shared": "VRAM with headroom, the rest on the CPU in RAM, normal priority",
            "light": "at most 80% of GPU memory and 50% of RAM, low priority"}[b["profile"]]
     return (f"{b['profile']}: {use}\n  machine: {b['vram_gb']} GB GPU, {b['ram_gb']} GB RAM "
             f"({b['shared_gpu_gb']} GB shareable with the GPU)\n  llama-server: {b['fit_args']}\n"
             f"  largest model allowed: {b['max_model_gb']} GB")
+
+
+def detect_at_boot(profile=None, log=print):
+    """Measure this machine and record what the profile allows (.ariadne/limits.json). Run when the model server or
+    the worker starts, so limits follow the hardware actually present (a new GPU, more RAM, another machine)."""
+    import json
+    import time
+    from . import models
+    b = budget(profile or current(models.load().resources))
+    if not b["vram_gb"]:
+        log("limits: no NVIDIA GPU detected; models run on the CPU")
+    b["detected"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        LIMITS.parent.mkdir(parents=True, exist_ok=True)
+        LIMITS.write_text(json.dumps(b, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    log("limits: " + describe(b).replace("\n", "\n        "))
+    return b
 
 
 def main(argv):

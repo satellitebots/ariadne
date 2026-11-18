@@ -88,6 +88,8 @@ def start(listen="127.0.0.1:8090", wait=60):
     swap = deps.find_bin("llama-swap", "llama-swap")
     if not swap:
         sys.exit("llama-swap is missing: run  python -m ariadne install")
+    from .resources import detect_at_boot
+    detect_at_boot()  # measure the machine now: the profile's GPU/RAM limits follow the hardware actually present
     cfg = render_config()
     paths.ensure()
     # -watch-config: a model fetched later (after a sign-off) is picked up when render_config() rewrites the file.

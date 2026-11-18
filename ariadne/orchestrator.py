@@ -1111,6 +1111,11 @@ def serve(idle_exit=1800):
         return 2
     print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} worker up (pid {os.getpid()})", flush=True)
     WORKER_PID.write_text(json.dumps({"pid": os.getpid(), "started": time.time()}))
+    try:
+        from .resources import detect_at_boot
+        detect_at_boot(log=lambda s: print(s, flush=True))  # GPU/RAM limits for this machine, logged at every start
+    except Exception as e:
+        print(f"limits: could not measure this machine ({e})", flush=True)
     for name, home in flowlib.compile_all().items():
         print(f"  flow {name} -> {home}", flush=True)
         stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it
