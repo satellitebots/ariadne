@@ -9,6 +9,8 @@ works step by step, checks every gate, and iterates until they pass. Everything 
 
 **Status:** coding flow beta; design (Mermaid), writing and content flows shipped, not yet validated.
 
+**[Wiki](wiki/Home.md)**: concepts, architecture, jobs, operations, decisions, and where things stand.
+
 ![Architecture](docs/img/architecture.png)
 
 ## Quick start
