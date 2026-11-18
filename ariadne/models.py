@@ -18,7 +18,7 @@ PINS = paths.STATE / "model-pins.json"
 DEFAULT_ARGS = "-fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"          # agents also get -c <context.window>
 GENERATE_ARGS = "-c 16384 -fa on --jinja -ngl 99"
 CONTEXT = {"window": 65536, "compress_at": 30000}
-GPU = {"shared_gb": 0}
+RESOURCES = "shared"
 KINDS = ("agent", "generate", "image", "embed")
 
 
@@ -83,7 +83,19 @@ class Catalog:
     models: dict
     defaults: dict
     context: dict = field(default_factory=lambda: dict(CONTEXT))
-    gpu: dict = field(default_factory=lambda: dict(GPU))
+    resources: str = RESOURCES                   # default profile; the person's choice is in .ariadne/resources
+    budget: dict = None                          # resources.budget() for the active profile, filled on first use
+
+    def active_budget(self):
+        if self.budget is None:
+            from . import resources
+            self.budget = resources.budget(resources.current(self.resources))
+        return self.budget
+
+    def fits(self, m):
+        """Whether the active resource profile lets this model run (light caps model size)."""
+        b = self.active_budget()
+        return not b["max_model_gb"] or m.size_gb <= b["max_model_gb"]
 
     def get(self, name):
         if name not in self.models:
@@ -94,8 +106,9 @@ class Catalog:
         return self.defaults.get(role) or fallback
 
     def pickable(self):
-        """Models a plan may assign to a step (not the router or embeddings)."""
-        return [m for m in self.models.values() if m.kind in ("agent", "generate", "image") and "router" not in m.roles]
+        """Models a plan may assign to a step (not the router or embeddings), within the resource profile."""
+        return [m for m in self.models.values() if m.kind in ("agent", "generate", "image") and "router" not in m.roles
+                and (m.kind == "image" or self.fits(m))]
 
     def text(self):
         """The planner's menu: mixture-of-experts models first (cheaper prefill and generation here)."""
@@ -122,15 +135,13 @@ def load(path=None):
     for m in models.values():
         if m.kind == "agent" and re.search(r"(^|\s)(-c|--ctx-size)\s", m.args):
             raise ModelError(f"model {m.name}: set the window in context.window, not with -c in args")
-    gpu = {**GPU, **(data.get("gpu") or {})}
-    if not 0 <= float(gpu["shared_gb"]) <= 64:
-        raise ModelError("gpu.shared_gb must be between 0 and 64")
-    return Catalog(models, defaults, {k: int(v) for k, v in context.items()}, gpu)
+    return Catalog(models, defaults, {k: int(v) for k, v in context.items()},
+                   str((data.get("resources") or {}).get("profile") or RESOURCES))
 
 
 # ---------- llama-swap entries ----------
 
-def swap_entries(catalog=None):
+def swap_entries(catalog=None, budget=None):
     """llama-swap `models:` entries for every agent/generate/embed model (they start only when asked for)."""
     from .kvcache import KV_DIR
     cat = catalog or load()
@@ -141,9 +152,8 @@ def swap_entries(catalog=None):
         args = m.args or (GENERATE_ARGS if m.kind == "generate" else DEFAULT_ARGS)
         if m.kind == "agent":
             args = f"-c {cat.context['window']} " + args
-        if "--fit on" in args and float(cat.gpu["shared_gb"]) > 0:
-            # a negative --fit-target margin lets the placement use that much shared GPU memory past VRAM
-            args += f" --fit-target -{int(float(cat.gpu['shared_gb']) * 1024)}"  # sessions can park their KV cache on disk (kvcache.py)
+        if "--fit on" in args:  # placement and priority from the resource profile (resources.py)
+            args += " " + (budget or cat.active_budget())["fit_args"]  # sessions can park their KV cache on disk (kvcache.py)
             args += f' --slot-save-path "{KV_DIR.as_posix()}"'
         out[m.name] = {"cmd": f'${{server}} ${{common}} {args} -m "{m.gguf().as_posix()}"', "ttl": 900}
     return out

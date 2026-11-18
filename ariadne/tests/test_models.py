@@ -102,9 +102,23 @@ def test_swap_entries_serve_text_models_and_can_park_slots():
     assert "qwen3.8-27b" in e and "router" in e and "z-image-turbo" not in e
     assert "--fit on" in e["qwen3.8-27b"]["cmd"] and "--slot-save-path" in e["qwen3.8-27b"]["cmd"]
     assert "-c 65536" in e["qwen3.8-27b"]["cmd"] and "-c 16384" in e["router"]["cmd"]
-    assert "--fit-target -6144" in e["qwen3.8-27b"]["cmd"]          # 6 GB into shared GPU memory
     assert "--fit-target" not in e["router"]["cmd"]                 # models that fit stay in VRAM
+    from ariadne import resources
+    for profile, want in (("max", "--fit-target -14745 --prio 2 -lm mmap+mlock"), ("shared", "--fit-target -8192 --prio 0"),
+                          ("light", "--fit-target 1638 --prio -1")):
+        b = resources.budget(profile, vram=8, ram=32)
+        assert want in modellib.swap_entries(budget=b)["qwen3.8-27b"]["cmd"], profile
+    light = resources.budget("light", vram=8, ram=32)
+    assert light["max_model_gb"] == 22.4                            # 80% of 8 GB GPU + 50% of 32 GB RAM
     assert "--slot-save-path" not in e["embed"]["cmd"]
+
+
+def test_light_profile_keeps_big_models_off_the_menu(monkeypatch):
+    from ariadne import resources
+    cat = modellib.load()
+    cat.budget = resources.budget("light", vram=8, ram=16)          # 6.4 + 8 = 14.4 GB
+    names = [m.name for m in cat.pickable()]
+    assert "qwen3.5-9b" in names and "qwen3.8-27b" not in names and "qwen3.6-35b-a3b" not in names
 
 
 def test_flow_model_must_be_an_agent(tmp_path):

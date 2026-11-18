@@ -27,6 +27,20 @@ def render_config():
     return CONFIG
 
 
+def apply_if_changed():
+    """Re-render the model server config when it would change (e.g. a new resource profile). llama-swap reloads it
+    and restarts its models, so only call this between tasks."""
+    if not CONFIG.exists():
+        return False
+    before = CONFIG.read_text(encoding="utf-8")
+    render_config()
+    changed = CONFIG.read_text(encoding="utf-8") != before
+    if not changed:
+        return False
+    print("model server config updated (resource profile or catalog)", flush=True)
+    return True
+
+
 def _pid():
     try:
         return json.loads(PID_FILE.read_text())["pid"]

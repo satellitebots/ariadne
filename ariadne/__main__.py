@@ -5,6 +5,7 @@
                              --models: also fetch the default models now instead of when a plan first picks them)
   models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
   kv [list | drop SESSION]   parked KV caches, per session, step and model
+  resources [max|shared|light]   how much of the machine the models may take (applied between tasks)
   up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
@@ -77,6 +78,9 @@ def main(argv=None):
         for name, home in compile_all().items():
             print(f"{name}: {home}")
         return 0
+    if cmd == "resources":
+        from . import resources
+        return resources.main(rest)
     if cmd == "kv":
         from . import kvcache
         return kvcache.main(rest)

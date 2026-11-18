@@ -24,12 +24,11 @@ context:
   window: 65536
   compress_at: 30000
 
-# GPU memory. Models with --fit on are placed by llama.cpp: as much as fits on the GPU, the rest on the CPU.
-# shared_gb lets the placement go past the card's VRAM by that much into Windows "shared GPU memory" (system RAM
-# the driver maps for the GPU; needs the NVIDIA "CUDA - Sysmem Fallback Policy" left at its default, which allows
-# it). More layers then run on the GPU, reading the overflow over PCIe. 6 GB = ~38% of 15.9 GB shared. 0 = VRAM only.
-gpu:
-  shared_gb: 6
+# How much of the machine the models may take (ariadne/resources.py): max | shared | light.
+# Change it any time with `python -m ariadne resources <profile>`; the worker applies it between tasks.
+# Models with --fit on are placed by llama.cpp: GPU first, then (max/shared) Windows shared GPU memory, then CPU.
+resources:
+  profile: shared
 
 defaults:
   coding: qwen3.8-27b

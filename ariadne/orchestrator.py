@@ -795,6 +795,12 @@ class Worker:
         """Before step 1: every tool the plan needs is there and every locked model is installed (fetched now if
         not; the sign-off covered it). Returns what stops the task, or ''."""
         gaps = missing_tools(mp, flow, self.catalog)
+        too_big = [n for n in needed_models(mp, self.catalog) if not self.catalog.fits(self.catalog.get(n))
+                   and self.catalog.get(n).kind != "image"]
+        if too_big:
+            b = self.catalog.active_budget()
+            gaps.append(f"{', '.join(too_big)} too large for the '{b['profile']}' resource profile "
+                        f"(max {b['max_model_gb']} GB; python -m ariadne resources shared)")
         if gaps:
             return "Execution did not start; missing: " + "; ".join(gaps) + ". Fix that, then approve again."
         from . import models as modellib
@@ -1022,6 +1028,11 @@ def serve(idle_exit=1800):
             if _code_stamp() > stamp:  # updated code or config: hand over to a fresh worker between tasks
                 restart = True
                 return 0
+            try:  # between tasks: apply a new resource profile (restarts the model servers)
+                from . import serve as model_server
+                model_server.apply_if_changed()
+            except (Exception, SystemExit) as e:
+                print(f"could not apply the resource profile: {e}", flush=True)
             if any(t["status"] in ("new", "approved") for t in w.store.list(50)):
                 if not ensure_llm():
                     print("local models are not reachable; waiting", flush=True)
