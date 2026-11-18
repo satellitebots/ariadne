@@ -922,7 +922,9 @@ class Worker:
                 self.checkpoint(t, flow, ws, agent, qa,
                                 extra=("QA RESULTS (put them under OPEN):\n" + "\n".join(failures)) if failures else "")
                 if not failures:
-                    self.store.event(t["id"], "checks", "passed" if flow.checks else "none defined")
+                    has_cmds = flow.checks or any(g["type"] == "run" for g in json.loads(t.get("gates") or "[]"))
+                    self.store.event(t["id"], "checks", "passed (every gate)" if has_cmds else
+                                     "passed (review gates only; no command gates)")
                     self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]), learn_model=agent)
                     return
                 self.store.event(t["id"], "checks", f"failed: {failures[0][:300]}")
