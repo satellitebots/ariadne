@@ -252,15 +252,18 @@ class Store:
         with new feedback to learn from (status unchanged, returned with job='learn')."""
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
+            # Feedback first: a lesson learned now improves the very next task.
+            lr = c.execute("SELECT id FROM tasks WHERE learn=1 AND flow != '' AND status NOT IN "
+                           "('new','approved','planning','executing') ORDER BY updated LIMIT 1").fetchone()
+            if lr:
+                c.execute("UPDATE tasks SET learn=0 WHERE id=?", (lr["id"],))
+                c.execute("COMMIT")
+                return dict(self.get(lr["id"], events=False), job="learn")
             r = c.execute("SELECT id, status FROM tasks WHERE status IN ('new','approved') "
                           "ORDER BY updated LIMIT 1").fetchone()
             if not r:
-                lr = c.execute("SELECT id FROM tasks WHERE learn=1 AND flow != '' AND status NOT IN "
-                               "('new','approved','planning','executing') ORDER BY updated LIMIT 1").fetchone()
-                if lr:
-                    c.execute("UPDATE tasks SET learn=0 WHERE id=?", (lr["id"],))
                 c.execute("COMMIT")
-                return dict(self.get(lr["id"], events=False), job="learn") if lr else None
+                return None
             to = "planning" if r["status"] == "new" else "executing"
             c.execute("UPDATE tasks SET status=?, updated=? WHERE id=?", (to, time.time(), r["id"]))
             c.execute("COMMIT")
