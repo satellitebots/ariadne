@@ -34,8 +34,23 @@ def test_desktop_runtime_overrides():
     """`ariadne desktop` points the app at our runtime through these env vars; without them it runs its installer."""
     electron = paths.UPSTREAM / "apps" / "desktop" / "electron"
     src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in electron.glob("*.ts"))
-    for var in ("HERMES_DESKTOP_HERMES_ROOT", "HERMES_DESKTOP_PYTHON"):
+    for var in ("HERMES_DESKTOP_HERMES_ROOT", "HERMES_DESKTOP_PYTHON", "HERMES_DESKTOP_USER_DATA_DIR",
+                "HERMES_DESKTOP_APP_NAME"):
         assert f"process.env.{var}" in src, f"Hermes Desktop no longer reads {var}"
+
+
+def test_branding_overlay_fits_the_pin():
+    """Every edit in desktop/branding.json still matches upstream exactly as many times as it says."""
+    import json
+    from ariadne import desktop
+    b = json.loads(desktop.BRANDING.read_text(encoding="utf-8"))
+    for e in b["edits"]:
+        text = (paths.UPSTREAM / e["file"]).read_text(encoding="utf-8")
+        assert text.count(e["old"]) == e["count"], f"{e['file']}: {e['why']}"
+    for dest, src in b["assets"].items():
+        assert (paths.UPSTREAM / dest).exists(), f"upstream asset {dest} is gone"
+        assert (desktop.ASSETS / src).exists(), f"desktop/assets/{src} missing"
+    from hermes_cli.main_desktop import _desktop_launch_env  # noqa: F401 -- launch reuses Hermes' launcher env
 
 
 def test_config_keys_we_set():

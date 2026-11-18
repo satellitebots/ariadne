@@ -1,0 +1,61 @@
+{
+  "_doc": "Ariadne's overlay on the Hermes desktop app. Applied to a throwaway copy of upstream at the pinned commit; upstream/ is never touched. Every edit states how many matches it expects; if a Hermes bump moves one, the build stops and names it. Keep this cosmetic plus the local-only lock: never rename HERMES_* env vars, config keys, folders or protocol.",
+  "name": "Ariadne",
+  "env": {
+    "HERMES_DESKTOP_APP_NAME": "Ariadne",
+    "ARIADNE_LOCAL_ONLY": "1"
+  },
+  "assets": {
+    "apps/desktop/assets/icon.ico": "icon.ico",
+    "apps/desktop/assets/icon.png": "icon.png",
+    "apps/desktop/assets/icon-dark.ico": "icon-dark.ico",
+    "apps/desktop/assets/icon-dark.png": "icon-dark.png",
+    "apps/desktop/public/nous-girl.png": "mark-light.png",
+    "apps/desktop/public/nous-girl-dark.png": "mark-dark.png",
+    "apps/desktop/public/apple-touch-icon.png": "apple-touch-icon.png"
+  },
+  "edits": [
+    {
+      "why": "product name, data folder and appId: Ariadne never shares state with a stock Hermes install",
+      "file": "apps/desktop/product-identity.cjs",
+      "old": "'': { display: 'Hermes', kebab: 'hermes', pascal: 'Hermes' },",
+      "new": "'': { display: 'Ariadne', kebab: 'ariadne', pascal: 'Ariadne' },",
+      "count": 1
+    },
+    {
+      "why": "appId namespace",
+      "file": "apps/desktop/product-identity.cjs",
+      "old": "appId: `com.nousresearch.${name.kebab}${kebabSuffix}`,",
+      "new": "appId: `com.satellitebots.${name.kebab}${kebabSuffix}`,",
+      "count": 1
+    },
+    {
+      "why": "keep the executable file Hermes.exe so Hermes' own build pipeline still finds and verifies the pack",
+      "file": "apps/desktop/product-identity.cjs",
+      "old": "windowsExecutableName: kebabSuffix ? cliName : displayName,",
+      "new": "windowsExecutableName: kebabSuffix ? cliName : 'Hermes',",
+      "count": 1
+    },
+    {
+      "why": "window title",
+      "file": "apps/desktop/index.html",
+      "old": "<title>Hermes</title>",
+      "new": "<title>Ariadne</title>",
+      "count": 1
+    },
+    {
+      "why": "the app's own name in UI copy (Hermes the engine keeps its name)",
+      "file": "apps/desktop/src/i18n/en.ts",
+      "old": "Hermes Desktop",
+      "new": "Ariadne",
+      "count": 9
+    },
+    {
+      "why": "local-only lock: if Ariadne's runtime is not usable, fail with a clear error instead of falling through to the installer or a remote gateway",
+      "file": "apps/desktop/electron/main.ts",
+      "old": "\n  // 2. Development source",
+      "new": "\n  if (process.env.ARIADNE_LOCAL_ONLY === '1') {\n    throw new Error(\n      `Ariadne's local Hermes runtime is not usable (root ${overrideRoot || 'unset'}, python ${process.env.HERMES_DESKTOP_PYTHON || 'unset'}). Run: python -m ariadne doctor`\n    )\n  }\n\n  // 2. Development source",
+      "count": 1
+    }
+  ]
+}

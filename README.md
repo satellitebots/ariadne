@@ -58,12 +58,20 @@ python -m ariadne chat                            # or talk it through with Herm
 
 ### Desktop
 
-The [Hermes desktop app](upstream/apps/desktop/README.md) on Ariadne's own setup: chat with live tool output,
-side-by-side previews of what the worker produced (diagrams, docs, images, diffs), a file browser, and voice.
+Ariadne Desktop is the [Hermes desktop app](upstream/apps/desktop/README.md), rebranded and locked to your local
+runtime: chat with live tool output, side-by-side previews of what the worker produced (diagrams, docs, images,
+diffs), a file browser, and voice.
 
 ```sh
 python -m ariadne desktop --cwd C:\path\to\repo   # first launch builds the app (needs Node.js; a few minutes)
+python -m ariadne desktop --build                 # rebuild (after swapping artwork in desktop/assets/)
 ```
+
+It opens straight into chat: no setup screen, no gateway URL, no installer. If the local runtime is broken it says
+so and stops, instead of offering to install or connect elsewhere. The app's state lives in `.ariadne/desktop-data`,
+separate from any stock Hermes install. Branding is `desktop/branding.json` plus `desktop/assets/`, applied to a
+throwaway copy of Hermes at the pinned commit (`upstream/` is never edited); every edit states how many places it
+expects to change, so a Hermes update that moves one stops the build and names it.
 
 Then just ask in the chat: *"Give Ariadne a task: add a --verbose flag to the CLI in this repo. Gates: pytest
 passes; README documents the flag."* The app's assistant submits it, shows you the backbrief, and waits for your

@@ -50,23 +50,13 @@ def _profile():
 def _desktop(rest):
     """Hermes Desktop against .hermes-home (the ariadne-tasks skill and tasks MCP server) and the pinned upstream:
     chat with streaming tool output, previews of what the worker produced, a file browser."""
-    import shutil
-    if not shutil.which("node"):
-        sys.exit("Hermes Desktop needs Node.js: python -m ariadne install --system")
-    cwd = rest[rest.index("--cwd") + 1] if "--cwd" in rest else os.getcwd()
+    from . import desktop
+    cwd = os.path.abspath(rest[rest.index("--cwd") + 1]) if "--cwd" in rest else os.getcwd()
     _profile()  # Ariadne's config and skills for the app, restored on every launch (onboarding may have changed them)
-    # npm_config_* from a parent npm/npx process makes the pinned pnpm's preinstall check fail; start clean.
-    env = {k: v for k, v in os.environ.items() if not k.lower().startswith("npm_")}
-    env["HERMES_HOME"] = str(paths.GATEWAY_HOME)
-    # Desktop's runtime ladder: HERMES_DESKTOP_HERMES_ROOT wins only if it finds an interpreter for that root
-    # (the root's own .venv, or HERMES_DESKTOP_PYTHON). Ours lives in Ariadne's venv, not upstream/.venv;
-    # without this the app falls through to its first-run installer and clones a second Hermes.
-    env["HERMES_DESKTOP_PYTHON"] = str(paths.HERMES_EXE.with_name("python.exe" if os.name == "nt" else "python"))
-    args = [str(paths.HERMES_EXE), "desktop", "--hermes-root", str(paths.UPSTREAM), "--cwd", cwd, "--local"]
-    if "--build" in rest:
-        args.append("--force-build")
-    print(f"Hermes Desktop on {paths.GATEWAY_HOME} (workspace {cwd}); the first launch builds the app, which takes minutes")
-    return subprocess.call(args, env=env)
+    if "--build-only" in rest:
+        print(desktop.build(force=True))
+        return 0
+    return desktop.launch(cwd, rebuild="--build" in rest)
 
 
 def main(argv=None):
