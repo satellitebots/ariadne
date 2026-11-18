@@ -270,7 +270,7 @@ def test_clean_output_drops_tool_previews_and_session_lines():
 
 def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkeypatch):
     from ariadne import activity
-    monkeypatch.setattr(activity, "LOG", env / "activity.log")
+    monkeypatch.setattr(activity, "LOG_DIR", env)
     st = orch.Store(env / "t.db", require_gates=False)
     tid = st.submit("x", "test")
 
@@ -284,7 +284,7 @@ def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkey
         """Add."""
         return a + b
     assert add(2, b=3) == 5 and add.__doc__ == "Add."
-    text = (env / "activity.log").read_text()
+    text = activity.log_file().read_text()
     assert f"[task {tid}] brief: from test: x" in text
     assert "[mcp:demo] add(2, b=3)" in text and "[mcp:demo] add done in" in text
     tool = ("2026-11-17 22:09:26,706 INFO [local-c6] agent.tool_executor: tool terminal completed (1.66s, 74 chars)")
@@ -293,3 +293,10 @@ def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkey
     assert activity._hermes_line("coding", tool) == "22:09:26 [coding] tool terminal completed (1.66s, 74 chars)"
     assert activity._hermes_line("coding", call) == ("17:11:13 [coding] model qwen3.5-9b call 1: 4033 tokens in, 206 out, "
                                                      "4.9s, cached 4008/4033")
+    # one file per day, the two newest kept
+    for day in ("2026-11-14", "2026-11-15", "2026-11-16"):
+        activity.log_file(day).write_text("old\n")
+    activity.log_file().unlink()
+    activity.log("test", "new day")
+    assert sorted(f.name for f in env.glob("activity-*.log"))[0] == "activity-2026-11-16.log"
+    assert len(list(env.glob("activity-*.log"))) == 2

@@ -1,33 +1,58 @@
-"""Activity log: one place to see what Ariadne is doing right now.
+"""Activity log: everything Ariadne does, in one place.
 
-Everything lands in .ariadne/logs/activity.log:
-  - task events (brief, route, plan, checkpoints, steps, QA, KV parking, reports) from the task store
+Always written to a log file - .ariadne/logs/activity-YYYY-MM-DD.log, one file per day, the two newest kept
+(older ones are deleted, so at most ~48 hours are on disk):
+  - task events (brief, gates, route, plan, checkpoints, steps, QA, KV parking, reports)
   - every call to Ariadne's MCP servers (tasks, memory, git, diagram, image, text, export): tool, arguments, time
-`python -m ariadne watch` follows that file live, merged with the Hermes workers' own tool calls and model calls
-(each flow home's logs/agent.log), so you can watch a task step by step.
+
+`python -m ariadne watch` shows it live in a terminal, merged with the worker's output, the model server's log, and
+each Hermes worker's tool calls, model calls (tokens, latency, cache hits), warnings and errors.
+`--watch` on any command opens that in its own terminal window; `python -m ariadne watch --always` makes every
+run open it (settings in .ariadne/settings.json; `--never` turns it off).
 """
 import functools
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
 from . import paths
 
-LOG = paths.LOGS / "activity.log"
+LOG_DIR = paths.LOGS
+KEEP_DAYS = 2
+SETTINGS = paths.STATE / "settings.json"
+WATCH_PID = paths.STATE / "watch.pid"
 _lock = threading.Lock()
 
 
+def log_file(day=None):
+    return LOG_DIR / f"activity-{day or time.strftime('%Y-%m-%d')}.log"
+
+
+def _prune():
+    files = sorted(LOG_DIR.glob("activity-*.log"))
+    for f in files[:-KEEP_DAYS]:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
 def log(source, message):
-    """Append one line: 'HH:MM:SS [source] message' (first line of the message, capped)."""
+    """Append one line: 'HH:MM:SS [source] message' (first line of the message, capped) to today's file."""
     line = str(message).strip().splitlines()[0][:300] if str(message).strip() else ""
     try:
-        LOG.parent.mkdir(parents=True, exist_ok=True)
-        with _lock, open(LOG, "a", encoding="utf-8") as f:
-            f.write(f"{time.strftime('%H:%M:%S')} [{source}] {line}\n")
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        f = log_file()
+        new_day = not f.exists()
+        with _lock, open(f, "a", encoding="utf-8") as out:
+            out.write(f"{time.strftime('%H:%M:%S')} [{source}] {line}\n")
+        if new_day:
+            _prune()
     except OSError:
         pass
 
@@ -65,11 +90,78 @@ def instrument(server, name):
     return server
 
 
+# ---------- settings and the terminal window ----------
+
+def settings():
+    try:
+        return json.loads(SETTINGS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def set_setting(key, value):
+    s = settings()
+    s[key] = value
+    paths.ensure()
+    SETTINGS.write_text(json.dumps(s, indent=1), encoding="utf-8")
+
+
+def _alive(pid):
+    if not pid:
+        return False
+    if paths.WINDOWS:
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def open_window():
+    """Open a terminal window running `python -m ariadne watch` (once; reuses an open one)."""
+    try:
+        if _alive(int(WATCH_PID.read_text().strip())):
+            return False
+    except (OSError, ValueError):
+        pass
+    py, root = str(paths.VENV_PY if paths.VENV_PY.exists() else sys.executable), str(paths.ROOT)
+    env = dict(os.environ, PYTHONPATH=root, PYTHONIOENCODING="utf-8")
+    watch = [py, "-m", "ariadne", "watch", "--history", "40"]
+    if paths.WINDOWS:
+        p = subprocess.Popen(["powershell", "-NoExit", "-Command",
+                              f"$host.UI.RawUI.WindowTitle = 'Ariadne activity'; & '{py}' -m ariadne watch --history 40"],
+                             cwd=root, env=env, creationflags=subprocess.CREATE_NEW_CONSOLE)
+    elif sys.platform == "darwin":
+        cmd = f"cd '{root}' && PYTHONPATH='{root}' '{py}' -m ariadne watch --history 40"
+        p = subprocess.Popen(["osascript", "-e", f'tell application "Terminal" to do script "{cmd}"'])
+    else:
+        term = next((t for t in ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm") if shutil.which(t)), None)
+        if not term:
+            print("no terminal emulator found; run: python -m ariadne watch", flush=True)
+            return False
+        p = subprocess.Popen([term, "--", *watch] if term == "gnome-terminal" else [term, "-e", " ".join(watch)],
+                             cwd=root, env=env)
+    WATCH_PID.write_text(str(p.pid))
+    return True
+
+
+def maybe_open_window():
+    """Open the activity window if the person asked for it on every run."""
+    if settings().get("watch_window"):
+        try:
+            open_window()
+        except OSError as e:
+            print(f"could not open the activity window: {e}", flush=True)
+
+
 # ---------- watch ----------
 
 _TOOL = re.compile(r"^\S+ (\d\d:\d\d:\d\d).*agent\.tool_executor: tool (\S+) (completed|failed)\s*\(([^)]*)\)")
 _CALL = re.compile(r"^\S+ (\d\d:\d\d:\d\d).*API call #(\d+): model=(\S+).*?in=(\d+) out=(\d+).*?latency=([\d.]+s)"
                    r"(?:.*?cache=(\d+)/(\d+))?")
+_WARN = re.compile(r"^\S+ (\d\d:\d\d:\d\d)\S* (WARNING|ERROR|CRITICAL) (.*)$")
 
 
 def _hermes_line(flow, line):
@@ -81,31 +173,44 @@ def _hermes_line(flow, line):
         cache = f", cached {m.group(7)}/{m.group(8)}" if m.group(7) else ""
         return (f"{m.group(1)} [{flow}] model {m.group(3)} call {m.group(2)}: {m.group(4)} tokens in, "
                 f"{m.group(5)} out, {m.group(6)}{cache}")
+    m = _WARN.match(line)
+    if m:
+        return f"{m.group(1)} [{flow}] {m.group(2).lower()}: {m.group(3)[:240]}"
     return None
 
 
+def _plain(tag):
+    return lambda line: f"{time.strftime('%H:%M:%S')} [{tag}] {line}" if line.strip() else None
+
+
 def _sources():
-    out = [("", LOG)]
+    out = [(lambda line: line, log_file()), (_plain("worker"), LOG_DIR / "worker.log"),
+           (_plain("models"), LOG_DIR / "llama-swap.log")]
     for home in sorted(paths.HOMES.glob("*")) if paths.HOMES.exists() else []:
-        out.append((home.name, home / "logs" / "agent.log"))
+        out.append((functools.partial(_hermes_line, home.name), home / "logs" / "agent.log"))
     return out
 
 
-def watch(history=20, poll=1.0, out=sys.stdout):
-    """Follow the activity log and the workers' tool and model calls until Ctrl+C."""
-    if LOG.exists():
-        for line in LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-history:]:
+def watch(history=20, poll=1.0, out=sys.stdout, rounds=None):
+    """Follow everything until Ctrl+C (rounds: stop after that many polls, for tests)."""
+    today = log_file()
+    if today.exists():
+        for line in today.read_text(encoding="utf-8", errors="replace").splitlines()[-history:]:
             print(line, file=out)
     pos = {str(p): (p.stat().st_size if p.exists() else 0) for _, p in _sources()}
-    print(f"--- following {LOG} and the flows' Hermes logs (Ctrl+C to stop) ---", file=out, flush=True)
+    print(f"--- following Ariadne's activity, worker, model server and Hermes logs (Ctrl+C to stop) ---",
+          file=out, flush=True)
+    n = 0
     try:
-        while True:
-            for flow, p in _sources():
+        while rounds is None or n < rounds:
+            n += 1
+            for fmt, p in _sources():
                 key = str(p)
                 if not p.exists():
                     continue
-                size = p.stat().st_size
-                start = pos.get(key, 0) if size >= pos.get(key, 0) else 0
+                size, start = p.stat().st_size, pos.get(key, 0)
+                if size < start:
+                    start = 0  # rotated or truncated
                 if size == start:
                     pos[key] = size
                     continue
@@ -114,16 +219,25 @@ def watch(history=20, poll=1.0, out=sys.stdout):
                     chunk = f.read()
                     pos[key] = f.tell()
                 for line in chunk.splitlines():
-                    shown = line if not flow else _hermes_line(flow, line)
+                    shown = fmt(line)
                     if shown:
                         print(shown, file=out, flush=True)
             time.sleep(poll)
     except KeyboardInterrupt:
-        return 0
+        pass
+    return 0
 
 
 def main(argv):
-    """python -m ariadne watch [--history N]"""
+    """python -m ariadne watch [--history N] [--open] [--always | --never]"""
+    if "--always" in argv or "--never" in argv:
+        set_setting("watch_window", "--always" in argv)
+        print("every run opens the activity window" if "--always" in argv else "activity window only on --watch")
+        if "--never" in argv:
+            return 0
+        argv = ["--open"]
+    if "--open" in argv:
+        print("activity window opened" if open_window() else "activity window already open")
+        return 0
     n = int(argv[argv.index("--history") + 1]) if "--history" in argv else 20
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     return watch(history=n)

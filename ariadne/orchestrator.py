@@ -922,6 +922,12 @@ def worker_running():
 
 
 def ensure_worker():
+    from .activity import maybe_open_window
+    maybe_open_window()
+    return _ensure_worker()
+
+
+def _ensure_worker():
     """Start the worker process if none is running (detached; its own log; no pipes to the caller)."""
     if os.environ.get("ARIADNE_NO_AUTOSTART") or worker_running():
         return False

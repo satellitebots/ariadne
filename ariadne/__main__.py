@@ -13,7 +13,9 @@
   chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
-  watch                      live activity: task events, MCP tool calls, the workers' tool and model calls
+  watch [--open|--always|--never]   live activity: tasks, MCP calls, worker, models, Hermes tool and model calls
+                             (--open: in its own window; --always: every run opens it; --never: only on --watch)
+  --watch                    with any command: open the activity window too
   desktop [--cwd DIR] [--build]   the Hermes desktop app on Ariadne's terminal home (needs Node; first launch builds it)
   serve | profile | flows | token     lower-level pieces
 
@@ -67,7 +69,16 @@ def main(argv=None):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__)
         return 0
+    if "--watch" in argv:  # any command: also open the activity window
+        argv.remove("--watch")
+        from . import activity
+        activity.open_window()
+        if not argv:
+            return 0
     cmd, rest = argv[0], argv[1:]
+    if cmd not in ("doctor", "install", "watch", "help"):
+        from . import activity
+        activity.maybe_open_window()  # watch --always: every run shows its activity
     if cmd == "doctor":
         return deps.doctor()
     if cmd == "install":
