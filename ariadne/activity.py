@@ -191,6 +191,30 @@ def _sources():
     return out
 
 
+def _tail(path, max_bytes=200_000):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - max_bytes))
+            return f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+
+
+def recent(n=12):
+    """The last n activity lines across every source, oldest first (for status panels)."""
+    lines = []
+    for fmt, path in _sources():
+        if path.name in ("worker.log", "llama-swap.log"):
+            continue  # untimestamped sources: only meaningful when followed live
+        for line in _tail(path):
+            s = fmt(line)
+            if s:
+                lines.append(s)
+    lines.sort(key=lambda s: s[:8])  # every formatted line starts HH:MM:SS
+    return lines[-n:]
+
+
 def watch(history=20, poll=1.0, out=sys.stdout, rounds=None):
     """Follow everything until Ctrl+C (rounds: stop after that many polls, for tests)."""
     today = log_file()

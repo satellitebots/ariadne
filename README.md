@@ -65,7 +65,16 @@ diffs), a file browser, and voice.
 ```sh
 python -m ariadne desktop --cwd C:\path\to\repo   # first launch builds the app (needs Node.js; a few minutes)
 python -m ariadne desktop --build                 # rebuild (after swapping artwork in desktop/assets/)
+python -m ariadne desktop --restart               # reopen with a fresh backend (after config or plugin changes)
 ```
+
+The app is a focused shell: new chat and your sessions; the Hermes pages Ariadne does not use (capabilities,
+messaging platforms, artifacts, scheduled jobs) are hidden. The status bar shows what the local model is doing, and
+while a task holds it a banner above the message box says so. Your messages wait for the task's current run - nothing
+interrupts a task on its own. To talk now, press **Park task** (or `python -m ariadne park`): the task finishes the
+step in flight, parks its KV cache and waits; **Resume task** (`python -m ariadne park --resume`) wakes the cache and
+continues the same session. These are a Hermes desktop plugin (`desktop/plugin`, installed into the app's home), not
+changes to Hermes.
 
 It opens straight into chat: no setup screen, no gateway URL, no installer. If the local runtime is broken it says
 so and stops, instead of offering to install or connect elsewhere. The app's state lives in `.ariadne/desktop-data`,

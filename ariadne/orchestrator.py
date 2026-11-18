@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import flows as flowlib
-from . import llm, paths
+from . import llm, park, paths
 from .memory import Memory, format_hits
 
 FINAL = ("done", "failed", "cancelled")
@@ -344,17 +344,61 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
     env.pop("ARIADNE_GUARD_ALL_PROCS", None)
     log = qfile.with_suffix("").with_suffix(".log")
-    try:
-        p = subprocess.run(cmd, cwd=workspace, env=env, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=budget + 180,
-                           stdin=subprocess.DEVNULL)
-        out, code = p.stdout + ("\n[stderr]\n" + p.stderr if p.stderr.strip() else ""), p.returncode
-    except subprocess.TimeoutExpired as e:
-        out, code = f"(timed out)\n{e.stdout or ''}", 124
-        stop_gateway(home)  # the gateway would keep generating for the killed client
+    started = time.time()
+    p = subprocess.Popen(cmd, cwd=workspace, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
+    boundary = park.StepBoundary(home)
+    stdout = stderr = ""
+    while True:
+        try:
+            stdout, stderr = p.communicate(timeout=3)  # retrying after a timeout loses no output
+            code = p.returncode
+            break
+        except subprocess.TimeoutExpired:
+            pass
+        if time.time() > started + budget + 180:
+            _kill_tree(p)
+            stdout, stderr = p.communicate()
+            code = 124
+            stop_gateway(home)  # the gateway would keep generating for the killed client
+            break
+        if park.requested() and not side:
+            # Parked on purpose: let the model call / tool call in flight finish, then stop at that boundary.
+            if boundary.reached():
+                _kill_tree(p)
+                stdout, stderr = p.communicate()
+                code = PARKED
+                break
+        else:
+            boundary.pos = None
+    out = (stdout or "") + ("\n[stderr]\n" + stderr if (stderr or "").strip() else "")
+    if code == 124:
+        out = "(timed out)\n" + out
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
-    sid = _SESSION_ID.findall(out)
-    return RunResult(_clean_output(p.stdout if code != 124 else out), code, str(log), sid[-1] if sid else "")
+    sid = _SESSION_ID.findall(out) or ([session or _latest_session(home, started)] if code == PARKED else [])
+    return RunResult(_clean_output(stdout if code != 124 else out), code, str(log), sid[-1] if sid and sid[-1] else "")
+
+
+PARKED = 125  # exit code of a run stopped by a park request
+
+
+def _kill_tree(p):
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+    else:
+        p.kill()
+
+
+def _latest_session(home, since):
+    """The Hermes session a killed run was writing (its id is only printed at a clean exit)."""
+    try:
+        c = sqlite3.connect(str(home / "state.db"), timeout=10)
+        r = c.execute("SELECT id FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 1",
+                      (since - 2,)).fetchone()
+        c.close()
+        return r[0] if r else ""
+    except sqlite3.Error:
+        return ""
 
 
 # ---------- prompts ----------
@@ -568,6 +612,9 @@ GATES TO REVIEW:
 Reply with one line per gate, exactly:
 G<n>: PASS - <evidence>    or    G<n>: FAIL - <what is missing or wrong>"""
 
+RESUME_PROMPT = """You were paused at a step boundary so the person could use the model. Continue the same task where
+you left off. If your last tool call has no result, run it again; re-read a file before editing it."""
+
 HANDOFF = """SESSION HANDOFF - the earlier work in this session, compressed at a checkpoint. Trust it; re-read files
 only where you need detail.
 {summary}
@@ -689,6 +736,8 @@ class Worker:
         stored_sig, _, stored_id = (s["hermes_id"] or "").partition("|")
         resume = stored_id if stored_id and stored_sig == sig else None
         side = phase.startswith(("checkpoint", "learn", "review"))
+        if park.requested() and not side:  # parked by the person: hold before starting anything new
+            self._hold(t, model)
         # Wake a parked cache only when resuming: a new Hermes session has a new prefix, nothing would match.
         note = self.kv.restore(title, model, scope) if resume else ""
         if note:
@@ -698,6 +747,17 @@ class Worker:
         note = self.kv.save(title, model, scope) if not side else ""
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
+        while r.exit_code == PARKED:  # stopped at a step boundary on request: wait, then continue the same session
+            self.store.event(t["id"], "park", f"stopped at a step boundary on {model}; the model is free")
+            self._hold(t, model)
+            note = self.kv.restore(title, model, scope) if r.session_id else ""
+            if note:
+                self.store.event(t["id"], "kv", f"{model}: {note}")
+            again = RESUME_PROMPT if r.session_id else prompt
+            r = self.runner(flow, phase, again, ws, t["id"], model=model, session=r.session_id or resume)
+            note = self.kv.save(title, model, scope)
+            if note:
+                self.store.event(t["id"], "kv", f"{model}: {note}")
         if r.exit_code == 0:
             if phase.startswith(("learn", "review")):  # side trips: the segment stays as it was
                 return r
@@ -705,6 +765,13 @@ class Worker:
             self.store.session_update(s["name"], fresh=0, dirty=dirty,
                                       hermes_id=f"{sig}|{r.session_id}" if r.session_id else s["hermes_id"])
         return r
+
+    def _hold(self, t, model):
+        """Parked: give the model to the person until they resume (never resumes on its own)."""
+        park.mark_parked(t["id"], model)
+        self.store.event(t["id"], "park", "parked: waiting for resume (desktop button or `python -m ariadne park --resume`)")
+        park.wait_resumed()
+        self.store.event(t["id"], "park", "resumed")
 
     def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
         """Pause and compress at a phase boundary: the model that just worked (still loaded, cache hot) writes a

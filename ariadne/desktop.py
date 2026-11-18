@@ -148,11 +148,41 @@ def launch_env(cwd: str) -> dict:
     return env
 
 
-def launch(cwd: str, rebuild=False) -> int:
+def _app_pids() -> list[int]:
+    import psutil
+    rel = str(SRC / "apps" / "desktop" / "release").lower()
+    out = []
+    for p in psutil.process_iter(["exe"]):
+        if (p.info.get("exe") or "").lower().startswith(rel):
+            out.append(p.pid)
+    return out
+
+
+def _stop_backend():
+    """The app's backend outlives the window (Hermes keeps one per home); a fresh launch gets a fresh one, so config,
+    plugins and Ariadne's code changes are picked up."""
+    env = dict(os.environ, HERMES_HOME=str(paths.GATEWAY_HOME))
+    subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=env, capture_output=True, timeout=120,
+                   stdin=subprocess.DEVNULL)
+
+
+def launch(cwd: str, rebuild=False, restart=False) -> int:
     miss = preflight()
     if miss:
         print("Ariadne Desktop runs only on the local runtime, and it is not ready:\n  " + "\n  ".join(miss))
         return 1
+    running = _app_pids()
+    if running and not restart:
+        print("Ariadne Desktop is already open (use --restart to reopen it with a fresh backend)")
+        return 0
+    if running:
+        import psutil
+        for pid in running:
+            try:
+                psutil.Process(pid).kill()
+            except psutil.Error:
+                pass
+    _stop_backend()
     app = build(force=rebuild)
     flags = 0
     if os.name == "nt":
