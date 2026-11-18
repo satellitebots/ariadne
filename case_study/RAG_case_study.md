@@ -8,13 +8,15 @@ Kubernetes documentation. Everything ran on one laptop, using local models only.
 **Machine:** RTX 3070 Laptop (8 GB VRAM), 32 GB RAM, Windows 11. llama.cpp b12359 behind llama-swap, Hermes pinned
 at `458a0046ad`. Run dates: 17-18 November 2026.
 
-**Status when this was written (18 Nov, 10:40):**
+**Status when this was written (18 Nov, 11:00):**
 
 | Piece | Status |
 |---|---|
 | Warm-up: todo app (coding flow) | Done. All 5 gates passed, 18 tests. |
 | RAG design (design flow) | Done. About 85%, which clears the 80% bar set for it. |
-| RAG build v1 (coding flow) | In progress: QA iteration 2. The core library and 24 tests are done; the corpus, README and eval are not done yet. |
+| RAG build v1 (coding flow) | In progress: QA iteration 3. The core library and 24 tests are done. The real ingest, README transcripts and eval are not done yet, held back by model swap thrash (see below). |
+
+![The task queue](img/term-task-list.png)
 
 ![Timeline of the run](img/timeline.png)
 
@@ -54,6 +56,11 @@ now prefers them by default.
 "Use the shared GPU memory" sounded like a free win, but it made the 27B six times slower. The resource profile
 called "max" was redefined after measuring this: VRAM plus CPU, with the model pinned in RAM.
 
+Each model call is logged with its prompt size, output size and latency. Calls whose prompt was mostly cached
+return in a few seconds; a cold prompt of about 24K tokens took 73 s:
+
+![Model calls during the RAG build](img/term-model-calls.png)
+
 **KV park and wake worked as intended.** For example, 22,689 tokens woke in 2.3 s, 38,152 in 2.2 s, and 29,056
 parked in 1.1 s. Without it, each of those would have been a fresh prefill.
 
@@ -69,6 +76,15 @@ A description of how a design would be produced did not count.
 | Iteration 2 | Timed out at 30 minutes, mid-rewrite. | A run that timed out was marked failed. Fixed: it now goes to the gates. |
 | Iteration 3 | 5 attempts: 5/7, then 6/7, 6/7, 6/7, stopped for no progress. | Hermes refused 21 writes; diagrams rendered outside the workspace (see below). |
 | Finishing pass | Done. 3/3 review gates, 2/2 command gates. | Nothing at the bar. Open: the disk estimate is asserted, not derived. |
+
+Iteration 3 shows the QA loop working as designed. Each attempt that ran out of its 60 minutes went to the gates
+instead of failing. The loop stopped on its own when two rounds in a row did not reduce the failing count:
+
+![The QA loop and its no-progress stop](img/term-qa-loop.png)
+
+The finishing pass, from approval to done:
+
+![Finishing pass events](img/term-design-events.png)
 
 What the final design decides:
 - **Access control:** user and group principals are stored on every chunk. At query time the user's groups are
@@ -103,8 +119,26 @@ So far:
 - 24 tests pass.
 - The first execute run hit Hermes' 40-turn limit and was wrongly marked failed. The second fixed a real BM25 bug
   (negative scores on tiny corpora) and committed.
-- QA then failed 4 gates: no README, no real runs, no eval number. Iteration 2 has checked out the corpus (227
-  files) and is working through them.
+- QA then failed 4 gates: no README, no real runs, no eval number. Iteration 2 checked out the corpus (227 files)
+  and fixed the URL mapping, but spent its hour without finishing an ingest. QA after it: 5 gates failing.
+
+![RAG build tests](img/term-rag-pytest.png)
+
+**Why iteration 2 stalled: swap thrash.** The model server ran one model at a time, so each embedding call during
+ingest swapped the 0.6B `embed` model in and the 22 GB agent model out. The agent's next call swapped it back,
+then re-read a cold 20-50K-token prompt. The laptop ran at 98% GPU and 86 °C for an hour, and most of that work
+was reloading:
+
+![Swap thrash in the model server log](img/term-swap-thrash.png)
+
+Fix (`eda9a88`): the embedding model now runs on the CPU in its own llama-swap group. It stays loaded and never
+unloads anything, so an ingest no longer evicts the agent model. Model-server config changes only between tasks, so
+the fix takes effect from the next task. The current build keeps going without it, which is the trade-off of not
+interrupting a running task.
+
+What a person sees while this runs, the same status the desktop plugin shows:
+
+![Worker status](img/term-status.png)
 
 ## What broke, and what changed in Ariadne
 
@@ -122,6 +156,7 @@ Every failure below came from an actual run. Each fix is in the repo.
 | Freshness gate could never pass | Rendering the SVG rewrote the `.mmd` after the PNG was written | An unchanged `.mmd` is left alone |
 | Command gate failed: `No module named pytest` | Gates run in the system shell, not the agent's environment | Planning skill: run gates exactly as written. A per-workspace environment is on the TODO list |
 | A debug script left in the repo root | Hermes blocks `python -c` one-liners in headless mode | Planning skill: scratch scripts go outside the tree |
+| An hour of ingest with no result, laptop at 86 °C | Each `embed` call swapped out the 22 GB agent model | Embeddings run on the CPU, persistent, beside the agent model |
 | Chat waited 99 s with no output | One GPU slot, and the task was mid-generation | A desktop plugin shows status, and Park/Resume is a deliberate choice that pauses the task at a step boundary |
 
 ## Lessons
