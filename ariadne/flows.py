@@ -60,8 +60,7 @@ class Flow:
     def shared_skills(self):
         """The flow's shared skills: skills/<flow>/<name>/SKILL.md in the repo (written by the larger models that
         drive Ariadne, or contributed), loaded in every run of the flow."""
-        d = paths.ROOT / "skills" / self.name
-        return sorted(p.parent.name for p in d.glob("*/SKILL.md")) if d.exists() else []
+        return sorted(shared_skill_dirs(self.name))
 
     @property
     def step_model(self):
@@ -200,10 +199,22 @@ def compile_flow(fl, flows_dir=None):
     return home
 
 
+COMMON_SKILLS = "common"   # skills/common/*: how to work in Ariadne at all, loaded by every flow
+
+
+def shared_skill_dirs(flow):
+    """{name: folder} of the skills a flow loads: skills/common/* then skills/<flow>/* (the flow's own wins)."""
+    out = {}
+    for group in (COMMON_SKILLS, flow):
+        d = paths.ROOT / "skills" / group
+        for p in sorted(d.glob("*/SKILL.md")) if d.exists() else []:
+            out[p.parent.name] = p.parent
+    return out
+
+
 def install_shared_skills(fl):
-    """Copy the flow's shared skills (skills/<flow>/*) into its Hermes home."""
-    for name in fl.shared_skills:
-        src = paths.ROOT / "skills" / fl.name / name
+    """Copy the flow's shared skills (skills/common/* and skills/<flow>/*) into its Hermes home."""
+    for name, src in shared_skill_dirs(fl.name).items():
         dst = fl.home / "skills" / name
         if dst.exists():
             shutil.rmtree(dst)

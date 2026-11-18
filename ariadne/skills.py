@@ -46,8 +46,8 @@ def save(flow, name, content, note="", push=True, git=_git):
     """Write a skill, then commit it (only that file) and push. Returns a short report."""
     if not NAME_RE.match(name or ""):
         raise SkillError("name: lowercase letters, digits and dashes")
-    if not (paths.FLOWS_DIR / flow / "flow.yaml").exists():
-        raise SkillError(f"no flow '{flow}'")
+    if flow != "common" and not (paths.FLOWS_DIR / flow / "flow.yaml").exists():
+        raise SkillError(f"no flow '{flow}' (or 'common' for skills every flow loads)")
     text = (content or "").strip()
     head = re.match(r"^---\n(.*?)\n---\n", text + "\n", re.S)
     if not head or not re.search(rf"^name:\s*{re.escape(name)}\s*$", head.group(1), re.M) \
@@ -70,8 +70,10 @@ def save(flow, name, content, note="", push=True, git=_git):
         p = git("push", "origin", "HEAD")
         report.append("pushed" if p.returncode == 0 else "push failed: " + p.stderr.strip()[-300:])
     from . import flows as flowlib
-    try:
-        flowlib.install_shared_skills(flowlib.load_flow(paths.FLOWS_DIR / flow))
-    except Exception:  # the next compile picks it up anyway
-        pass
+    targets = [d.name for d in paths.FLOWS_DIR.iterdir() if (d / "flow.yaml").exists()] if flow == "common" else [flow]
+    for target in targets:
+        try:
+            flowlib.install_shared_skills(flowlib.load_flow(paths.FLOWS_DIR / target))
+        except Exception:  # the next compile picks it up anyway
+            pass
     return "; ".join(report)

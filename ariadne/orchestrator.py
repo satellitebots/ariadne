@@ -448,6 +448,8 @@ dense model only to a step that needs the deepest reasoning (hard debugging, tri
 Each step (or run of steps on one model) executes in a fresh session that only gets a summary of earlier steps, so
 every step must leave its output in files; never plan a "think only" step whose result a later step on another
 model has to write down. Fewer model changes is better: switch models only where it clearly pays.
+Work that can run for minutes (ingest, embedding, installs, builds, large test suites) follows the long-jobs skill:
+plan it as sample run -> time estimate -> background run with progress -> verify counts, and make it resumable.
 
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 
@@ -473,6 +475,8 @@ APPROVED PLAN:
 Rules:
 - If a step cannot be done as planned, or the plan turns out to be wrong, stop and reply starting with
   'OFF-PLAN:' and the reason. Do not improvise a different plan.
+- Anything that may take more than 2 minutes: follow the long-jobs skill (sample first, then terminal
+  background=true with progress in a log, wait with process_manage, resume rather than restart).
 - At the end, record in shared memory (memory_record) anything a later task should know about this workspace.
 - Finish with a short report: what you changed, how you verified it.
 """
