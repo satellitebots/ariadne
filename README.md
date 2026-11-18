@@ -107,6 +107,16 @@ python -m ariadne watch --open      # in its own window (or add --watch to any c
 python -m ariadne watch --always    # open it on every run; --never to stop
 ```
 
+The worker and the model server run on their own, outside any terminal, chat or remote session that started them
+(on Windows they break away from the caller's job, or start through WMI), so closing a window or losing a
+connection never kills a task halfway. You stop them on purpose:
+
+- in the watch window: **P** parks the running task, **R** resumes it, **S** then **Y** stops Ariadne, **Q** closes
+  the window;
+- or `python -m ariadne stop`.
+
+Stopping hands a running task back to you (`needs_attention`) with its work kept; approve it to continue.
+
 ## Models
 
 Every plan step gets a model; your sign-off locks them; nothing runs until every chosen model and tool is

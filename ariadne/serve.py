@@ -90,13 +90,12 @@ def start(listen="127.0.0.1:8090", wait=60):
         sys.exit("llama-swap is missing: run  python -m ariadne install")
     cfg = render_config()
     paths.ensure()
-    log = open(paths.LOGS / "llama-swap.log", "a", encoding="utf-8")
-    kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS} if paths.WINDOWS \
-        else {"start_new_session": True}
     # -watch-config: a model fetched later (after a sign-off) is picked up when render_config() rewrites the file.
-    p = subprocess.Popen([str(swap), "-config", str(cfg), "-listen", listen, "-watch-config"], stdin=subprocess.DEVNULL,
-                         stdout=log, stderr=log, cwd=str(paths.ROOT), close_fds=True, **kw)
-    PID_FILE.write_text(json.dumps({"pid": p.pid}))
+    # Started outside the caller's session (procs.py), so a closed terminal or dropped remote session cannot kill it.
+    from .procs import spawn_detached
+    pid = spawn_detached([swap, "-config", cfg, "-listen", listen, "-watch-config"], paths.LOGS / "llama-swap.log",
+                         paths.ROOT)
+    PID_FILE.write_text(json.dumps({"pid": pid}))
     for _ in range(wait):
         time.sleep(1)
         if llm.is_up(f"http://{listen}/v1"):

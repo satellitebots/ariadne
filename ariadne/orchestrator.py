@@ -1026,14 +1026,43 @@ def _ensure_worker():
     if os.environ.get("ARIADNE_NO_AUTOSTART") or worker_running():
         return False
     paths.ensure()
-    log = open(paths.LOGS / "worker.log", "a", encoding="utf-8")
-    flags = 0
-    if os.name == "nt":
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    subprocess.Popen([str(paths.PYTHON), "-m", "ariadne.orchestrator", "serve"], cwd=str(paths.ROOT),
-                     stdin=subprocess.DEVNULL, stdout=log, stderr=log, creationflags=flags, close_fds=True,
-                     env=dict(os.environ, PYTHONPATH=str(paths.ROOT)))
+    # Outside the caller's session (procs.py): closing the terminal, chat or remote session must not kill it.
+    from .procs import spawn_detached
+    spawn_detached([paths.PYTHON, "-m", "ariadne.orchestrator", "serve"], paths.LOGS / "worker.log", paths.ROOT,
+                   {"PYTHONPATH": str(paths.ROOT), "PYTHONIOENCODING": "utf-8"})
     return True
+
+
+WORKER_PID = paths.STATE / "worker.pid"
+
+
+def stop_all(reason="stopped by you"):
+    """Stop Ariadne's background work on purpose: the worker, the Hermes gateways it started, and the model server.
+    A task that was running goes back to the person (needs_attention) with its work kept in the workspace."""
+    from . import park, procs
+    from . import serve as model_server
+    try:
+        pid = json.loads(WORKER_PID.read_text())["pid"]
+    except (OSError, ValueError, KeyError):
+        pid = 0
+    procs.kill_tree(pid)  # the worker and the Hermes run it was waiting on
+    WORKER_PID.unlink(missing_ok=True)
+    for home in paths.HOMES.glob("*") if paths.HOMES.exists() else []:
+        try:
+            stop_gateway(home)
+        except Exception:
+            pass
+    model_server.stop()
+    park.resume()
+    st = Store()
+    stopped = []
+    for t in st.list(50):
+        if t["status"] in ("planning", "executing"):
+            st.update(t["id"], status="needs_attention", result=f"{reason}; the work so far is in the workspace. "
+                                                               "Approve to continue it.")
+            st.event(t["id"], "stop", reason)
+            stopped.append(t["id"])
+    return stopped
 
 
 def ensure_llm(wait=120):
@@ -1077,6 +1106,7 @@ def serve(idle_exit=1800):
         print("another Ariadne worker is running", flush=True)
         return 2
     print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} worker up (pid {os.getpid()})", flush=True)
+    WORKER_PID.write_text(json.dumps({"pid": os.getpid(), "started": time.time()}))
     for name, home in flowlib.compile_all().items():
         print(f"  flow {name} -> {home}", flush=True)
         stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it

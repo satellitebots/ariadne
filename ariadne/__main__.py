@@ -6,6 +6,8 @@
   models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
   kv [list | drop SESSION]   parked KV caches, per session, step and model
   park [--resume | --status]   pause the running task at its next step boundary to have the model (never automatic)
+  stop                       stop the background worker and models on purpose (also S in the watch window); they
+                             run outside any terminal or session, so nothing else takes them down
   resources [max|shared|light]   how much of the machine the models may take (applied between tasks)
   up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
   down                       stop them
@@ -108,6 +110,11 @@ def main(argv=None):
     if cmd == "park":
         from . import park
         return park.main(rest)
+    if cmd == "stop":
+        from .orchestrator import stop_all
+        stopped = stop_all()
+        print(f"Ariadne stopped: worker, Hermes gateways and models. Tasks back to you: {', '.join(stopped) or 'none'}")
+        return 0
     if cmd == "models":
         from . import models
         return models.main(rest)

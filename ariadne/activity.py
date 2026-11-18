@@ -217,6 +217,22 @@ def recent(n=12):
     return lines[-n:]
 
 
+def _keys_available():
+    return os.name == "nt" and sys.stdin is not None and sys.stdin.isatty()
+
+
+def _key():
+    """One pending keypress, lowercased ('' if none). Windows console only."""
+    import msvcrt
+    if not msvcrt.kbhit():
+        return ""
+    ch = msvcrt.getwch()
+    if ch in ("\x00", "\xe0"):  # arrow/function keys come as two codes
+        msvcrt.getwch()
+        return ""
+    return ch.lower()
+
+
 def watch(history=20, poll=1.0, out=sys.stdout, rounds=None):
     """Follow everything until Ctrl+C (rounds: stop after that many polls, for tests)."""
     today = log_file()
@@ -224,12 +240,39 @@ def watch(history=20, poll=1.0, out=sys.stdout, rounds=None):
         for line in today.read_text(encoding="utf-8", errors="replace").splitlines()[-history:]:
             print(line, file=out)
     pos = {str(p): (p.stat().st_size if p.exists() else 0) for _, p in _sources()}
-    print(f"--- following Ariadne's activity, worker, model server and Hermes logs (Ctrl+C to stop) ---",
-          file=out, flush=True)
-    n = 0
+    keys = _keys_available() and out is sys.stdout
+    print("--- following Ariadne's activity, worker, model server and Hermes logs ---", file=out)
+    print("    keys: [P] park the running task  [R] resume it  [S] stop Ariadne (worker + models)  [Q] close"
+          if keys else "    Ctrl+C closes this; `python -m ariadne stop` stops Ariadne", file=out, flush=True)
+    n, confirm_stop = 0, False
     try:
         while rounds is None or n < rounds:
             n += 1
+            k = _key() if keys else ""
+            if k == "q":
+                break
+            if k == "p":
+                from . import park
+                park.request("watch window")
+                print("park requested: the task stops at its next step boundary", file=out, flush=True)
+            elif k == "r":
+                from . import park
+                park.resume()
+                print("resumed", file=out, flush=True)
+            elif k == "s":
+                confirm_stop = True
+                print("stop Ariadne? The running task goes back to you (work kept). [Y] yes, any other key no",
+                      file=out, flush=True)
+                continue
+            elif confirm_stop:
+                confirm_stop = False
+                if k == "y":
+                    from .orchestrator import stop_all
+                    stopped = stop_all("stopped from the watch window")
+                    print(f"Ariadne stopped (tasks back to you: {', '.join(stopped) or 'none'}). "
+                          "Start again with any task command, or `python -m ariadne serve`.", file=out, flush=True)
+                else:
+                    print("not stopped", file=out, flush=True)
             for fmt, p in _sources():
                 key = str(p)
                 if not p.exists():

@@ -41,3 +41,8 @@ followed by a small JSON block. Show the card to the person as-is - it is writte
    Local models never write skills; the larger model talking to Ariadne does.
 
 Use `list_tasks` / `get_task` when they ask about earlier tasks.
+
+Ariadne's worker and models run in the background, outside this chat: ending the chat does not stop a task. Never
+kill its processes yourself. If the person wants to stop, tell them: the watch window (`python -m ariadne watch
+--open`) has P park, R resume, S stop; or `python -m ariadne stop`. A stopped task comes back as
+`needs_attention` with its work kept.
