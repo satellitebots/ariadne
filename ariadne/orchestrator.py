@@ -993,6 +993,13 @@ def stop_gateway(home):
                    stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
 
 
+def _code_stamp():
+    """Newest change to the worker's code or configuration (Ariadne's modules, flows, skills, model catalog)."""
+    files = list((paths.ROOT / "ariadne").glob("*.py")) + list(paths.FLOWS_DIR.rglob("*.yaml")) \
+        + list(paths.FLOWS_DIR.rglob("SKILL.md")) + [paths.ROOT / "serving" / "models.yaml"]
+    return max((f.stat().st_mtime for f in files if f.exists()), default=0)
+
+
 def serve(idle_exit=1800):
     from .deps import require
     require()
@@ -1004,9 +1011,12 @@ def serve(idle_exit=1800):
     for name, home in flowlib.compile_all().items():
         print(f"  flow {name} -> {home}", flush=True)
         stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it
-    w, last = Worker(), time.time()
+    w, last, stamp, restart = Worker(), time.time(), _code_stamp(), False
     try:
         while True:
+            if _code_stamp() > stamp:  # updated code or config: hand over to a fresh worker between tasks
+                restart = True
+                return 0
             if any(t["status"] in ("new", "approved") for t in w.store.list(50)):
                 if not ensure_llm():
                     print("local models are not reachable; waiting", flush=True)
@@ -1021,6 +1031,9 @@ def serve(idle_exit=1800):
             time.sleep(2)
     finally:
         _release(lock)
+        if restart:
+            print("code or config changed; starting a fresh worker", flush=True)
+            ensure_worker()
 
 
 # ---------- CLI ----------
