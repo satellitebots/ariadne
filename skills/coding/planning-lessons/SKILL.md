@@ -30,3 +30,10 @@ From reviews of backbriefs and runs during validation (todo app, RAG design).
   (`python -m pip install pytest`) and say so in the report. (Todo app: three QA rounds were spent on this.)
 - Keep test runs from dirtying the tree: temp dirs for test data, a .gitignore for caches and outputs, so a
   "clean working tree" gate holds after the tests ran.
+
+## Running code while you work
+- The terminal refuses one-liners (`python -c ...`, `node -e ...`) in this harness. To try something, write a
+  small script under a scratch folder that is gitignored (or the system temp folder), run it, and delete it. Never
+  leave debug scripts in the project root (RAG build left debug_bm25.py there).
+- Budget turns: a run has a turn limit (80 for coding execute). Spend them on the plan's steps; when a test fails,
+  read the error and fix it rather than adding print-debug scripts one call at a time.
