@@ -79,7 +79,7 @@ models:
     about: Qwen3 Embedding 0.6B. Shared-memory search.
     size_gb: 0.6
     ollama: {tag: "qwen3-embedding:0.6b", blob: sha256-06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439}
-    args: "-c 8192 --embedding --pooling last -ngl 99"
+    args: "-c 8192 --embedding --pooling last -ngl 0"   # CPU: stays loaded beside the agent model (serve.py groups)
 
   # ---- Gemma family: design and writing ----
   gemma-4-12b:
