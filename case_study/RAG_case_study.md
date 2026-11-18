@@ -8,13 +8,13 @@ Kubernetes documentation. Everything ran on one laptop, using local models only.
 **Machine:** RTX 3070 Laptop (8 GB VRAM), 32 GB RAM, Windows 11. llama.cpp b12359 behind llama-swap, Hermes pinned
 at `458a0046ad`. Run dates: 17-18 November 2026.
 
-**Status when this was written (18 Nov, 11:00):**
+**Status (updated 18 Nov, 15:00):**
 
 | Piece | Status |
 |---|---|
 | Warm-up: todo app (coding flow) | Done. All 5 gates passed, 18 tests. Its own case study: [TODO_case_study.md](TODO_case_study.md) |
 | RAG design (design flow) | Done. About 85%, which clears the 80% bar set for it. |
-| RAG build v1 (coding flow) | In progress: QA iteration 3. The core library and 24 tests are done. The real ingest, README transcripts and eval are not done yet, held back by model swap thrash (see below). |
+| RAG build v1 (coding flow) | Stalled since a PC crash in QA iteration 3. The core library and 24 tests are done. The real ingest, README transcripts and eval are not done. See [Where it stands](#where-it-stands). |
 
 What the models produced is checked in: the design in [projects/rag-design](projects/rag-design/) and the build so
 far in [projects/rag-build](projects/rag-build/).
@@ -105,7 +105,7 @@ What the final design decides:
 
 ![Data model](img/design-datamodel.png)
 
-## The build (in progress)
+## The build (stalled)
 
 The coding flow builds version 1 over the Kubernetes concepts docs (from `kubernetes/website`), with 7 gates:
 - `pytest` passes.
@@ -142,6 +142,51 @@ interrupting a running task.
 What a person sees while this runs, the same status the desktop plugin shows:
 
 ![Worker status](img/term-status.png)
+
+## Where it stands
+
+*Updated 18 Nov, 15:00.* Around 12:42 the PC hard-crashed in the middle of QA iteration 3 (Kernel-Power 41, no
+hardware errors). The `max` profile had pinned about 90% of RAM while a CPU-heavy ingest and a QA run were both
+going. Nothing has run on this task since.
+
+**Done**
+
+| Piece | Evidence |
+|---|---|
+| Design (separate task) | `projects/rag-design`: DESIGN.md + four rendered diagrams, ~85% |
+| Library: chunker, hybrid index (vector + BM25), retrieval, ACL filter, generator, eval, CLI | `projects/rag-build`, commit `9c25af7` |
+| 24 tests passing, including the BM25 fix for tiny corpora | ![24 passed](img/term-rag-pytest.png) |
+| Corpus checked out: 196 Markdown files from `kubernetes/website` concepts | In the workspace (not checked in) |
+| URL mapping from doc path to kubernetes.io | Iteration 2 |
+
+**Left half-done by the crash**
+
+- Uncommitted edits to `rag/commands.py` and `rag/generator.py`. They are included in the snapshot as they stood,
+  untested.
+- `rag/index.db` has 0 documents committed. The ingest ran as one transaction and was killed, leaving an 18 MB
+  write-ahead log. It has to be re-run.
+- Two scratch scripts, `_debug_api.py` and `_debug_gen.py`, in the workspace root. They are not in the snapshot.
+- The task still shows `executing` with no worker behind it.
+
+**Pending (gates not yet met)**
+
+| Gate | Status |
+|---|---|
+| G1 `pytest` passes | Passing at `9c25af7`; recheck after the uncommitted edits |
+| G2 a real ingest, with counts recorded | Not done |
+| G3 a real `ask` that cites kubernetes.io | Not done (needs G2) |
+| G4 a test proves the principal filter | In the test suite; to be confirmed by the reviewer |
+| G5 eval hit rate ≥ 0.7 | Not run |
+| G6 hybrid search, with the merge point shown in code | Implemented; to be confirmed by the reviewer |
+| G7 clean tree | Not met (uncommitted edits, scratch scripts) |
+| README with real transcripts | Not written |
+
+**Plan to finish it,** on what came out of this run:
+1. `ariadne stop` to hand the task back; delete the scratch scripts.
+2. Resume it on the new [jobs](../wiki/Jobs.md) runner. The ingest and eval become resumable scripts with
+   `--sample`, batched commits and a report file, run with the agent model unloaded, so no more swap thrash and no
+   terminal timeouts.
+3. Run under `shared` or `max` (now capped at 80% RAM), with embeddings on the CPU side group.
 
 ## What broke, and what changed in Ariadne
 

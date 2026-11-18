@@ -35,6 +35,17 @@ def export(workspace, name):
         with tarfile.open(fileobj=io.BytesIO(tar.stdout)) as t:
             t.extractall(dest, filter="data")
         source = f"commit {head.stdout.decode().strip()}"
+        # Work the model left uncommitted (a run stopped mid-step) is part of the story: tracked files are taken as
+        # they are in the working tree. Untracked files (scratch scripts, indexes) still stay out.
+        changed = [ln[3:].strip() for ln in _git(ws, "status", "--porcelain").stdout.decode().splitlines()
+                   if ln[:2].strip() in ("M", "MM", "AM") or ln[1:2] == "M"]
+        for rel in changed:
+            src = ws / rel
+            if src.is_file():
+                (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest / rel)
+        if changed:
+            source += f" + uncommitted changes to {', '.join(changed)}"
     else:
         for p in ws.rglob("*"):
             if p.is_file() and not (SKIP & set(p.relative_to(ws).parts)):

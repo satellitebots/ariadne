@@ -1,6 +1,6 @@
 {
   "name": "rag-build",
-  "source": "commit 9c25af7",
-  "exported": "2026-11-18 13:33",
+  "source": "commit 9c25af7 + uncommitted changes to rag/commands.py, rag/generator.py",
+  "exported": "2026-11-18 14:55",
   "files": 21
 }

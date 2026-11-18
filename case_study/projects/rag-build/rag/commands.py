@@ -32,12 +32,18 @@ def cmd_ingest(args):
     for md_file in md_files:
         source_path = str(md_file.relative_to(corpus_dir))
         # Map source path to kubernetes.io URL
-        # e.g. "concepts/overview/working-with-objects/kubernetes-objects.md"
-        # -> "https://kubernetes.io/docs/concepts/overview/working-with-objects/kubernetes-objects/"
+        # e.g. "corpus/content/en/docs/concepts/workloads/pods/_index.md"
+        # -> "https://kubernetes.io/docs/concepts/workloads/pods/"
         path_parts = source_path.replace("\\", "/").split("/")
-        # Remove leading "content" if present
+        # Remove leading "content" and "en/docs" prefix
         if path_parts[0] == "content":
             path_parts = path_parts[1:]
+        # Skip "en" and "docs" segments
+        while path_parts and path_parts[0] in ("en", "docs"):
+            path_parts.pop(0)
+        # Strip .md extension
+        if path_parts and path_parts[-1].endswith(".md"):
+            path_parts[-1] = path_parts[-1][:-3]
 
         url = "https://kubernetes.io/docs/" + "/".join(path_parts)
         if not url.endswith("/"):

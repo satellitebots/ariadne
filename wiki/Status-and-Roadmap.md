@@ -27,6 +27,5 @@
 
 ## Later
 
-- Load-balancing across the two home servers.
-- The Slack channel.
-- One Python environment per workspace.
+All the parked ideas are in [TODO.md](../TODO.md): chat hijack, the two home servers, compression and
+instruction-decay telemetry, default quality gates, Slack, and others.

@@ -187,9 +187,7 @@ and pushes it. Local workers never write skills. Contributions welcome: add or i
 
 ## TODO
 
-- Slack channel
-- Validate the design, writing and content flows
-- One Python environment per workspace, shared by the worker's terminal and the gate commands
+See [TODO.md](TODO.md): open work and parked ideas.
 
 ## License
 

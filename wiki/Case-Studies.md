@@ -1,6 +1,7 @@
 # Case studies
 
-Real runs on the reference machine, with what the models produced checked in under `case_study/projects/`.
+Real runs on the reference machine. Everything is in [`case_study/`](../case_study/README.md): the write-ups, the
+briefs, the raw run notes, screenshots, and the code the models produced (`case_study/projects/`).
 Snapshots are taken with `python -m ariadne casestudy export <workspace> <name>`.
 
 | Case study | Flow | Outcome | Write-up | Project |

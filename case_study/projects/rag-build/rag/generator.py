@@ -36,4 +36,7 @@ class Generator:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        # Some models (e.g. Qwen reasoning models) put the answer in
+        # reasoning_content and leave content empty.
+        return message.get("content") or message.get("reasoning_content", "")
