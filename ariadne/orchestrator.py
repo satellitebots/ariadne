@@ -315,11 +315,11 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     # Hermes names an MCP server's toolset "mcp-<server>" (the bare name can collide with a built-in, e.g. memory).
     toolsets = (flow.plan_toolsets if tools_phase == "plan" else flow.execute_toolsets) + [f"mcp-{m}" for m in flow.mcp_servers]
     turns, budget = flow.max_turns.get(phase, 3), flow.run_budget.get(phase, flow.run_budget.get(tools_phase, 900))
-    cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool", "--run-budget", str(budget)]
-    if session:
+    cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool"]
+    if session:  # a resumed session keeps its launch settings; Hermes rejects any override (budget included)
         cmd += ["--resume", session, "--no-restore-cwd"]
     else:
-        cmd += ["--max-turns", str(turns), "-t", ",".join(toolsets)]
+        cmd += ["--run-budget", str(budget), "--max-turns", str(turns), "-t", ",".join(toolsets)]
         for s in flow.skills + flow.learned_skills:
             cmd += ["-s", s]
         if model:
