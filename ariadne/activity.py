@@ -203,11 +203,13 @@ def _tail(path, max_bytes=200_000):
 
 def recent(n=12):
     """The last n activity lines across every source, oldest first (for status panels)."""
-    lines = []
+    lines, today = [], time.strftime("%Y-%m-%d")
     for fmt, path in _sources():
         if path.name in ("worker.log", "llama-swap.log"):
             continue  # untimestamped sources: only meaningful when followed live
         for line in _tail(path):
+            if re.match(r"\d{4}-\d\d-\d\d ", line) and not line.startswith(today):
+                continue  # Hermes logs carry the date; formatted lines keep only the time, so keep today's
             s = fmt(line)
             if s:
                 lines.append(s)
