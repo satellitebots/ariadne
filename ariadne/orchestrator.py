@@ -686,17 +686,20 @@ class Worker:
         seeded = bool(s["fresh"] and s["summary"])
         if seeded:
             prompt = HANDOFF.format(summary=s["summary"]) + prompt
-        note = self.kv.restore(title, model, scope)
-        if note:
-            self.store.event(t["id"], "kv", f"{model}: {note}")
         # Within a segment the Hermes session is resumed (same model and tools by construction: a segment is one
         # phase on one model); a new segment starts a new Hermes session.
         # The stored id is "<phase>/<model>|<hermes id>": resume only a session started for the same phase and model.
         sig = f"{phase.split(':')[-1]}/{model}"
         stored_sig, _, stored_id = (s["hermes_id"] or "").partition("|")
         resume = stored_id if stored_id and stored_sig == sig else None
+        side = phase.startswith(("checkpoint", "learn", "review"))
+        # Wake a parked cache only when resuming: a new Hermes session has a new prefix, nothing would match.
+        note = self.kv.restore(title, model, scope) if resume else ""
+        if note:
+            self.store.event(t["id"], "kv", f"{model}: {note}")
         r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=resume)
-        note = self.kv.save(title, model, scope)
+        # Park only what a later run resumes (plan and execute sessions); side runs are not resumed.
+        note = self.kv.save(title, model, scope) if not side else ""
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
         if r.exit_code == 0:

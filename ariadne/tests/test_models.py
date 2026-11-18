@@ -188,9 +188,12 @@ def test_drill_with_models_fetches_before_step_one_and_runs_each_group_on_its_mo
             assert c[3] == f"h{i}", (i, c[0], c[3])
     assert "NOW DO STEP 1 ONLY" in execs[0][2] and "NOW DO STEPS 3, 4 ONLY" in execs[2][2]
     assert "generate_image(model='z-image-turbo'" in execs[2][2]
-    # caches are parked per segment, step and model; a segment's caches go when it is compressed
+    # caches are parked per segment, step and model (plan and execute runs only); woken only when a run resumes
+    # its Hermes session (a new session has a new prefix); a segment's caches go when it is compressed
     assert ("save", f"{tid}~1", "qwen3.8-27b", "plan") in kv.log and ("save", f"{tid}~3", "gemma-4-26b-a4b", "step-2") in kv.log
-    assert ("restore", f"{tid}~4", "qwen3.8-27b", "step-3-4") in kv.log and ("drop", f"{tid}~1") in kv.log
+    assert not [e for e in kv.log if e[0] == "save" and e[3] in ("checkpoint", "learn", "review")]
+    assert {e[3] for e in kv.log if e[0] == "restore"} == {"checkpoint"}   # only checkpoints resume a session
+    assert ("drop", f"{tid}~1") in kv.log
     assert kv.log[-1] == ("drop", f"{tid}~6")
     assert w.store.sessions()[0]["segment"] == 6 and w.store.sessions()[0]["tasks"] == 1
     assert any("kv: qwen3.8-27b: saved" in e for e in t["events"])
