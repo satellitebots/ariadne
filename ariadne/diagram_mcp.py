@@ -68,7 +68,10 @@ def render_diagram(source: str, output: str, theme: str = "neutral", background:
         return f"theme must be one of {THEMES}"
     out.parent.mkdir(parents=True, exist_ok=True)
     src = out.with_suffix(".mmd")
-    src.write_text(source, encoding="utf-8")
+    # Rewrite the source only when it changed: rendering the PNG and then the SVG of the same diagram must not
+    # leave the PNG looking older than its source.
+    if not src.exists() or src.read_text(encoding="utf-8") != source:
+        src.write_text(source, encoding="utf-8")
     code, err = _mmdc(src, out, theme, background, width)
     if code != 0 or not out.exists():
         return "error:\n" + _first_error(err)
