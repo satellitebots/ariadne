@@ -74,7 +74,7 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
         flows["coding"].mcp_servers = mcp_servers
     flows["coding"].checks = []
     flows["coding"].execute_model = ""          # the mechanics tests below: steps without a model run on the planner
-    return orch.Worker(store=orch.Store(tmp / "t.db"), memory=Memory(tmp / "m.db"), flows=flows, runner=runner,
+    return orch.Worker(store=orch.Store(tmp / "t.db", require_gates=False), memory=Memory(tmp / "m.db"), flows=flows, runner=runner,
                        llm_chat=lambda m, msgs: "coding", installer=installer, on_installed=lambda: None,
                        kv=kv or NoKVCache())
 

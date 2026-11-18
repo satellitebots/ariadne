@@ -26,10 +26,12 @@ def store():
 
 
 def _view(t):
-    keep = ("id", "status", "flow", "session", "source", "text", "workspace", "plan", "models", "result", "error",
+    keep = ("id", "status", "flow", "session", "source", "text", "workspace", "gates", "plan", "models", "result", "error",
             "events")
     v = {k: t.get(k) for k in keep if t.get(k)}
-    if t["status"] == "awaiting_signoff":
+    if t["status"] == "awaiting_gates":
+        v["next"] = "Ask the person for the check gates (how we know it is done, end to end), then call set_gates."
+    elif t["status"] == "awaiting_signoff":
         v["next"] = ("Show the backbrief (plan, including its MODEL PLAN) to the person. They approve (approve_task, "
                      "optionally changing models), revise (revise_task) or cancel.")
     elif t["status"] == "needs_attention":
@@ -48,13 +50,16 @@ def _guard(fn):
 
 
 @server.tool()
-def submit_task(text: str, workspace: str = "", flow: str = "", source: str = "mcp", session: str = "") -> str:
+def submit_task(text: str, gates: list[str] | None = None, workspace: str = "", flow: str = "", source: str = "mcp",
+                session: str = "") -> str:
     """Brief: give Ariadne a task. workspace: folder it applies to (e.g. a repo path). flow: optional, else the
     router picks (coding, design, writing, content). session: pass your own conversation id to continue one
     worker conversation across tasks (it remembers earlier tasks in it); default: a new session per task.
-    Returns the task id; then call wait_task for the backbrief."""
+    gates: REQUIRED in practice - how we will know it is done, end to end: commands that must pass ("run: pytest -q")
+    and outcomes a reviewer checks ("DESIGN.md names one vector store and why"). Ask the person for them if they did
+    not say; without gates the task waits in awaiting_gates. Returns the task id; then call wait_task."""
     def go():
-        tid = store().submit(text, source or "mcp", workspace, flow, session)
+        tid = store().submit(text, source or "mcp", workspace, flow, session, gates)
         ensure_worker()
         return json.dumps({"id": tid, "status": "new", "next": "call wait_task(id) to get the backbrief"})
     return _guard(go)
@@ -92,6 +97,16 @@ def revise_task(id: str, feedback: str) -> str:
     """Sign-off: the person wants changes. The worker re-plans with this feedback and sends a new backbrief."""
     def go():
         store().revise(id, feedback)
+        ensure_worker()
+        return _view(store().get(id))
+    return _guard(go)
+
+
+@server.tool()
+def set_gates(id: str, gates: list[str]) -> str:
+    """Set the check gates of a task that is waiting for them (awaiting_gates), or replace them before execution."""
+    def go():
+        store().set_gates(id, gates)
         ensure_worker()
         return _view(store().get(id))
     return _guard(go)

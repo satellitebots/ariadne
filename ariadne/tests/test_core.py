@@ -76,12 +76,14 @@ def test_flow_validation(env, tmp_path):
 
 class FakeRunner:
     def __init__(self, plan="MISSION: fix it\nSTEPS:\n1. edit", results=("Changed add(); tests pass.",)):
-        self.plan, self.results, self.calls = plan, list(results), []
+        self.plan, self.results, self.calls, self.reviews = plan, list(results), [], []
 
     def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
         self.calls.append((flow.name, phase, prompt, model))
         if phase.startswith("checkpoint"):
             return orch.RunResult("SITUATION: x\nDONE: y", 0, "log", session or "h")
+        if phase.startswith("review"):
+            return orch.RunResult(self.reviews.pop(0) if self.reviews else "G1: PASS - seen", 0, "log")
         if phase.startswith("learn"):
             name = f"{flow.name}-lessons"
             return orch.RunResult(f"Here it is.\n---\nname: {name}\ndescription: lessons\n---\n- keep tests green", 0, "log")
@@ -91,7 +93,7 @@ class FakeRunner:
 
 def make_worker(env, runner, route_answer="coding", installer=None):
     flows = flowlib.load_flows(REPO_FLOWS)
-    return orch.Worker(store=orch.Store(env / "t.db"), memory=Memory(env / "m.db"), flows=flows,
+    return orch.Worker(store=orch.Store(env / "t.db", require_gates=False), memory=Memory(env / "m.db"), flows=flows,
                        runner=runner, llm_chat=lambda model, msgs: route_answer,
                        installer=installer or (lambda name, cat, log=print: None), on_installed=lambda: None)
 
@@ -145,17 +147,48 @@ def test_off_plan_goes_back_to_the_person(env):
     assert w.store.get(tid)["status"] == "new"
 
 
-def test_failed_check_retries_once_then_reports(env):
-    run = FakeRunner(results=["try 1", "try 2"])
+def test_failing_gates_iterate_and_stop_when_no_progress(env):
+    run = FakeRunner(results=["try 1", "try 2", "try 3", "try 4"])
     w = make_worker(env, run)
-    w.flows["coding"].checks = ["exit 1"]
+    w.flows["coding"].checks = ["exit 1"]                    # never passes
     tid = w.store.submit("fix x", "test", str(env))
     w.run_once(); w.store.approve(tid); w.run_once()
     t = w.store.get(tid)
-    assert t["status"] == "failed" and "checks still failing" in t["error"]
+    assert t["status"] == "failed" and "no progress in the last two iterations" in t["error"]
     execs = [c for c in run.calls if c[1] == "execute"]
-    assert "CHECKS FAILED" in execs[-1][2]                  # the retry was told what failed
+    assert len(execs) == 3                                  # stopped early, well before max_iterations (10)
+    assert "GATES FAILED" in execs[-1][2]                   # each iteration was told what failed
     assert "QA RESULTS" in [c for c in run.calls if c[1].startswith("checkpoint")][-1][2]
+    assert w.flows["coding"].max_iterations == 10
+
+
+def test_no_task_starts_without_gates(env):
+    st = orch.Store(env / "t.db")
+    tid = st.submit("make it better", "test", str(env))
+    t = st.get(tid)
+    assert t["status"] == "awaiting_gates" and "check gates" in t["result"] and st.claim_next() is None
+    st.revise(tid, "- run: pytest -q\n- README explains every command")   # the answer to the question
+    t = st.get(tid)
+    assert t["status"] == "new" and json.loads(t["gates"]) == [
+        {"type": "run", "text": "pytest -q"}, {"type": "review", "text": "README explains every command"}]
+    brief = "Build it.\n\nDone when:\n- `pytest -q` passes\n- every command is documented\n\nNotes: none"
+    assert [g["type"] for g in orch.parse_gates(brief)] == ["run", "review"]
+    assert st.get(st.submit(brief, "test"))["status"] == "new"
+
+
+def test_review_gates_are_checked_by_a_reviewer_and_drive_iterations(env):
+    run = FakeRunner(results=["try 1", "try 2"])
+    run.reviews = ["G1: FAIL - README has no usage section", "G1: PASS - usage section present"]
+    w = make_worker(env, run)
+    w.store.require_gates = True
+    tid = w.store.submit("write docs", "test", str(env), gates=["README has a usage section"])
+    w.run_once()
+    assert "README has a usage section" in run.calls[0][2]    # the planner sees the gates
+    w.store.approve(tid); w.run_once()
+    t = w.store.get(tid)
+    assert t["status"] == "done" and [c[1] for c in run.calls].count("execute") == 2
+    assert "README has no usage section" in [c for c in run.calls if c[1] == "execute"][-1][2]
+    assert any("iterate" in e for e in t["events"]) and any("review: 1/1 gates passed" in e for e in t["events"])
 
 
 def test_conditional_check_skipped_when_path_missing(env):

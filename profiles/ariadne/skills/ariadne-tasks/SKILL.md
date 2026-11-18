@@ -12,7 +12,10 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
 `mcp__ariadne_tasks__get_task`, `mcp__ariadne_tasks__approve_task`, `mcp__ariadne_tasks__revise_task`,
 `mcp__ariadne_tasks__cancel_task`, `mcp__ariadne_tasks__list_tasks`. Task ids are strings like `t1117-140722-c914`.
 
-1. **Brief.** Call `submit_task` with the person's request in their words as `text`, the folder it applies to
+0. **Gates first.** Before submitting, make sure you know the check gates: how we will know the task is done,
+   end to end - commands that must pass (`run: pytest -q`) and outcomes a reviewer can verify. If the person did
+   not say, ask them explicitly; suggest gates if helpful, but let them decide. No task starts without gates.
+1. **Brief.** Call `submit_task` with the person's request in their words as `text`, the gates as `gates`, the folder it applies to
    as `workspace` (ask if they did not say), `source` set to where you are talking to them (e.g. `slack`, `cli`),
    and `session`: the session name the person gave ("continue auth-work"), else your own session id (it is in
    your system prompt). Every task from this conversation then shares one Ariadne session, so the worker

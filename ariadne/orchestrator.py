@@ -26,12 +26,52 @@ from . import llm, paths
 from .memory import Memory, format_hits
 
 FINAL = ("done", "failed", "cancelled")
-WAITING = ("awaiting_signoff", "needs_attention")   # the task needs the person who gave it
+WAITING = ("awaiting_gates", "awaiting_signoff", "needs_attention")   # the task needs the person who gave it
+GATES_QUESTION = ("Before this task starts: what are the check gates? List how we will know it is done, end to "
+                  "end - commands that must pass (`run: pytest -q`) and outcomes a reviewer can verify (\"README "
+                  "explains every command\"). Answer with set_gates / `task gates ID ...`.")
+GATES_HEAD = re.compile(r"^\s*#*\s*(check gates|gates|checks|done when|acceptance criteria|acceptance|qa)\s*:?\s*(.*)$", re.I)
+
+
+def parse_gates(text):
+    """Gates from a brief: the lines under a 'Gates:' / 'Checks:' / 'Done when:' / 'Acceptance:' heading (bullets or
+    one line). `run: <cmd>` or a `backticked command` is a command gate; anything else is a review gate."""
+    gates, on = [], False
+    for line in (text or "").splitlines():
+        m = GATES_HEAD.match(line)
+        if m:
+            on = True
+            if m.group(2).strip():
+                gates.append(gate(m.group(2)))
+            continue
+        if not on:
+            continue
+        s = line.strip()
+        if not s:
+            on = not gates          # a blank line ends the section once it has gates
+            continue
+        if re.match(r"^([-*]|\d+[.)])\s+", s) or not re.match(r"^[A-Za-z][\w ]{0,40}:\s*$", s):
+            gates.append(gate(re.sub(r"^([-*]|\d+[.)])\s*", "", s)))
+        else:
+            on = False              # the next heading
+    return gates
+
+
+def gate(item):
+    item = item.strip()
+    m = re.match(r"^(run|cmd|command)\s*:\s*(.+)$", item, re.I) or re.match(r"^`([^`]+)`\s*(?:passes|succeeds)?\.?$", item)
+    if m:
+        return {"type": "run", "text": (m.group(2) if m.lastindex == 2 else m.group(1)).strip().strip("`")}
+    return {"type": "review", "text": item}
+
+
+def gates_text(gates):
+    return "\n".join(f"G{i}. [{g['type']}] {g['text']}" for i, g in enumerate(gates, 1))
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT, text TEXT, workspace TEXT, flow TEXT,
   status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
-  models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0);
+  models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0, gates TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
@@ -45,14 +85,15 @@ class TaskError(ValueError):
 
 
 class Store:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path=None, require_gates=True):
         self.db_path = str(db_path or paths.TASKS_DB)
+        self.require_gates = require_gates  # no task starts without check gates (tests of other parts turn it off)
         if db_path is None:
             paths.ensure()
         with self._conn() as c:
             c.executescript(SCHEMA)
             have = [r["name"] for r in c.execute("PRAGMA table_info(tasks)")]
-            for col in ("models", "session"):
+            for col in ("models", "session", "gates"):
                 if col not in have:
                     c.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
             if "learn" not in have:
@@ -74,8 +115,10 @@ class Store:
         with self._conn() as c:
             c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), kind, str(detail)[:4000]))
 
-    def submit(self, text, source="cli", workspace="", flow="", session=""):
-        """session: a Hermes session to continue (the caller's conversation); default: one session per task."""
+    def submit(self, text, source="cli", workspace="", flow="", session="", gates=None):
+        """session: a Hermes session to continue (the caller's conversation); default: one session per task.
+        gates: the check gates (strings; `run: cmd` for commands) - else taken from the brief's Gates/Checks/Done when
+        section. Without gates the task waits (awaiting_gates) and asks for them: nothing starts without them."""
         text = (text or "").strip()
         if not text:
             raise TaskError("the task text is empty")
@@ -83,12 +126,31 @@ class Store:
         now = time.time()
         session = (session or "").strip() or tid
         self.session(session, source)
+        g = [gate(x) if isinstance(x, str) else x for x in (gates or [])] or parse_gates(text)
+        status = "new" if g or not getattr(self, "require_gates", True) else "awaiting_gates"
         with self._conn() as c:
-            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session) "
-                      "VALUES (?,?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", "new",
-                                                     session))
+            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session, gates, result) "
+                      "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", status,
+                                                         session, json.dumps(g), "" if g else GATES_QUESTION))
         self.event(tid, "brief", f"from {source}: {text[:300]}")
+        self.event(tid, "gates", gates_text(g) if g else "none given: asked the person for them")
         return tid
+
+    def set_gates(self, tid, gates):
+        """Set or replace a task's check gates (list of strings, or text with one gate per line)."""
+        if isinstance(gates, str):
+            gates = parse_gates(gates) or [gate(re.sub(r"^\s*([-*]|\d+[.)])\s*", "", l)) for l in gates.splitlines() if l.strip().strip("-* ")]
+        g = [gate(x) if isinstance(x, str) else x for x in gates if x]
+        if not g:
+            raise TaskError("no gates given")
+        t = self.get(tid, events=False)
+        if t["status"] == "awaiting_gates":
+            self.update(tid, gates=json.dumps(g), status="new", result="")
+        elif t["status"] in ("new", "awaiting_signoff", "needs_attention"):
+            self.update(tid, gates=json.dumps(g), status="new" if t["status"] != "new" else "new")
+        else:
+            raise TaskError(f"task {tid} is '{t['status']}'; gates can change before execution only")
+        self.event(tid, "gates", gates_text(g))
 
     # ---------- sessions ----------
     # An Ariadne session is a workstream: the tasks given in it, and a chain of Hermes sessions ("segments",
@@ -165,12 +227,14 @@ class Store:
 
     def revise(self, tid, feedback):
         t = self.get(tid, events=False)
+        if t["status"] == "awaiting_gates":  # the answer to "what are the gates?"
+            return self.set_gates(tid, feedback)
         fb = (t["feedback"] + "\n" if t["feedback"] else "") + feedback.strip()
         self._transition(tid, WAITING, "new", feedback=fb)
         self.event(tid, "sign-off", f"revise: {feedback[:300]}")
 
     def cancel(self, tid):
-        self._transition(tid, ("new", "awaiting_signoff", "approved", "needs_attention"), "cancelled")
+        self._transition(tid, ("new", "awaiting_gates", "awaiting_signoff", "approved", "needs_attention"), "cancelled")
         self.event(tid, "sign-off", "cancelled")
 
     def feedback(self, tid, text):
@@ -243,7 +307,7 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     home = flow.home
     # A checkpoint ("checkpoint:plan" / "checkpoint:execute") keeps the toolsets of the phase it closes (same system
     # prompt, so the parked KV cache still matches) but runs read-only, with a few turns.
-    side = phase.startswith(("checkpoint", "learn"))   # checkpoint / skill review: read-only, a few turns
+    side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs
     tools_phase = phase.split(":", 1)[1] if ":" in phase else phase
     (home / "ariadne_phase").write_text("plan" if side else phase, encoding="utf-8")
     qfile = paths.LOGS / f"{tid}-{phase.replace(':', '-')}-{int(time.time())}.prompt.md"
@@ -287,6 +351,9 @@ TASK (from {source}):
 
 WORKSPACE: {workspace}
 {feedback}
+CHECK GATES agreed with the person (the task is done only when every one passes; plan so that each will):
+{gates}
+
 SHARED MEMORY (what earlier tasks recorded):
 {memory}
 
@@ -306,7 +373,7 @@ FLOW: {flow}
 STEPS:
 1. <step> - tools: <tools it uses> - model: <model name from MODELS>
 2. ...
-CHECKS: <how we will know it worked>
+GATES: <each gate G1..Gn, and which step makes it pass>
 RISKS: <what could go wrong, or 'none'>
 QUESTIONS: <anything the person must answer first, or 'none'>
 """
@@ -488,6 +555,17 @@ name: {skill}
 description: <one line - what this skill teaches and when to use it>
 ---"""
 
+REVIEW_PROMPT = """QA REVIEW. You are checking finished work against the gates the person set. Inspect the workspace
+({workspace}) with your read tools; do not change anything. Be strict: a gate passes only if you saw the evidence.
+
+TASK: {text}
+
+GATES TO REVIEW:
+{gates}
+
+Reply with one line per gate, exactly:
+G<n>: PASS - <evidence>    or    G<n>: FAIL - <what is missing or wrong>"""
+
 HANDOFF = """SESSION HANDOFF - the earlier work in this session, compressed at a checkpoint. Trust it; re-read files
 only where you need detail.
 {summary}
@@ -567,6 +645,7 @@ class Worker:
         hits = self.memory.recall(f"{t['text']} {ws}", limit=5)
         feedback = f"\nFEEDBACK ON THE LAST PLAN (address it):\n{t['feedback']}\n" if t["feedback"] else ""
         prompt = PLAN_PROMPT.format(flow=name, source=t["source"], text=t["text"], workspace=ws,
+                                    gates=gates_text(json.loads(t.get("gates") or "[]")) or "(none)",
                                     feedback=feedback, memory=format_hits(hits),
                                     exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
                                     models=self.catalog.text(), default_model=flow.step_model, planner=flow.model)
@@ -615,7 +694,7 @@ class Worker:
         if note:
             self.store.event(t["id"], "kv", f"{model}: {note}")
         if r.exit_code == 0:
-            if phase.startswith("learn"):  # a skill review is a side trip: the segment stays as it was
+            if phase.startswith(("learn", "review")):  # side trips: the segment stays as it was
                 return r
             dirty = 0 if phase.startswith("checkpoint") else 1
             self.store.session_update(s["name"], fresh=0, dirty=dirty,
@@ -669,9 +748,29 @@ class Worker:
         self.store.event(t["id"], "compress", f"{reason}: {title} -> {s['name']}~{s['segment'] + 1} "
                                               f"(handoff {len(r.text)} chars)")
 
-    def run_checks(self, flow, ws):
+    def qa(self, t, flow, ws, model):
+        """QA after execution: the flow's checks, the task's command gates, then a reviewer run for the review gates.
+        Returns failure descriptions ([] = every gate passed)."""
+        gates = json.loads(t.get("gates") or "[]")
+        failures = self.run_checks(flow, ws, [g["text"] for g in gates if g["type"] == "run"])
+        review = [(i, g) for i, g in enumerate(gates, 1) if g["type"] == "review"]
+        if review:
+            r = self.run(flow, "review:plan", REVIEW_PROMPT.format(
+                workspace=ws, text=t["text"], gates="\n".join(f"G{i}. {g['text']}" for i, g in review)),
+                ws, t, model, "review")
+            verdicts = dict(re.findall(r"G(\d+)\s*:\s*(PASS|FAIL)\b", r.text, re.I))
+            for i, g in review:
+                v = verdicts.get(str(i), "").upper()
+                if v != "PASS":
+                    line = next((l for l in r.text.splitlines() if re.match(rf"\s*G{i}\s*:", l)), "no verdict")
+                    failures.append(f"G{i} [review] {g['text']}: {line.strip()[:500]}")
+            self.store.event(t["id"], "qa", f"review: {sum(1 for i, _ in review if verdicts.get(str(i), '').upper() == 'PASS')}"
+                                            f"/{len(review)} gates passed")
+        return failures
+
+    def run_checks(self, flow, ws, extra_cmds=()):
         failures = []
-        for check in flow.checks:
+        for check in list(flow.checks) + list(extra_cmds):
             # A check is a shell command, or {run: cmd, when_exists: path} to run only if that path exists.
             cmd, cond = (check.get("run"), check.get("when_exists")) if isinstance(check, dict) else (check, None)
             if not cmd or (cond and not (Path(ws) / cond).exists()):
@@ -719,6 +818,7 @@ class Worker:
         groups, reports = step_groups(mp, self.catalog), []
         for i, (agent, steps) in enumerate(groups):
             scope, extra, attempts, last = step_scope(steps, groups, mp, self.catalog), "", 0, i == len(groups) - 1
+            history = []  # failing-gate counts per QA round (loop end: no progress)
             label = f"steps {', '.join(str(s['n']) for s in steps)}" if len(groups) > 1 else "plan"
             while True:
                 attempts += 1
@@ -739,8 +839,8 @@ class Worker:
                     reports.append(r.text)
                     self.checkpoint(t, flow, ws, agent, f"{label} done")
                     break
-                failures = self.run_checks(flow, ws)
-                qa = ("QA passed" if flow.checks else "no QA checks defined") if not failures else "QA failed"
+                failures = self.qa(t, flow, ws, agent)
+                qa = "QA passed: every gate" if not failures else f"QA failed ({len(failures)} gate(s)), iteration {attempts}"
                 self.checkpoint(t, flow, ws, agent, qa,
                                 extra=("QA RESULTS (put them under OPEN):\n" + "\n".join(failures)) if failures else "")
                 if not failures:
@@ -748,10 +848,17 @@ class Worker:
                     self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]), learn_model=agent)
                     return
                 self.store.event(t["id"], "checks", f"failed: {failures[0][:300]}")
-                if attempts >= 2:
+                # Loop end: the gates pass, max_iterations is reached, or two iterations in a row fail as many
+                # gates as before (no progress: more of the same will not get there).
+                history.append(len(failures))
+                stalled = len(history) >= 3 and history[-1] >= history[-2] >= history[-3]
+                if attempts >= flow.max_iterations or stalled:
+                    why = "no progress in the last two iterations" if stalled else f"{attempts} iterations"
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
-                                        "checks still failing:\n" + "\n".join(failures), learn_model=agent)
-                extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE CHECKS FAILED. Fix them, staying on the plan:\n"
+                                        f"gates still failing after {why}:\n" + "\n".join(failures), learn_model=agent)
+                self.store.event(t["id"], "iterate", f"{len(failures)} gate(s) failing; iteration {attempts + 1} "
+                                                     f"of at most {flow.max_iterations}")
+                extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE GATES FAILED. Fix them, staying on the plan:\n"
                          + "\n".join(failures) + "\n")
 
     def _finish(self, t, flow, ws, status, result, error="", learn_model=None):
@@ -921,6 +1028,8 @@ def main(argv=None):
     s.add_argument("--workspace", default="")
     s.add_argument("--flow", default=""); s.add_argument("--wait", type=int, default=0)
     s.add_argument("--session", default="", help="continue this Hermes session (default: a new one for the task)")
+    s.add_argument("--gate", action="append", default=[], help="a check gate ('run: pytest -q' for a command); repeatable")
+    gt = sub.add_parser("gates"); gt.add_argument("id"); gt.add_argument("gates", nargs="+")
     g = sub.add_parser("get"); g.add_argument("id")
     w = sub.add_parser("wait"); w.add_argument("id"); w.add_argument("--timeout", type=int, default=600)
     a = sub.add_parser("approve"); a.add_argument("id")
@@ -943,7 +1052,7 @@ def main(argv=None):
     st = Store()
     if args.cmd == "submit":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else args.text
-        tid = st.submit(text, "cli", args.workspace, args.flow, args.session)
+        tid = st.submit(text, "cli", args.workspace, args.flow, args.session, args.gate)
         ensure_worker()
         _print(st.wait(tid, args.wait) if args.wait else {"id": tid, "status": "new"})
     elif args.cmd == "get":
@@ -955,6 +1064,8 @@ def main(argv=None):
         st.approve(args.id, ",".join(args.model) or None); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "revise":
         st.revise(args.id, args.feedback); ensure_worker(); _print(st.get(args.id, events=False))
+    elif args.cmd == "gates":
+        st.set_gates(args.id, args.gates); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "feedback":
         st.feedback(args.id, args.text); ensure_worker(); print("feedback recorded; the flow's skill will learn from it")
     elif args.cmd == "cancel":

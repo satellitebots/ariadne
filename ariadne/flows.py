@@ -51,7 +51,8 @@ class Flow:
     requires: list = field(default_factory=list)   # system tools the flow's MCP servers need (deps.SYSTEM_TOOLS, chrome)
     real_logins: bool = True          # browser: use the person's real Chrome profile (logins) unless a flow turns it off
     blocklist: list = field(default_factory=list)   # network: hosts this flow may not reach (everything else allowed)
-    max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40})
+    max_iterations: int = 10      # execute -> QA rounds at most; stops earlier when it stops making progress
+    max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40, "review:plan": 15})
     run_budget: dict = field(default_factory=lambda: {"plan": 900, "execute": 1800})
     folder: Path = None
 
@@ -113,6 +114,7 @@ def load_flow(folder):
         if agent.kind != "agent":
             raise FlowError(f"{fl.name}: {key} '{name}' is a {agent.kind} model; it must be an agent model")
     fl.max_turns.update(data.get("max_turns") or {})
+    fl.max_iterations = int(data.get("max_iterations") or fl.max_iterations)
     fl.run_budget.update(data.get("run_budget") or {})
     for s in fl.skills:
         if not (folder / "skills" / s / "SKILL.md").exists():
