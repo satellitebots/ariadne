@@ -36,5 +36,11 @@ Learned from reviews of earlier designs (first RAG design draft: real design, to
   in the tool server's own folder, not the workspace. After rendering, list diagrams/ and confirm the PNG and SVG
   are newer than their .mmd.
 
+## One source per diagram
+- diagrams/<name>.mmd is the source. When a diagram changes, edit the .mmd, re-render PNG and SVG from it, then
+  copy the same Mermaid into DESIGN.md. Never change only the copy in DESIGN.md: the rendered image keeps the
+  old content (RAG design: DESIGN.md said qwen3.6, architecture.png still said Llama-3).
+- Render last, after the final edit of every diagram.
+
 ## Before you finish
 - Every section heading appears once. Every diagram in diagrams/ is rendered, current and linked.
