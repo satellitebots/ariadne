@@ -389,6 +389,26 @@ def _kill_tree(p):
         p.kill()
 
 
+_TURN_END = re.compile(r"Turn ended: reason=(\S+) .*?session=(\S+)")
+
+
+def _turn_end_reason(home, session_id):
+    """Why Hermes ended the run's last turn (e.g. max_iterations_reached), from its agent.log; '' if unknown."""
+    if not session_id:
+        return ""
+    try:
+        with open(Path(home) / "logs" / "agent.log", "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 400_000))
+            tail = f.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    sid = session_id.strip()
+    reasons = [m.group(1) for m in _TURN_END.finditer(tail)
+               if len(m.group(2)) >= 12 and (sid.startswith(m.group(2)) or m.group(2).startswith(sid))]
+    return reasons[-1].split("(")[0] if reasons else ""
+
+
 def _latest_session(home, since):
     """The Hermes session a killed run was writing (its id is only printed at a clean exit)."""
     try:
@@ -875,11 +895,16 @@ class Worker:
                 r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
                                                                   plan=t["plan"], extra=scope + extra), ws, t, agent,
                              "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
-                if r.exit_code == 124 and last:
-                    # Out of time, not out of options: what it wrote stays; the gates decide, and the loop goes on
-                    # (still bounded by max_iterations and the no-progress stop).
-                    self.store.event(t["id"], "execute", f"run budget used up (attempt {attempts}); checking the gates")
-                    r = RunResult("TIMED OUT before finishing; continue from the files as they are.", 0, r.log)
+                out_of = "time" if r.exit_code == 124 else (
+                    "turns" if r.exit_code != 0 and _turn_end_reason(flow.home, r.session_id) == "max_iterations_reached"
+                    else "")
+                if out_of and last:
+                    # Out of time or turns, not out of options: what it wrote stays; the gates decide, and the loop
+                    # goes on (still bounded by max_iterations and the no-progress stop).
+                    what = "run budget" if out_of == "time" else "turn limit"
+                    self.store.event(t["id"], "execute", f"{what} used up (attempt {attempts}); checking the gates")
+                    r = RunResult(f"STOPPED ({what} used up) before finishing; continue from the files as they are.",
+                                  0, r.log)
                 elif r.exit_code != 0 or not r.text:
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
                                         f"execute run failed (exit {r.exit_code}); log {r.log}")

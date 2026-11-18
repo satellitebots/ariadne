@@ -14,7 +14,7 @@ plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, gi
              get_symbol_definition_code, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 checks:
   - {run: "\"{python}\" -m pytest -q", when_exists: "tests"}
-max_turns: {plan: 20, execute: 40}
+max_turns: {plan: 20, execute: 80}    # a 9-step build used all 40 in 40 min (RAG v1); running out goes to QA
 run_budget: {plan: 2700, execute: 3600}   # seconds; the 27B plans at ~2 tok/s
 browser:
   real_logins: true        # use your Chrome logins; set false for a clean temporary profile
