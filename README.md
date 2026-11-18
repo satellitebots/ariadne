@@ -149,6 +149,25 @@ it. Inside a run Hermes compresses past 30K tokens.
 A **session** is a workstream: its tasks and the conversation between them (`--session NAME`, `session` on MCP,
 or one per desktop or terminal chat; `python -m ariadne sessions`).
 
+## Jobs, the web and logins
+
+Models write; Ariadne runs. Heavy work (installs, ingest, builds, evals, full test suites) is written as a script
+and handed over with `submit_job`. Ariadne parks the model's cache, unloads the models, runs the job outside any
+session (log in `.ariadne/logs/jobs/`), and wakes the same conversation with the result. No timeouts to babysit, and
+the model and the heavy work never hold the machine at the same time.
+
+Every flow can search the web (`web_search`, keyless) and read pages (`web_fetch`), and drive a visible Chrome
+(browser tools). Coding looks up official docs before using an API (the `coding-standards` skill). The browser
+starts isolated, with no sign-ins. Models never type passwords or codes: a step that needs a login calls
+`need_login`, the task pauses, and you sign in yourself in **debug mode**, which attaches the browser tools to your
+own Chrome and its existing sessions:
+
+```
+python -m ariadne browser debug on     # once in Chrome: chrome://inspect/#remote-debugging -> allow
+python -m ariadne park --resume        # or R in the watch window
+python -m ariadne browser debug off    # back to the isolated browser
+```
+
 ## Skills
 
 Every flow loads the shared skills in `skills/<flow>/<name>/SKILL.md`. The larger models that drive Ariadne write
@@ -161,7 +180,7 @@ and pushes it. Local workers never write skills. Contributions welcome: add or i
 - Flows: `flows/<name>/flow.yaml` - coding, design, writing, content (models, skills, MCP servers, checks, budgets,
   `network.blocklist`, `browser.real_logins`). Add a flow by adding a folder.
 - Models, context window and resource profile: `serving/models.yaml`.
-- MCP servers a flow can use: `flows/mcp_servers.yaml` (memory, git, vscode, browser, export, image, diagram, text).
+- MCP servers a flow can use: `flows/mcp_servers.yaml` (memory, jobs, web, git, vscode, browser, export, image, diagram, text).
 - State (tasks, sessions, memory, KV caches, logs): `.ariadne/`.
 
 ## TODO

@@ -850,10 +850,18 @@ class Worker:
 
     def _hold(self, t, model):
         """Parked: give the model to the person until they resume (never resumes on its own)."""
+        by = (park.requested() or {}).get("by", "")
         park.mark_parked(t["id"], model)
-        self.store.event(t["id"], "park", "parked: waiting for resume (desktop button or `python -m ariadne park --resume`)")
+        self.store.event(t["id"], "park", by if by.startswith("login needed") else
+                         "parked: waiting for resume (desktop button or `python -m ariadne park --resume`)")
         park.wait_resumed()
         self.store.event(t["id"], "park", "resumed")
+        flow = self.flows.get(t.get("flow") or "")
+        if flow:   # debug mode may have changed while parked: the resumed run's browser follows it
+            try:
+                flowlib.compile_flow(flow)
+            except Exception as e:
+                self.store.event(t["id"], "park", f"could not refresh the flow's tools: {e}")
 
     def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
         """Pause and compress at a phase boundary: the model that just worked (still loaded, cache hot) writes a

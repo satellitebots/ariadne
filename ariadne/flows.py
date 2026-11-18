@@ -155,7 +155,8 @@ def _server_config(entry, fl):
     (real_logins / isolated), so one browser server serves flows with and without the person's logins."""
     entry = dict(entry)
     when = entry.pop("args_when", None) or {}
-    extra = when.get("real_logins" if fl.real_logins else "isolated") or []
+    from .browser import real_logins
+    extra = when.get("real_logins" if real_logins(fl) else "isolated") or []
     if extra:
         entry["args"] = list(entry.get("args") or []) + list(extra)
     return json.loads(json.dumps(_expand(entry)).replace("{home}", fl.home.as_posix()))  # {home}: this flow's home

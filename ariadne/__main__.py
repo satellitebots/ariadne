@@ -6,6 +6,7 @@
   models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
   kv [list | drop SESSION]   parked KV caches, per session, step and model
   park [--resume | --status]   pause the running task at its next step boundary to have the model (never automatic)
+  browser [status | debug on|off]   debug on: the models' browser attaches to your Chrome and its logins
   stop                       stop the background worker and models on purpose (also S in the watch window); they
                              run outside any terminal or session, so nothing else takes them down
   resources [max|shared|light]   how much of the machine the models may take (applied between tasks)
@@ -110,6 +111,9 @@ def main(argv=None):
     if cmd == "park":
         from . import park
         return park.main(rest)
+    if cmd == "browser":
+        from . import browser
+        return browser.main(rest)
     if cmd == "casestudy":
         from . import casestudy
         return casestudy.main(rest)

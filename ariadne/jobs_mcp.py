@@ -43,6 +43,22 @@ def submit_job(command: str, why: str, after: str = "", expects: list[str] | Non
 
 
 @server.tool()
+def need_login(site: str, why: str) -> str:
+    """A step needs you signed in to a site (or a one-time code, a CAPTCHA, a payment). Never type credentials
+    yourself. Ariadne pauses this task after this call and asks the person to sign in in their own Chrome; you are
+    resumed here afterwards. site: the site or app (e.g. github.com). why: what you need the login for."""
+    from . import browser, park
+    task, _ = _here()
+    note = browser.login_note(site, why)
+    park.request(by=note)
+    if task:
+        from .orchestrator import Store
+        Store().event(task, "login", note)
+    return ("Paused for the person to sign in. Reply 'LOGIN NEEDED: " + site + "' and stop. When you are resumed, "
+            "check in the browser that you are signed in before going on; if not, call need_login again.")
+
+
+@server.tool()
 def list_jobs() -> str:
     """This task's jobs: status, exit code, how long they took."""
     task, _ = _here()

@@ -5,12 +5,14 @@ when: designing a system or feature, planning a project, architecture or flow di
 model: gemma-4-26b-a4b     # the agent model when a step names none (MoE: fast here)
 skills: [diagram-first]
 requires: [node, chrome]   # Mermaid renders with the Mermaid CLI (npx) on your Chrome
-mcp_servers: [memory, diagram, image, export]
+mcp_servers: [memory, diagram, image, export, web, browser, jobs]
 toolsets:
-  plan: [file, skills]
-  execute: [file, skills, todo]
-plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, check_diagram]
+  plan: [file, skills, search]
+  execute: [file, skills, todo, search]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, check_diagram, web_search, web_fetch, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 max_turns: {plan: 15, execute: 30}
 run_budget: {plan: 1800, execute: 3600}
+browser:
+  real_logins: false       # a clean, isolated Chrome; `python -m ariadne browser debug on` attaches to your Chrome when a step needs a login
 network:
   blocklist: []            # hosts this flow must not reach, e.g. [example.com]; everything else is allowed
