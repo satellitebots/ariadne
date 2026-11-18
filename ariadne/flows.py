@@ -157,7 +157,7 @@ def _server_config(entry, fl):
     extra = when.get("real_logins" if fl.real_logins else "isolated") or []
     if extra:
         entry["args"] = list(entry.get("args") or []) + list(extra)
-    return _expand(entry)
+    return json.loads(json.dumps(_expand(entry)).replace("{home}", fl.home.as_posix()))  # {home}: this flow's home
 
 
 def compile_flow(fl, flows_dir=None):

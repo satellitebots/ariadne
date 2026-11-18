@@ -5,6 +5,11 @@ memory:   # the durable shared memory (ariadne/memory_mcp.py)
   args: ["-m", "ariadne.memory_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 60
+jobs:     # hand heavy work to Ariadne: it unloads the model, runs the job, wakes the model with the result
+  command: "{python}"
+  args: ["-m", "ariadne.jobs_mcp"]
+  env: {PYTHONPATH: "{root}", ARIADNE_FLOW_HOME: "{home}"}
+  timeout: 60
 git:      # local git: status, diff, log, show, add, commit (ariadne/git_mcp.py)
   command: "{python}"
   args: ["-m", "ariadne.git_mcp"]

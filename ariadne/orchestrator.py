@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import flows as flowlib
-from . import llm, park, paths
+from . import jobs, llm, park, paths
 from .memory import Memory, format_hits
 
 FINAL = ("done", "failed", "cancelled")
@@ -325,6 +325,8 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs
     tools_phase = phase.split(":", 1)[1] if ":" in phase else phase
     (home / "ariadne_phase").write_text("plan" if side else phase, encoding="utf-8")
+    (home / "ariadne_task").write_text(tid, encoding="utf-8")            # read by the jobs MCP server
+    (home / "ariadne_workspace").write_text(str(workspace), encoding="utf-8")
     qfile = paths.LOGS / f"{tid}-{phase.replace(':', '-')}-{int(time.time())}.prompt.md"
     qfile.write_text(prompt, encoding="utf-8")
     # Hermes names an MCP server's toolset "mcp-<server>" (the bare name can collide with a built-in, e.g. memory).
@@ -448,8 +450,10 @@ dense model only to a step that needs the deepest reasoning (hard debugging, tri
 Each step (or run of steps on one model) executes in a fresh session that only gets a summary of earlier steps, so
 every step must leave its output in files; never plan a "think only" step whose result a later step on another
 model has to write down. Fewer model changes is better: switch models only where it clearly pays.
-Work that can run for minutes (ingest, embedding, installs, builds, large test suites) follows the long-jobs skill:
-plan it as sample run -> time estimate -> background run with progress -> verify counts, and make it resumable.
+Work that can run for minutes (ingest, embedding, installs, builds, evals, full test suites) is not run by the model:
+the step writes a script and submits it as a job when the execute tools include submit_job (the jobs skill), else it
+follows the long-jobs skill. Plan it as: write the script with a sample mode -> job: sample run -> job: full run
+(resumable, writes a report file) -> check the report. Each job's result wakes the model to do the next step.
 
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 
@@ -475,11 +479,22 @@ APPROVED PLAN:
 Rules:
 - If a step cannot be done as planned, or the plan turns out to be wrong, stop and reply starting with
   'OFF-PLAN:' and the reason. Do not improvise a different plan.
-- Anything that may take more than 2 minutes: follow the long-jobs skill (sample first, then terminal
-  background=true with progress in a log, wait with process_manage, resume rather than restart).
+{jobs_rule}
 - At the end, record in shared memory (memory_record) anything a later task should know about this workspace.
 - Finish with a short report: what you changed, how you verified it.
 """
+
+JOBS_RULE = """- You write code and scripts; Ariadne runs the heavy work. Installs, ingest, embedding, builds, evals, full test
+  suites, downloads: write the script, call submit_job (jobs tools), then end your turn with
+  'JOB SUBMITTED: <id>'. You are unloaded while it runs and woken here with the result. Quick commands (read,
+  grep, git status, one test file) stay in the terminal. Follow the jobs skill."""
+NO_JOBS_RULE = """- Anything that may take more than 2 minutes: follow the long-jobs skill (sample first, then terminal
+  background=true with progress in a log, wait with process_manage, resume rather than restart)."""
+
+
+def jobs_rule(flow):
+    return JOBS_RULE if "jobs" in flow.mcp_servers else NO_JOBS_RULE
+
 
 # ---------- model plan: a model per step, suggested by the planner, locked at sign-off ----------
 
@@ -636,6 +651,13 @@ GATES TO REVIEW:
 Reply with one line per gate, exactly:
 G<n>: PASS - <evidence>    or    G<n>: FAIL - <what is missing or wrong>"""
 
+JOB_RESULT_PROMPT = """You were asleep while Ariadne ran the job(s) you submitted, with the machine to itself. Results:
+
+{results}
+
+Read them and continue the approved plan from here: fix and resubmit if a job failed (resume, do not start over),
+otherwise go on to the next step. Heavy work again goes through submit_job."""
+
 RESUME_PROMPT = """You were paused at a step boundary so the person could use the model. Continue the same task where
 you left off. If your last tool call has no result, run it again; re-read a file before editing it."""
 
@@ -659,8 +681,11 @@ Reply with only the flow name."""
 
 class Worker:
     def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
-                 catalog=None, installer=None, on_installed=None, kv=None):
+                 catalog=None, installer=None, on_installed=None, kv=None, job_runner=None):
         from . import kvcache
+        # Jobs run for real only with the real runner; tests pass a fake that never unloads the model server.
+        self.job_runner = job_runner or (jobs.run if runner is hermes_run else
+                                         (lambda j, db: jobs.run(j, db, unload=lambda: True, poll=0.05)))
         self.kv = kv or (kvcache.default() if runner is hermes_run else kvcache.NoKVCache())
         from . import models as modellib
         self.catalog = catalog or modellib.load()
@@ -782,12 +807,45 @@ class Worker:
             note = self.kv.save(title, model, scope)
             if note:
                 self.store.event(t["id"], "kv", f"{model}: {note}")
+        if not side:
+            r = self._run_jobs(flow, phase, ws, t, model, scope, title, r, resume)
         if r.exit_code == 0:
             if phase.startswith(("learn", "review")):  # side trips: the segment stays as it was
                 return r
             dirty = 0 if phase.startswith("checkpoint") else 1
             self.store.session_update(s["name"], fresh=0, dirty=dirty,
                                       hermes_id=f"{sig}|{r.session_id}" if r.session_id else s["hermes_id"])
+        return r
+
+    MAX_JOB_CYCLES = 40
+
+    def _run_jobs(self, flow, phase, ws, t, model, scope, title, r, resume):
+        """The callback loop: while the model has submitted jobs, run them with the model unloaded (its KV cache is
+        already parked), then wake the same Hermes session with the results. Ends when a run submits no job."""
+        cycles = 0
+        while cycles < self.MAX_JOB_CYCLES:
+            pending = jobs.for_task(t["id"], "pending", self.store.db_path)
+            if not pending:
+                return r
+            cycles += 1
+            results = []
+            for j in pending:
+                self.store.event(t["id"], "job", f"{j['id']} started: {j['why'] or j['command']} (model unloaded)")
+                j = self.job_runner(j, self.store.db_path)
+                res = json.loads(j.get("result") or "{}")
+                self.store.event(t["id"], "job", f"{j['id']} {j['status']}: exit {j['exit_code']} in "
+                                                 f"{res.get('seconds')} s")
+                results.append(jobs.result_text(j))
+            session = r.session_id or resume
+            note = self.kv.restore(title, model, scope) if session else ""
+            if note:
+                self.store.event(t["id"], "kv", f"{model}: {note}")
+            prompt = JOB_RESULT_PROMPT.format(results="\n\n".join(results))
+            r = self.runner(flow, phase, prompt, ws, t["id"], model=model, session=session)
+            note = self.kv.save(title, model, scope)
+            if note:
+                self.store.event(t["id"], "kv", f"{model}: {note}")
+        self.store.event(t["id"], "job", f"stopped after {self.MAX_JOB_CYCLES} job cycles")
         return r
 
     def _hold(self, t, model):
@@ -897,6 +955,7 @@ class Worker:
                 attempts += 1
                 self.store.event(t["id"], "execute", f"{label} on {agent}, attempt {attempts}")
                 r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
+                                                                  jobs_rule=jobs_rule(flow),
                                                                   plan=t["plan"], extra=scope + extra), ws, t, agent,
                              "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
                 out_of = "time" if r.exit_code == 124 else (
@@ -1066,6 +1125,9 @@ def stop_all(reason="stopped by you"):
                                                                "Approve to continue it.")
             st.event(t["id"], "stop", reason)
             stopped.append(t["id"])
+        for j in jobs.for_task(t["id"], db_path=st.db_path):   # a job killed with the worker does not run again
+            if j["status"] in ("pending", "running"):
+                jobs._update(j["id"], st.db_path, status="cancelled")
     return stopped
 
 

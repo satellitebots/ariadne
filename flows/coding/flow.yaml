@@ -5,7 +5,7 @@ model: qwen3.6-35b-a3b           # plans and runs steps (MoE, 3B active: ~10x fa
 reasoning: {execute: low}       # think less while executing an approved plan
 skills: [fix-and-verify]
 requires: []               # system tools the servers below need, e.g. [node, chrome] for browser
-mcp_servers: [memory, git] # optional: vscode (VS Code MCP extension running), browser (needs node + chrome)
+mcp_servers: [memory, git, jobs] # optional: vscode (VS Code MCP extension running), browser (needs node + chrome)
 toolsets:
   plan: [file, skills]
   execute: [file, terminal, skills, todo]
