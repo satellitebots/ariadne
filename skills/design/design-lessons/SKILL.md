@@ -29,3 +29,12 @@ Learned from reviews of earlier designs (first RAG design draft: real design, to
 
 ## Hand over through files
 - Write the document early and improve it in place; content only "thought" in one step is lost by the next.
+- To rewrite a file, read it whole first (no offset/limit) or change it with patch. write_file refuses to
+  overwrite a file you only read in pages; never work around that by appending a second copy. (RAG design
+  iteration 3: 21 refused writes, and the new design ended up appended under the old one, every section twice.)
+- Give tools absolute paths inside the workspace (render_diagram output, export, images). A relative path lands
+  in the tool server's own folder, not the workspace. After rendering, list diagrams/ and confirm the PNG and SVG
+  are newer than their .mmd.
+
+## Before you finish
+- Every section heading appears once. Every diagram in diagrams/ is rendered, current and linked.
