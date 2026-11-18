@@ -33,6 +33,8 @@ def export_document(source: str, to: str = "docx", output: str = "") -> str:
     if to not in FORMATS:
         return f"unsupported format '{to}'; use one of {sorted(FORMATS)} (PDF: export docx, then print to PDF)"
     src = Path(source)
+    if not src.is_absolute() or (output and not Path(output).is_absolute()):
+        return "source and output must be absolute paths inside your workspace (relative paths resolve elsewhere)"
     if not src.exists():
         return f"no such file: {source}"
     out = Path(output) if output else src.with_suffix("." + to)

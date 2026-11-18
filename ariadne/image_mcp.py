@@ -67,6 +67,8 @@ def generate_image(prompt: str, output: str, model: str = "", width: int = 1024,
         return f"{m.name} is not installed: run  python -m ariadne models install {m.name}"
     _free_gpu()
     out = Path(output)
+    if not out.is_absolute():  # a relative path would land in this server's own folder, not the workspace
+        return f"output must be an absolute path inside your workspace (got '{output}')"
     out.parent.mkdir(parents=True, exist_ok=True)
     p = subprocess.run([str(sd), *sd_args(m, prompt, out, width, height, seed)], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=1200)

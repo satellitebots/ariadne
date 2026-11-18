@@ -60,6 +60,8 @@ def render_diagram(source: str, output: str, theme: str = "neutral", background:
     """Render Mermaid source to `output` (.svg, .png or .pdf by extension) and save the source next to it as .mmd.
     theme: default, neutral, dark or forest. Returns the paths, or the parse error."""
     out = Path(output)
+    if not out.is_absolute():  # a relative path would land in this server's own folder, not the workspace
+        return f"output must be an absolute path inside your workspace (got '{output}')"
     if out.suffix.lower() not in (".svg", ".png", ".pdf"):
         return "output must end in .svg, .png or .pdf"
     if theme not in THEMES:
