@@ -12,7 +12,7 @@ at `458a0046ad`. Run dates: 17-18 November 2026.
 
 | Piece | Status |
 |---|---|
-| Warm-up: todo app (coding flow) | Done. All 5 gates passed, 18 tests. |
+| Warm-up: todo app (coding flow) | Done. All 5 gates passed, 18 tests. Its own case study: [TODO_case_study.md](TODO_case_study.md) |
 | RAG design (design flow) | Done. About 85%, which clears the 80% bar set for it. |
 | RAG build v1 (coding flow) | In progress: QA iteration 3. The core library and 24 tests are done. The real ingest, README transcripts and eval are not done yet, held back by model swap thrash (see below). |
 
