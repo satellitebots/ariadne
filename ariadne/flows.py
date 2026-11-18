@@ -24,6 +24,7 @@ BASE_CONFIG = {
     "models_dev": {"url": "http://127.0.0.1:9/models-dev-disabled.json"},
     "updates": {"check": False},
     "telemetry": {"shared_metrics": {"enabled": False, "send": False}},
+    "web": {"search_backend": "ddgs"},   # keyless web_search (Hermes' ddgs extra); pages are read with web_fetch
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
                             "base_url": "http://localhost:11434/v1"}],
 }

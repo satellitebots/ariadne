@@ -76,7 +76,7 @@ class KVCache:
             r = self.post(model, "restore", name)
         except Exception as e:  # different llama.cpp build, model file changed, server down: plain prefill
             return f"wake skipped ({type(e).__name__})"
-        os.utime(self.dir / name)
+        self._touch(self.dir / name)
         return f"woke {r.get('n_restored', '?')} tokens from {name} in {time.time() - t:.1f}s"
 
     def save(self, session, model, scope=MASTER):
@@ -90,6 +90,8 @@ class KVCache:
             r = self.post(model, "save", name)
         except Exception as e:
             return f"park skipped ({type(e).__name__})"
+        if (self.dir / name).exists():
+            self._touch(self.dir / name)
         idx = self._index()
         entry = idx.setdefault(session, {}).setdefault(model, {"steps": {}})
         entry.setdefault("steps", {})[scope] = name
@@ -97,6 +99,13 @@ class KVCache:
         self._write(idx)
         self.prune()
         return f"parked {r.get('n_saved', '?')} tokens as {scope} in {time.time() - t:.1f}s"
+
+    def _touch(self, path):
+        """Mark a cache most recently used: strictly newer than every other one, so ties from a coarse or lazily
+        updated file clock cannot reorder the LRU."""
+        newest = max((f.stat().st_mtime_ns for f in self.dir.glob("*.bin") if f != path), default=0)
+        t = max(time.time_ns(), newest + 1_000_000)
+        os.utime(path, ns=(t, t))
 
     # ---------- housekeeping ----------
     def drop(self, session):

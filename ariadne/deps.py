@@ -247,7 +247,7 @@ def install(system=False, slack=False, models=False):
         sys.exit("git and uv are required before anything else; install them and rerun.")
     print("  Hermes submodule"); subprocess.run(["git", "-C", str(paths.ROOT), "submodule", "update", "--init", "upstream"], check=True)
     print("  Python env")
-    extras = ["--extra", "mcp"] + (["--extra", "slack"] if slack else [])
+    extras = ["--extra", "mcp", "--extra", "ddgs"] + (["--extra", "slack"] if slack else [])
     env = dict(**__import__("os").environ, UV_PROJECT_ENVIRONMENT=str(paths.VENV))
     subprocess.run(["uv", "sync", "--project", str(paths.UPSTREAM), "--frozen", "--no-dev", "--python", "3.14", *extras],
                    check=True, env=env)

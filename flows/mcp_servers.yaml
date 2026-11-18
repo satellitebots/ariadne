@@ -10,6 +10,11 @@ jobs:     # hand heavy work to Ariadne: it unloads the model, runs the job, wake
   args: ["-m", "ariadne.jobs_mcp"]
   env: {PYTHONPATH: "{root}", ARIADNE_FLOW_HOME: "{home}"}
   timeout: 60
+web:      # web_fetch: read official docs as text (search itself is Hermes' web_search, keyless ddgs backend)
+  command: "{python}"
+  args: ["-m", "ariadne.web_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 60
 git:      # local git: status, diff, log, show, add, commit (ariadne/git_mcp.py)
   command: "{python}"
   args: ["-m", "ariadne.git_mcp"]
