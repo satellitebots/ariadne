@@ -162,6 +162,19 @@ def test_failing_gates_iterate_and_stop_when_no_progress(env):
     assert w.flows["coding"].max_iterations == 10
 
 
+def test_a_timed_out_run_goes_to_the_gates_not_to_failed(env):
+    class Slow(FakeRunner):
+        def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
+            r = super().__call__(flow, phase, prompt, ws, tid, model, session)
+            return orch.RunResult("(timed out)", 124, "log") if phase == "execute" and len(self.calls) < 4 else r
+    run = Slow(results=["unused", "done now"])
+    w = make_worker(env, run)
+    tid = w.store.submit("fix x", "test", str(env))
+    w.run_once(); w.store.approve(tid); w.run_once()
+    t = w.store.get(tid)
+    assert t["status"] == "done" and any("run budget used up" in e for e in t["events"])
+
+
 def test_no_task_starts_without_gates(env):
     st = orch.Store(env / "t.db")
     tid = st.submit("make it better", "test", str(env))

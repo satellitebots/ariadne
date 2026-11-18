@@ -835,7 +835,12 @@ class Worker:
                 r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
                                                                   plan=t["plan"], extra=scope + extra), ws, t, agent,
                              "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
-                if r.exit_code != 0 or not r.text:
+                if r.exit_code == 124 and last:
+                    # Out of time, not out of options: what it wrote stays; the gates decide, and the loop goes on
+                    # (still bounded by max_iterations and the no-progress stop).
+                    self.store.event(t["id"], "execute", f"run budget used up (attempt {attempts}); checking the gates")
+                    r = RunResult("TIMED OUT before finishing; continue from the files as they are.", 0, r.log)
+                elif r.exit_code != 0 or not r.text:
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
                                         f"execute run failed (exit {r.exit_code}); log {r.log}")
                 if r.text.lstrip().upper().startswith("OFF-PLAN"):
