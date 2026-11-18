@@ -58,6 +58,10 @@ def _desktop(rest):
     # npm_config_* from a parent npm/npx process makes the pinned pnpm's preinstall check fail; start clean.
     env = {k: v for k, v in os.environ.items() if not k.lower().startswith("npm_")}
     env["HERMES_HOME"] = str(paths.GATEWAY_HOME)
+    # Desktop's runtime ladder: HERMES_DESKTOP_HERMES_ROOT wins only if it finds an interpreter for that root
+    # (the root's own .venv, or HERMES_DESKTOP_PYTHON). Ours lives in Ariadne's venv, not upstream/.venv;
+    # without this the app falls through to its first-run installer and clones a second Hermes.
+    env["HERMES_DESKTOP_PYTHON"] = str(paths.HERMES_EXE.with_name("python.exe" if os.name == "nt" else "python"))
     args = [str(paths.HERMES_EXE), "desktop", "--hermes-root", str(paths.UPSTREAM), "--cwd", cwd, "--local"]
     if "--build" in rest:
         args.append("--force-build")

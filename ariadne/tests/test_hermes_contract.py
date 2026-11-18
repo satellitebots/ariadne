@@ -30,6 +30,14 @@ def test_gateway_stop_and_desktop_flags():
         assert flag in d, f"hermes desktop lost {flag}"
 
 
+def test_desktop_runtime_overrides():
+    """`ariadne desktop` points the app at our runtime through these env vars; without them it runs its installer."""
+    electron = paths.UPSTREAM / "apps" / "desktop" / "electron"
+    src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in electron.glob("*.ts"))
+    for var in ("HERMES_DESKTOP_HERMES_ROOT", "HERMES_DESKTOP_PYTHON"):
+        assert f"process.env.{var}" in src, f"Hermes Desktop no longer reads {var}"
+
+
 def test_config_keys_we_set():
     src = (paths.UPSTREAM / "hermes_cli" / "config_defaults.py").read_text(encoding="utf-8")
     for key in ('"compression"', '"threshold_tokens"', '"tail_mode"', '"max_attempts"', '"title_generation"',
