@@ -114,14 +114,47 @@ def set_gates(id: str, gates: list[str]) -> str:
 
 @server.tool()
 def feedback_task(id: str, feedback: str) -> str:
-    """Feedback on a task's plan, work or report, at any time (also after it is done): what was good, what was
-    wrong, preferences. The flow's skill is rewritten from it, so later tasks go better. Pass the person's words, and
-    add your own review of the work when you have one."""
+    """Feedback on a task's plan, work or report, at any time (also after it is done): the person's words plus your
+    own review. It stays open until folded into a shared skill with save_skill."""
     def go():
         store().feedback(id, feedback)
-        ensure_worker()
-        return json.dumps({"id": id, "next": "recorded; the worker updates the flow's skill"})
+        return json.dumps({"id": id, "next": "recorded; fold it into the flow's skills with save_skill"})
     return _guard(go)
+
+
+@server.tool()
+def list_skills(flow: str = "") -> str:
+    """The shared skills every run of a flow loads (skills/<flow>/<name>/SKILL.md in the repo), and the feedback
+    not yet folded into any skill."""
+    from . import skills
+    return json.dumps({"skills": skills.list_skills(flow or None), "open_feedback": store().open_feedback()}, indent=2)
+
+
+@server.tool()
+def get_skill(flow: str, name: str) -> str:
+    """The full SKILL.md of a shared skill."""
+    from . import skills
+    try:
+        return skills.read(flow, name)
+    except skills.SkillError as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def save_skill(flow: str, name: str, content: str, note: str = "", resolves: list[str] | None = None) -> str:
+    """Create or rewrite a shared skill for a flow from feedback and your review of the work. Write it yourself:
+    complete SKILL.md, starting with '---\nname: <name>\ndescription: <when to use it>\n---', then imperative,
+    specific guidance for the local worker (what to do, what to avoid, conventions the person wants), under ~500
+    words; keep what still holds when rewriting (read it with get_skill first). It is committed and pushed, and loads
+    in every later run of the flow. resolves: task ids whose feedback this skill now covers."""
+    from . import skills
+    try:
+        report = skills.save(flow, name, content, note)
+    except skills.SkillError as e:
+        return json.dumps({"error": str(e)})
+    if resolves:
+        store().resolve_feedback(resolves)
+    return json.dumps({"saved": f"{flow}/{name}", "report": report})
 
 
 @server.tool()

@@ -238,7 +238,8 @@ class Store:
         self.event(tid, "sign-off", "cancelled")
 
     def feedback(self, tid, text):
-        """Feedback on a task at any time (after the report too). The worker turns it into skill updates."""
+        """Feedback on a task at any time (after the report too). It stays open until a larger model folds it into
+        a shared skill (save_skill with resolves=[task ids])."""
         text = (text or "").strip()
         if not text:
             raise TaskError("the feedback is empty")
@@ -247,18 +248,27 @@ class Store:
         with self._conn() as c:
             c.execute("UPDATE tasks SET learn=1 WHERE id=?", (tid,))
 
+    def open_feedback(self):
+        """Feedback not yet folded into a skill: [{task, flow, text, feedback}]."""
+        with self._conn() as c:
+            rows = c.execute("SELECT id, flow, substr(text,1,200) AS text FROM tasks WHERE learn=1").fetchall()
+            out = []
+            for r in rows:
+                fb = [e["detail"] for e in c.execute("SELECT detail FROM events WHERE task_id=? AND kind IN "
+                                                     "('feedback','checks','qa') ORDER BY ts", (r["id"],))]
+                out.append({"task": r["id"], "flow": r["flow"], "text": r["text"], "feedback": fb})
+        return out
+
+    def resolve_feedback(self, tids):
+        with self._conn() as c:
+            for tid in tids:
+                c.execute("UPDATE tasks SET learn=0 WHERE id=?", (tid,))
+                c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), "skill", "feedback folded into a skill"))
+
     def claim_next(self):
-        """Oldest task that needs the worker: new -> planning, approved -> executing (atomic); else a finished task
-        with new feedback to learn from (status unchanged, returned with job='learn')."""
+        """Oldest task that needs the worker: new -> planning, approved -> executing (atomic)."""
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
-            # Feedback first: a lesson learned now improves the very next task.
-            lr = c.execute("SELECT id FROM tasks WHERE learn=1 AND flow != '' AND status NOT IN "
-                           "('new','approved','planning','executing') ORDER BY updated LIMIT 1").fetchone()
-            if lr:
-                c.execute("UPDATE tasks SET learn=0 WHERE id=?", (lr["id"],))
-                c.execute("COMMIT")
-                return dict(self.get(lr["id"], events=False), job="learn")
             r = c.execute("SELECT id, status FROM tasks WHERE status IN ('new','approved') "
                           "ORDER BY updated LIMIT 1").fetchone()
             if not r:
@@ -323,7 +333,7 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
         cmd += ["--resume", session, "--no-restore-cwd"]
     else:
         cmd += ["--run-budget", str(budget), "--max-turns", str(turns), "-t", ",".join(toolsets)]
-        for s in flow.skills + flow.learned_skills:
+        for s in flow.skills + flow.shared_skills:
             cmd += ["-s", s]
         if model:
             cmd += ["-m", model]
@@ -545,23 +555,6 @@ OPEN: what is left to do, problems, failing checks
 {extra}
 Facts only, complete but brief (under 600 words)."""
 
-LEARN_PROMPT = """SKILL REVIEW for the {flow} flow. Pause here and do not call any tools.
-The task "{title}" {outcome}. What the person, the callers and the checks said about the work:
-{feedback}
-
-The skill `{skill}` that every {flow} task loads (empty if this is the first):
-<<<
-{current}
->>>
-
-Rewrite the skill so the next {flow} task goes better. Keep what still holds; add concrete lessons from this task
-and its feedback (what to do, what to avoid, conventions and preferences the person stated); drop what proved wrong.
-Imperative, specific, under 450 words. Reply with only the complete SKILL.md, beginning with this frontmatter:
----
-name: {skill}
-description: <one line - what this skill teaches and when to use it>
----"""
-
 REVIEW_PROMPT = """QA REVIEW. You are checking finished work against the gates the person set. Inspect the workspace
 ({workspace}) with your read tools; do not change anything. Be strict: a gate passes only if you saw the evidence.
 
@@ -711,35 +704,6 @@ class Worker:
                                       hermes_id=f"{sig}|{r.session_id}" if r.session_id else s["hermes_id"])
         return r
 
-    def feedback_text(self, t):
-        """Everything said about this task that a skill should learn from."""
-        keep = ("sign-off", "checks", "feedback", "prepare", "compress")
-        lines = [e for e in self.store.get(t["id"])["events"] if e.split(" ", 2)[1].rstrip(":") in keep
-                 and "approved; models locked" not in e]
-        if t.get("result", "").lstrip().upper().startswith("OFF-PLAN"):
-            lines.append("worker stopped off-plan: " + t["result"][:600])
-        return "\n".join(l[:800] for l in lines) or "(no feedback; the task went as planned)"
-
-    def learn(self, t, flow, ws, model, outcome):
-        """Skill review: the model that just worked rewrites the flow's learned skill from this task's feedback.
-        Learned skills live in .ariadne/skills/<flow>/<name>/ (with history/) and load in every run of the flow."""
-        name = f"{flow.name}-lessons"
-        d = paths.STATE / "skills" / flow.name / name
-        current = (d / "SKILL.md").read_text(encoding="utf-8") if (d / "SKILL.md").exists() else ""
-        prompt = LEARN_PROMPT.format(flow=flow.name, title=t["text"].strip().splitlines()[0][:120], outcome=outcome,
-                                     feedback=self.feedback_text(t), skill=name, current=current)
-        r = self.run(flow, "learn:execute", prompt, ws, t, model, "learn")
-        text = r.text[r.text.find("---"):].strip() if "---" in r.text else ""
-        if r.exit_code != 0 or f"name: {name}" not in text[:300]:
-            self.store.event(t["id"], "skill", f"{name}: no update (exit {r.exit_code})")
-            return
-        (d / "history").mkdir(parents=True, exist_ok=True)
-        if current:
-            (d / "history" / time.strftime("%Y%m%d-%H%M%S.md")).write_text(current, encoding="utf-8")
-        (d / "SKILL.md").write_text(text + "\n", encoding="utf-8")
-        flowlib.install_learned_skill(flow, name)
-        self.store.event(t["id"], "skill", f"{name} {'updated' if current else 'created'} ({len(text)} chars)")
-
     def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
         """Pause and compress at a phase boundary: the model that just worked (still loaded, cache hot) writes a
         handoff brief; the next run starts a new segment seeded with it. Skipped when nothing ran since the last
@@ -854,7 +818,6 @@ class Worker:
                     self.store.update(t["id"], status="needs_attention", result=r.text)
                     self.store.event(t["id"], "execute", "stopped: off-plan, back to the person for a new sign-off")
                     self.checkpoint(t, flow, ws, agent, "stopped off-plan", extra="Say why under OPEN.")
-                    self.learn(self.store.get(t["id"], events=False), flow, ws, agent, "stopped off-plan")
                     return
                 if not last:
                     reports.append(r.text)
@@ -884,8 +847,6 @@ class Worker:
 
     def _finish(self, t, flow, ws, status, result, error="", learn_model=None):
         self.store.update(t["id"], status=status, result=result or "", error=error)
-        if learn_model:  # every finished task feeds the flow's skill, before its session's caches go
-            self.learn(t, flow, ws, learn_model, f"finished: {status}" + (f" ({error[:200]})" if error else ""))
         if (t.get("session") or t["id"]) == t["id"]:  # the task's own session ends with it; a caller's lives on
             self.kv.drop(self.segment(t, flow)[1])
         self.store.event(t["id"], "report", status + (f": {error[:300]}" if error else ""))
@@ -897,18 +858,11 @@ class Worker:
         if not t:
             return False
         try:
-            if t.get("job") == "learn":
-                flow = self.flows.get(t["flow"])
-                if flow:
-                    self.learn(t, flow, self.workspace(t), flow.step_model, f"was {t['status']}; new feedback arrived")
-            elif t["status"] == "planning":
+            if t["status"] == "planning":
                 self.plan(t)
             else:
                 self.execute(t)
         except Exception as e:  # never leave a task stuck in planning/executing
-            if t.get("job") == "learn":
-                self.store.event(t["id"], "skill", f"review failed: {type(e).__name__}: {e}")
-                return True
             self.store.update(t["id"], status="failed", error=f"{type(e).__name__}: {e}")
             self.store.event(t["id"], "error", f"{type(e).__name__}: {e}")
         return True
@@ -1107,7 +1061,7 @@ def main(argv=None):
     elif args.cmd == "gates":
         st.set_gates(args.id, args.gates); ensure_worker(); _print(st.get(args.id, events=False))
     elif args.cmd == "feedback":
-        st.feedback(args.id, args.text); ensure_worker(); print("feedback recorded; the flow's skill will learn from it")
+        st.feedback(args.id, args.text); print("feedback recorded; a larger model folds it into the flow's skills (save_skill)")
     elif args.cmd == "cancel":
         st.cancel(args.id); _print(st.get(args.id, events=False))
     elif args.cmd == "sessions":

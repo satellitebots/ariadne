@@ -110,16 +110,13 @@ def test_full_drill_brief_backbrief_signoff_execute(env):
     assert w.run_once()                                     # execute
     t = w.store.get(tid)
     assert t["status"] == "done" and "tests pass" in t["result"]
-    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute", "learn:execute"]
-    # every finished task feeds the flow's learned skill, which every later run of the flow loads
-    skill = paths.STATE / "skills" / "coding" / "coding-lessons" / "SKILL.md"
-    assert skill.read_text().startswith("---\nname: coding-lessons") and "coding-lessons" in w.flows["coding"].learned_skills
-    assert (w.flows["coding"].home / "skills" / "coding-lessons" / "SKILL.md").exists()
-    # feedback after the report: recorded, and the worker rewrites the skill from it (the old one goes to history)
+    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute"]
+    # local workers never write skills; feedback stays open until a larger model folds it into a shared skill
     w.store.feedback(tid, "use pathlib, not os.path")
-    assert w.run_once() and "use pathlib" in run.calls[-1][2] and run.calls[-1][1] == "learn:execute"
-    assert len(list((skill.parent / "history").glob("*.md"))) == 1
-    assert not w.run_once()                                  # nothing left to learn
+    assert not w.run_once()
+    assert w.store.open_feedback()[0]["task"] == tid and "use pathlib" in w.store.open_feedback()[0]["feedback"][-1]
+    w.store.resolve_feedback([tid])
+    assert w.store.open_feedback() == []
     assert "APPROVED PLAN" in run.calls[2][2] and "MISSION: fix it" in run.calls[2][2]
     assert run.calls[2][2].startswith("SESSION HANDOFF")      # execute starts from the plan's handoff brief
     assert "terminal" in run.calls[0][2] and "git (MCP)" in run.calls[0][2]   # planner knows the execute tools
@@ -173,6 +170,25 @@ def test_a_timed_out_run_goes_to_the_gates_not_to_failed(env):
     w.run_once(); w.store.approve(tid); w.run_once()
     t = w.store.get(tid)
     assert t["status"] == "done" and any("run budget used up" in e for e in t["events"])
+
+
+def test_shared_skills_are_validated_committed_and_loaded(env, monkeypatch, tmp_path):
+    from ariadne import skills
+    monkeypatch.setattr(skills, "SKILLS", tmp_path / "skills")
+    monkeypatch.setattr(paths, "ROOT", tmp_path)
+    monkeypatch.setattr(paths, "FLOWS_DIR", REPO_FLOWS)
+    calls = []
+    git = lambda *a: (calls.append(a), type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())[1]
+    with pytest.raises(skills.SkillError):
+        skills.save("coding", "py-style", "no frontmatter", git=git)
+    report = skills.save("coding", "py-style", "---\nname: py-style\ndescription: Python style\n---\n- use pathlib",
+                         note="from feedback on t1", git=git)
+    assert "created" in report and "committed" in report and "pushed" in report
+    assert calls[1][0] == "commit" and "Skill coding/py-style: from feedback on t1" in calls[1]
+    assert calls[2] == ("push", "origin", "HEAD")
+    assert skills.list_skills("coding") == [{"flow": "coding", "name": "py-style", "description": "Python style"}]
+    fl = flowlib.load_flows(REPO_FLOWS)["coding"]
+    assert fl.shared_skills == ["py-style"]
 
 
 def test_no_task_starts_without_gates(env):

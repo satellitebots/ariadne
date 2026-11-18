@@ -106,6 +106,16 @@ done, state, open - and the next phase starts a fresh Hermes session seeded with
 session starts from the last brief. Inside a run, Hermes also compresses past 30K tokens (`context` in
 `serving/models.yaml`).
 
+## Skills
+
+Every flow loads the shared skills in `skills/<flow>/<name>/SKILL.md`. They are written by the larger models that
+drive Ariadne over MCP (Claude and the like): after a task, the caller folds the person's feedback and its own
+review into a skill with `save_skill`, which commits and pushes it. Local workers never write skills.
+`list_skills` shows the skills and any feedback not yet folded in.
+
+Contributions welcome: add or improve a `skills/<flow>/<name>/SKILL.md` (frontmatter `name` and `description`,
+then specific, imperative guidance) and open a pull request.
+
 ## Configure
 
 - Flows: `flows/<name>/flow.yaml` - coding, design, writing, content (model, skills, MCP servers, checks,

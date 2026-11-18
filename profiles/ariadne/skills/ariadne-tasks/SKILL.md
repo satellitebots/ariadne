@@ -30,8 +30,10 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
    give them the result. `needs_attention` means the worker stopped (off-plan, a model would not install, or a
    tool is missing): show why and ask whether to fix and approve again, revise, or cancel.
 
-5. **Feedback.** After the report, ask what they thought, and call `feedback_task(id, ...)` with their words
-   plus your own review of the work (what was good, what was wrong). Do the same for any later comment on a task.
-   Ariadne rewrites the flow's skill from it, so every piece of feedback makes the next task better.
+5. **Feedback into skills.** After the report, ask what they thought, and call `feedback_task(id, ...)` with
+   their words plus your own review of the work. If you are a capable model, fold it into the flow's shared skills:
+   `list_skills(flow)` (shows open feedback), `get_skill`, then `save_skill(flow, name, content, note, resolves)`
+   with a complete, specific SKILL.md. Skills are committed and pushed, and every later run of the flow loads them.
+   Local models never write skills; the larger model talking to Ariadne does.
 
 Use `list_tasks` / `get_task` when they ask about earlier tasks.
