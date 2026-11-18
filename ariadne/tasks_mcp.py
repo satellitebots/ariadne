@@ -25,6 +25,33 @@ def store():
     return _store
 
 
+STATUS = {"new": "queued", "awaiting_gates": "waiting for check gates", "planning": "planning",
+          "awaiting_signoff": "backbrief ready - waiting for your sign-off", "approved": "approved, queued",
+          "executing": "executing", "needs_attention": "stopped - needs you", "done": "done", "failed": "failed",
+          "cancelled": "cancelled"}
+
+
+def card(t, nxt=""):
+    """The task as Markdown, readable as-is in any chat surface (Hermes desktop, CLI chat, Claude)."""
+    lines = [f"## Task {t['id']} - {STATUS.get(t['status'], t['status'])}",
+             f"**Flow:** {t.get('flow') or '(routing)'} · **Session:** {t.get('session') or t['id']} · "
+             f"**Workspace:** {t.get('workspace') or '-'}", "", f"> {t['text'].strip().splitlines()[0][:200]}"]
+    gates = json.loads(t.get("gates") or "[]")
+    if gates:
+        lines += ["", "### Check gates"] + [f"- G{i} [{g['type']}] {g['text']}" for i, g in enumerate(gates, 1)]
+    if t.get("plan") and t["status"] in ("awaiting_signoff", "approved", "executing", "needs_attention"):
+        lines += ["", "### Backbrief", t["plan"].strip()]
+    if t.get("result") and t["status"] in ("done", "failed", "needs_attention", "awaiting_gates"):
+        lines += ["", "### Report" if t["status"] == "done" else "### Result", t["result"].strip()[:4000]]
+    if t.get("error"):
+        lines += ["", f"**Error:** {t['error'][:1500]}"]
+    if t.get("events"):
+        lines += ["", "### Recent activity"] + [f"- {e.splitlines()[0][:160]}" for e in t["events"][-6:]]
+    if nxt:
+        lines += ["", f"**Next:** {nxt}"]
+    return "\n".join(lines)
+
+
 def _view(t):
     keep = ("id", "status", "flow", "session", "source", "text", "workspace", "gates", "plan", "models", "result", "error",
             "events")
@@ -39,7 +66,9 @@ def _view(t):
                      "The person fixes it and approves again, revises (revise_task) or cancels.")
     elif t["status"] not in FINAL:
         v["next"] = "Working. Call wait_task again."
-    return json.dumps(v, indent=2, default=str)
+    # A Markdown card for people (show it as-is), then the machine-readable state.
+    state = {k: v[k] for k in ("id", "status", "flow", "session", "next") if k in v}
+    return card(t, v.get("next", "")) + "\n\n```json\n" + json.dumps(state, indent=1, default=str) + "\n```"
 
 
 def _guard(fn):

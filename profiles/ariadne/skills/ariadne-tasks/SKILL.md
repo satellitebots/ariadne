@@ -20,10 +20,14 @@ are deferred): `mcp__ariadne_tasks__submit_task`, `mcp__ariadne_tasks__wait_task
    and `session`: the session name the person gave ("continue auth-work"), else your own session id (it is in
    your system prompt). Every task from this conversation then shares one Ariadne session, so the worker
    carries what earlier tasks did. Tell them the task id. `list_sessions` shows the sessions they can continue.
+Every task tool returns a Markdown card (status, gates, backbrief or report, recent activity, **Next**)
+followed by a small JSON block. Show the card to the person as-is - it is written for them - and follow **Next**.
+
 2. **Backbrief.** Call `wait_task(id)` until the status is `awaiting_signoff` (it returns every ~50 s while the
    worker plans; keep calling). Show the person the backbrief (`plan`) exactly as written, including its
    MODEL PLAN (the model for each step, and any model that will be downloaded after sign-off).
-3. **Sign-off.** Ask: approve, change, or cancel? Then call `approve_task` (with `models`, e.g. `"2=gemma-4-12b"`,
+3. **Sign-off.** Ask in one line: "Reply **approve**, **revise:** <what to change>, or **cancel**." (They may
+   also say "approve with step 2 on gemma-4-12b".) Then call `approve_task` (with `models`, e.g. `"2=gemma-4-12b"`,
    if they want a different model for a step), `revise_task` (with their feedback, which produces a new
    backbrief - go back to step 2) or `cancel_task`. Never approve on their behalf.
 4. **Execute and report.** After approval call `wait_task` until `done`, `failed` or `needs_attention`, and
