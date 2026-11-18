@@ -102,6 +102,8 @@ def test_swap_entries_serve_text_models_and_can_park_slots():
     assert "qwen3.8-27b" in e and "router" in e and "z-image-turbo" not in e
     assert "--fit on" in e["qwen3.8-27b"]["cmd"] and "--slot-save-path" in e["qwen3.8-27b"]["cmd"]
     assert "-c 65536" in e["qwen3.8-27b"]["cmd"] and "-c 16384" in e["router"]["cmd"]
+    assert "--fit-target -6144" in e["qwen3.8-27b"]["cmd"]          # 6 GB into shared GPU memory
+    assert "--fit-target" not in e["router"]["cmd"]                 # models that fit stay in VRAM
     assert "--slot-save-path" not in e["embed"]["cmd"]
 
 

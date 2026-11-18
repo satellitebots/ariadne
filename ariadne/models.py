@@ -18,6 +18,7 @@ PINS = paths.STATE / "model-pins.json"
 DEFAULT_ARGS = "-fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"          # agents also get -c <context.window>
 GENERATE_ARGS = "-c 16384 -fa on --jinja -ngl 99"
 CONTEXT = {"window": 65536, "compress_at": 30000}
+GPU = {"shared_gb": 0}
 KINDS = ("agent", "generate", "image", "embed")
 
 
@@ -82,6 +83,7 @@ class Catalog:
     models: dict
     defaults: dict
     context: dict = field(default_factory=lambda: dict(CONTEXT))
+    gpu: dict = field(default_factory=lambda: dict(GPU))
 
     def get(self, name):
         if name not in self.models:
@@ -120,7 +122,10 @@ def load(path=None):
     for m in models.values():
         if m.kind == "agent" and re.search(r"(^|\s)(-c|--ctx-size)\s", m.args):
             raise ModelError(f"model {m.name}: set the window in context.window, not with -c in args")
-    return Catalog(models, defaults, {k: int(v) for k, v in context.items()})
+    gpu = {**GPU, **(data.get("gpu") or {})}
+    if not 0 <= float(gpu["shared_gb"]) <= 64:
+        raise ModelError("gpu.shared_gb must be between 0 and 64")
+    return Catalog(models, defaults, {k: int(v) for k, v in context.items()}, gpu)
 
 
 # ---------- llama-swap entries ----------
@@ -135,7 +140,10 @@ def swap_entries(catalog=None):
             continue
         args = m.args or (GENERATE_ARGS if m.kind == "generate" else DEFAULT_ARGS)
         if m.kind == "agent":
-            args = f"-c {cat.context['window']} " + args  # sessions can park their KV cache on disk (kvcache.py)
+            args = f"-c {cat.context['window']} " + args
+        if "--fit on" in args and float(cat.gpu["shared_gb"]) > 0:
+            # a negative --fit-target margin lets the placement use that much shared GPU memory past VRAM
+            args += f" --fit-target -{int(float(cat.gpu['shared_gb']) * 1024)}"  # sessions can park their KV cache on disk (kvcache.py)
             args += f' --slot-save-path "{KV_DIR.as_posix()}"'
         out[m.name] = {"cmd": f'${{server}} ${{common}} {args} -m "{m.gguf().as_posix()}"', "ttl": 900}
     return out
