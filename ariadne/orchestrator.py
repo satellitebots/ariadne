@@ -368,6 +368,9 @@ Agent models do a step themselves. A generate model drafts text for a step (the 
 generate_text); an image model renders images (generate_image). Prefer the MoE models: on this machine they read
 and write several times faster, so steps finish sooner. You ({planner}) are the planner; assign yourself or another
 dense model only to a step that needs the deepest reasoning (hard debugging, tricky design decisions), and say why.
+Each step (or run of steps on one model) executes in a fresh session that only gets a summary of earlier steps, so
+every step must leave its output in files; never plan a "think only" step whose result a later step on another
+model has to write down. Fewer model changes is better: switch models only where it clearly pays.
 
 Investigate just enough to plan well (look at the relevant files). Then reply with a backbrief in exactly this form:
 
