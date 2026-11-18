@@ -339,6 +339,7 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
         out, code = p.stdout + ("\n[stderr]\n" + p.stderr if p.stderr.strip() else ""), p.returncode
     except subprocess.TimeoutExpired as e:
         out, code = f"(timed out)\n{e.stdout or ''}", 124
+        stop_gateway(home)  # the gateway would keep generating for the killed client
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
     sid = _SESSION_ID.findall(out)
     return RunResult(_clean_output(p.stdout if code != 124 else out), code, str(log), sid[-1] if sid else "")
@@ -1000,7 +1001,8 @@ def stop_gateway(home):
     """Stop the Hermes gateway serving a worker home, if one is running (Hermes's own `gateway stop`)."""
     if not (Path(home) / "gateway.pid").exists():
         return
-    subprocess.run([str(paths.HERMES_EXE), "gateway", "stop"], env=dict(os.environ, HERMES_HOME=str(home)),
+    # --yes: also interrupt live sessions (an orphaned request would keep a model busy, or reload one later)
+    subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=dict(os.environ, HERMES_HOME=str(home)),
                    stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
 
 
