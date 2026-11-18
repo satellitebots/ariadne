@@ -70,7 +70,7 @@ Sized for an 8 GB GPU with 32 GB of RAM; larger models run partly on the CPU. Pl
 
 | Use | Default | Also |
 |---|---|---|
-| Coding | Qwen3.8 27B (slow) | Qwen3.6 35B-A3B (MoE, faster), Qwen3.5 9B (quick steps) |
+| Coding | Qwen3.6 35B-A3B (MoE, 3B active) | Qwen3.8 27B (dense: hardest steps, ~2 tok/s), Qwen3.5 9B (quick steps) |
 | Design | Gemma 4 26B-A4B (MoE) | Gemma 4 12B |
 | Writing | Gemma 4 26B-A4B (MoE) | Gemma 4 31B (best prose, slow) |
 | Images | Z-Image-Turbo | SD Turbo |

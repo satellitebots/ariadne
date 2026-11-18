@@ -73,7 +73,8 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
     if mcp_servers is not None:
         flows["coding"].mcp_servers = mcp_servers
     flows["coding"].checks = []
-    flows["coding"].execute_model = ""          # the mechanics tests below: steps without a model run on the planner
+    flows["coding"].model = "qwen3.8-27b"       # the mechanics tests below: a dense planner, steps on the planner
+    flows["coding"].execute_model = ""
     return orch.Worker(store=orch.Store(tmp / "t.db", require_gates=False), memory=Memory(tmp / "m.db"), flows=flows, runner=runner,
                        llm_chat=lambda m, msgs: "coding", installer=installer, on_installed=lambda: None,
                        kv=kv or NoKVCache())
@@ -83,7 +84,7 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
 
 def test_catalog_has_a_model_per_job_that_runs_here():
     cat = modellib.load()
-    assert cat.defaults == {"coding": "qwen3.8-27b", "design": "gemma-4-26b-a4b", "writing": "gemma-4-26b-a4b",
+    assert cat.defaults == {"coding": "qwen3.6-35b-a3b", "design": "gemma-4-26b-a4b", "writing": "gemma-4-26b-a4b",
                             "quick": "qwen3.5-9b", "image": "z-image-turbo", "router": "router", "embed": "embed"}
     assert "deepseek-v4.1-flash" not in cat.models and "fimbulvetr-11b" not in cat.models
     assert all(m.size_gb <= 23 for m in cat.models.values())        # 8 GB GPU + 32 GB RAM
@@ -147,8 +148,8 @@ def test_fetch_pins_sha_on_first_fetch_and_refuses_a_changed_file(env, monkeypat
 def test_backbrief_carries_a_model_per_step(env):
     cat, fl = modellib.load(), flowlib.load_flows(REPO_FLOWS)["coding"]
     mp = orch.parse_model_plan(PLAN.replace("model: gemma-4-12b", "model: gpt-9"), fl, cat)
-    # the 27B plans; steps that name no model (or an unknown one) run on the flow's fast MoE execute model
-    assert (fl.model, fl.step_model, fl.reasoning["execute"]) == ("qwen3.8-27b", "qwen3.6-35b-a3b", "low")
+    # the MoE plans and runs steps that name no model (or an unknown one); the dense 27B only where a step names it
+    assert (fl.model, fl.step_model, fl.reasoning["execute"]) == ("qwen3.6-35b-a3b", "qwen3.6-35b-a3b", "low")
     assert [s["model"] for s in mp["steps"]] == ["qwen3.8-27b", "gemma-4-26b-a4b", "qwen3.8-27b", "z-image-turbo",
                                                   "qwen3.6-35b-a3b"]
     assert "gpt-9" in mp["notes"][0] and "qwen3.6-35b-a3b" in mp["notes"][0]

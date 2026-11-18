@@ -32,7 +32,7 @@ resources:
   profile: shared
 
 defaults:
-  coding: qwen3.8-27b
+  coding: qwen3.6-35b-a3b
   design: gemma-4-26b-a4b
   writing: gemma-4-26b-a4b
   quick: qwen3.5-9b
@@ -45,7 +45,7 @@ models:
   qwen3.8-27b:
     kind: agent
     roles: [coding, planning]
-    about: Qwen3.8 27B (dense, newest). Best local coder and planner here; 17.7 GB, so most of it runs on the CPU - slow.
+    about: Qwen3.8 27B (dense, newest). Deepest reasoning, for the hardest steps only; 17.7 GB, so most of it runs on the CPU - slow.
     size_gb: 17.7
     weights: {repo: unsloth/Qwen3.8-27B-GGUF, file: Qwen3.8-27B-UD-Q4_K_XL.gguf}
     args: "-fa on -ctk q8_0 -ctv q8_0 --jinja --fit on"
