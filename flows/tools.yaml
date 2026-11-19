@@ -15,6 +15,12 @@ approved:
     - image
     - diagram
     - text
+    # Approved names whose servers are declared in mcp_servers.yaml as they are built. A flow may only list a
+    # server that exists there, so these cost nothing until a flow asks for them.
+    - ci        # Jenkins, GitHub Actions, GitLab CI: trigger, read status, fetch logs
+    - data      # csv / parquet / sqlite: profile, query, transform
+    - office    # docx and xlsx read/write (wordcraft, numbercraft)
+    - rag       # ingest, chunk, embed, vector store, retrieval eval
   system:
     - git
     - uv
@@ -22,6 +28,16 @@ approved:
     - node
     - chrome
     - pandoc
+    # Coding p80: containers, clusters, CI, and the small utilities every repo script assumes.
+    - docker
+    - kubectl
+    - helm
+    - gh
+    - jq
+    - curl
+    - rg
+    - sqlite3
+    - ffmpeg
 
 # How a missing system tool is installed, so the backbrief can name the exact command instead of "install it".
 install:
@@ -31,3 +47,12 @@ install:
   git: "winget install Git.Git (or: python -m ariadne install --system)"
   uv: "python -m ariadne install --system"
   ollama: "winget install Ollama.Ollama (or: python -m ariadne install --system)"
+  docker: "winget install Docker.DockerDesktop (needs a restart; or point DOCKER_HOST at a machine on the LAN)"
+  kubectl: "winget install Kubernetes.kubectl"
+  helm: "winget install Helm.Helm"
+  gh: "winget install GitHub.cli (then: gh auth login)"
+  jq: "winget install jqlang.jq"
+  rg: "winget install BurntSushi.ripgrep.MSVC"
+  sqlite3: "winget install SQLite.SQLite"
+  ffmpeg: "winget install Gyan.FFmpeg"
+  curl: "built into Windows 10+ / macOS / most Linux; if missing: python -m ariadne install --system"
