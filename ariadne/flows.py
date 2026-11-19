@@ -19,7 +19,7 @@ DEFAULT_PLAN_TOOLS = ["read_file", "search_files", "skill_view", "skills_list", 
 # Every key flows/<name>/flow.yaml may carry. Anything else is a typo and is refused (see load_flow).
 FLOW_KEYS = {"name", "description", "when", "model", "execute_model", "reasoning", "status", "skills",
              "mcp_servers", "toolsets", "plan_tools", "checks", "requires", "browser", "network",
-             "max_turns", "max_iterations", "run_budget"}
+             "max_turns", "max_iterations", "run_budget", "task_budget"}
 
 # Settings every worker home gets (local models only; quiet, no background fetches). Mirrors profiles\llamaswap.
 BASE_CONFIG = {
@@ -61,6 +61,7 @@ class Flow:
     max_iterations: int = 10      # execute -> QA rounds at most; stops earlier when it stops making progress
     max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40, "review:plan": 15})
     run_budget: dict = field(default_factory=lambda: {"plan": 900, "execute": 1800})
+    task_budget: int = 0          # the task's wall clock, in seconds of worker time (0 = no task-level limit)
     folder: Path = None
 
     @property
@@ -136,6 +137,7 @@ def load_flow(folder):
     fl.max_turns.update(data.get("max_turns") or {})
     fl.max_iterations = int(data.get("max_iterations") or fl.max_iterations)
     fl.run_budget.update(data.get("run_budget") or {})
+    fl.task_budget = int(data.get("task_budget") or 0)
     for s in fl.skills:
         if not (folder / "skills" / s / "SKILL.md").exists():
             raise FlowError(f"{fl.name}: skill '{s}' has no skills/{s}/SKILL.md")

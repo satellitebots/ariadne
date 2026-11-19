@@ -9,11 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B1 - `timed_out` and the task wall-clock
-Terminal status `timed_out` in the store, `present.STATUS`, and the MCP labels; a per-task wall-clock budget from the
-flow (`task_budget`) checked between phases; out-of-time keeps what was written and goes to the gates.
-*Model-free.* Touches: `orchestrator.py`, `present.py`, `service.py`, `tasks_mcp.py`, flows.
-
 ### B2 - `ariadne/watchdog.py`  — DONE except wiring
 A script that babysits the machine: samples free RAM, free VRAM and server health on an interval; escalates
 **warn → unload → kill → flag the task `needs_attention`** with the readings; logs every sample to
@@ -88,6 +83,8 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 - Retrieval-quality gates for B6d.
 
 ## Done
+
+- `timed_out` and the task wall-clock (`orchestrator.py`, `present.py`, flows) - this commit
 
 - Watchdog: escalation, sampling, jsonl trail (`ariadne/watchdog.py`) - this commit
 

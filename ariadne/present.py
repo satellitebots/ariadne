@@ -10,9 +10,11 @@ from . import protocol, render
 
 STATUS = {"new": "queued", "awaiting_gates": "waiting for check gates", "awaiting_signoff": "backbrief ready",
           "approved": "approved", "planning": "planning", "executing": "executing", "needs_attention": "needs you",
-          "done": "done", "failed": "failed", "cancelled": "cancelled", "rejected": "rejected"}
+          "done": "done", "failed": "failed", "cancelled": "cancelled", "rejected": "rejected",
+          "timed_out": "out of time"}
 MARK = {"done": "✓", "failed": "✗", "cancelled": "–", "rejected": "⊘", "needs_attention": "!",
-        "awaiting_signoff": "?", "awaiting_gates": "?", "planning": "…", "executing": "…", "vram": "⏻"}
+        "awaiting_signoff": "?", "awaiting_gates": "?", "planning": "…", "executing": "…", "vram": "⏻",
+        "timed_out": "⏱"}
 
 
 def _plan(t):

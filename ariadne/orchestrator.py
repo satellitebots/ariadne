@@ -25,7 +25,7 @@ from . import flows as flowlib
 from . import jobs, llm, park, paths, protocol, render
 from .memory import Memory, format_hits
 
-FINAL = ("done", "failed", "cancelled", "rejected")
+FINAL = ("done", "failed", "cancelled", "rejected", "timed_out")   # a caller is waiting and the task is over
 WAITING = ("awaiting_gates", "awaiting_signoff", "needs_attention")   # the task needs the person who gave it
 GATES_QUESTION = ("Before this task starts: what are the check gates? List how we will know it is done, end to "
                   "end - commands that must pass (`run: pytest -q`) and outcomes a reviewer can verify (\"README "
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT, text TEXT, workspace TEXT, flow TEXT,
   status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
   models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0, gates TEXT DEFAULT '',
-  model TEXT DEFAULT '', plan_json TEXT DEFAULT '');
+  model TEXT DEFAULT '', plan_json TEXT DEFAULT '', run_started REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
@@ -99,6 +99,9 @@ class Store:
                     c.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
             if "learn" not in have:
                 c.execute("ALTER TABLE tasks ADD COLUMN learn INTEGER DEFAULT 0")
+            if "run_started" not in have:
+                # The task's wall clock starts whenever the worker claims it (B1); old rows have no baseline.
+                c.execute("ALTER TABLE tasks ADD COLUMN run_started REAL DEFAULT 0")
             if "hermes_id" not in [r["name"] for r in c.execute("PRAGMA table_info(sessions)")]:
                 c.execute("ALTER TABLE sessions ADD COLUMN hermes_id TEXT DEFAULT ''")
 
@@ -276,8 +279,13 @@ class Store:
                 c.execute("UPDATE tasks SET learn=0 WHERE id=?", (tid,))
                 c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), "skill", "feedback folded into a skill"))
 
-    def claim_next(self):
-        """Oldest task that needs the worker: new -> planning, approved -> executing (atomic)."""
+    def claim_next(self, now=None):
+        """Oldest task that needs the worker: new -> planning, approved -> executing (atomic).
+
+        The claim also starts the task's wall clock: the budget in flow.yaml is time the worker spends on the task,
+        not time the task waits in the queue or for a person to sign off. `now` is the worker's clock, so one clock
+        governs the budget end to end.
+        """
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             r = c.execute("SELECT id, status FROM tasks WHERE status IN ('new','approved') "
@@ -286,7 +294,8 @@ class Store:
                 c.execute("COMMIT")
                 return None
             to = "planning" if r["status"] == "new" else "executing"
-            c.execute("UPDATE tasks SET status=?, updated=? WHERE id=?", (to, time.time(), r["id"]))
+            now = time.time() if now is None else now
+            c.execute("UPDATE tasks SET status=?, updated=?, run_started=? WHERE id=?", (to, now, now, r["id"]))
             c.execute("COMMIT")
         return self.get(r["id"], events=False)
 
@@ -749,7 +758,7 @@ Reply with only the flow name."""
 class Worker:
     def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
                  catalog=None, installer=None, on_installed=None, kv=None, job_runner=None, unload=None,
-                 install_tools=None):
+                 install_tools=None, clock=None):
         from . import kvcache
         # Jobs run for real only with the real runner; tests pass a fake that never unloads the model server.
         self.job_runner = job_runner or (jobs.run if runner is hermes_run else
@@ -768,6 +777,7 @@ class Worker:
         self.runner = runner
         self.router_model = router_model
         self.llm_chat = llm_chat or llm.chat
+        self.now = clock or time.time   # the task wall clock reads through this, so a test can spend time
 
     def route(self, t):
         """The flow, or None with the reason: a task outside the approved set is rejected, never guessed at."""
@@ -1086,11 +1096,18 @@ class Worker:
         # The brief is delivered and signed off; the planner is not needed again until a re-plan.
         self._sleep(t, "the plan is signed off")
         groups, reports = step_groups(mp, self.catalog), []
+        budget = int(getattr(flow, "task_budget", 0) or 0)
+        if budget:
+            self.store.event(t["id"], "budget", f"task wall clock: {budget} s of worker time from now")
         for i, (agent, steps) in enumerate(groups):
             scope, extra, attempts, last = step_scope(steps, groups, mp, self.catalog), "", 0, i == len(groups) - 1
             history = []  # failing-gate counts per QA round (loop end: no progress)
             label = f"steps {', '.join(str(s['n']) for s in steps)}" if len(groups) > 1 else "plan"
             while True:
+                if self._expired(t, flow):
+                    # Out of wall-clock is not out of options: stop running, keep what was written, let the gates
+                    # that need no model decide (docs/COVERAGE.md, the runtime contract).
+                    return self._out_of_time(t, flow, ws, reports, label)
                 attempts += 1
                 self.store.event(t["id"], "execute", f"{label} on {agent}, attempt {attempts}")
                 r = self.run(flow, "execute", EXEC_PROMPT.format(flow=flow.name, text=t["text"], workspace=ws,
@@ -1123,6 +1140,9 @@ class Worker:
                     reports.append(r.text)
                     self.checkpoint(t, flow, ws, agent, f"{label} done")
                     break
+                if self._expired(t, flow):
+                    # The work is in; there is no time left to run the reviewer, so end on the gates a script can run.
+                    return self._out_of_time(t, flow, ws, reports + [r.text], label)
                 failures = self.qa(t, flow, ws, agent)
                 qa = "QA passed: every gate" if not failures else f"QA failed ({len(failures)} gate(s)), iteration {attempts}"
                 self.checkpoint(t, flow, ws, agent, qa,
@@ -1149,6 +1169,46 @@ class Worker:
                          "failure, and fix it without redoing steps that are already proven.\n"
                          + "\n".join(failures) + "\n")
 
+    def _expired(self, t, flow):
+        """Is the task's wall clock spent? `task_budget` seconds of worker time, from flow.yaml (0 = no limit).
+
+        Time waiting in the queue or for a sign-off does not count: `claim_next` restarts the clock every time the
+        worker picks the task up, so a brief that sits overnight is not timed out the moment it is approved.
+        """
+        budget = int(getattr(flow, "task_budget", 0) or 0)
+        started = float(t.get("run_started") or 0)
+        return bool(budget and started and self.now() - started >= budget)
+
+    def _out_of_time(self, t, flow, ws, reports, label=""):
+        """The wall clock is spent between phases: stop running the model and let the gates that need no model decide.
+
+        What was written stays in the workspace. Command gates run; a review gate needs a reviewer run, which is
+        exactly the work there is no time left for, so it is named as not reviewed. All commands pass and nothing
+        needs a reviewer -> the task is `done`; otherwise it ends `timed_out` with the gate results and the reason.
+        """
+        budget = int(getattr(flow, "task_budget", 0) or 0)
+        self.store.event(t["id"], "timeout",
+                         f"wall clock spent ({budget} s) during {label or 'the run'}; keeping what was written and "
+                         "running the gates a script can run")
+        gates = json.loads(t.get("gates") or "[]")
+        failures = self.run_checks(flow, ws, [g["text"] for g in gates if g["type"] == "run"])
+        unreviewed = [f"G{i} [review] {g['text']}" for i, g in enumerate(gates, 1) if g["type"] == "review"]
+        body = "\n\n".join(r for r in reports if r)
+        if not failures and not unreviewed:
+            self.store.event(t["id"], "checks", "passed (command gates, after the wall clock ran out)")
+            self._finish(t, flow, ws, "done", (body + "\n\n" if body else "")
+                         + f"Ran out of its {budget} s wall clock; every command gate passed, so it is done.")
+            return
+        detail = []
+        if failures:
+            detail.append("FAILING GATES:\n" + "\n".join(failures))
+        if unreviewed:
+            detail.append("NOT REVIEWED (no time left to run the reviewer):\n" + "\n".join(unreviewed))
+        self.store.event(t["id"], "checks", f"out of time; {len(failures)} gate(s) failing, "
+                                            f"{len(unreviewed)} not reviewed")
+        self._finish(t, flow, ws, "timed_out", "\n\n".join(x for x in [body, *detail] if x),
+                     f"the task used its {budget} s wall clock; the work so far is in the workspace")
+
     def _finish(self, t, flow, ws, status, result, error=""):
         self.store.update(t["id"], status=status, result=result or "", error=error)
         if (t.get("session") or t["id"]) == t["id"]:  # the task's own session ends with it; a caller's lives on
@@ -1159,7 +1219,7 @@ class Worker:
                            [("uses_flow", "flow", flow.name), ("in_workspace", "workspace", ws)])
 
     def run_once(self):
-        t = self.store.claim_next()
+        t = self.store.claim_next(now=self.now())
         if not t:
             return False
         try:

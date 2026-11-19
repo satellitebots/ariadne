@@ -18,7 +18,7 @@ from .orchestrator import FINAL, WAITING, Store, TaskError, ensure_worker, worke
 LABEL = {"new": "queued", "awaiting_gates": "needs gates", "planning": "planning",
          "awaiting_signoff": "backbrief ready", "approved": "approved, queued", "executing": "executing",
          "needs_attention": "needs you", "done": "done", "failed": "failed", "cancelled": "cancelled",
-         "rejected": "rejected"}
+         "rejected": "rejected", "timed_out": "out of time"}
 
 
 def label(t) -> str:

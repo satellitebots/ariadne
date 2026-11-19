@@ -47,6 +47,9 @@ def _next(t):
     if s == "needs_attention":
         return ("The worker stopped (see result): off-plan, a model that would not install, or a missing tool. "
                 "The person fixes it and approves again, revises (revise_task) or cancels.")
+    if s == "timed_out":
+        return ("It ran out of its wall-clock budget. What it wrote is in the workspace and the gate results are "
+                "in the card. Give it again on the same workspace (the session keeps the context) to continue.")
     if s not in FINAL:
         return "Working. Call wait_task again."
     return ""
