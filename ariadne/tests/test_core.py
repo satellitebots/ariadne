@@ -51,7 +51,7 @@ def test_memory_ignores_empty_queries(env):
 
 def test_repo_flows_load_and_compile(env):
     fl = flowlib.load_flows(REPO_FLOWS)
-    assert set(fl) == {"coding", "design", "writing", "content"}
+    assert set(fl) == {"coding", "design", "investigation", "content"}
     assert fl["coding"].status == "beta" and fl["design"].status == "experimental"
     home = flowlib.compile_flow(fl["coding"], REPO_FLOWS)
     cfg = (home / "config.yaml").read_text()
@@ -226,12 +226,12 @@ def test_conditional_check_skipped_when_path_missing(env):
     assert w.run_checks(w.flows["coding"], str(env)) == []
 
 
-def test_router_answer_and_fallback(env):
-    w = make_worker(env, FakeRunner(), route_answer="I think: writing")
-    tid = w.store.submit("draft a memo", "test", str(env))
-    assert w.route(w.store.get(tid))[0] == "writing"
+def test_router_picks_an_approved_flow_and_rejects_otherwise(env):
+    w = make_worker(env, FakeRunner(), route_answer="I think: investigation")
+    tid = w.store.submit("compare two vendors", "test", str(env))
+    assert w.route(w.store.get(tid))[0] == "investigation"
     w.llm_chat = lambda m, msgs: "no idea"
-    assert w.route(w.store.get(tid))[0] in w.flows        # falls back, never crashes
+    assert w.route(w.store.get(tid))[0] is None            # rejected, never defaulted to the first flow
 
 
 def test_sign_off_rules(env):

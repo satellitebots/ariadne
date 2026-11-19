@@ -2,7 +2,7 @@ name: design
 status: experimental       # shipped, not yet validated end to end
 description: Plan and design with diagrams - architecture, flows, sequences, states, data models, UI layouts - as Mermaid in the workspace, rendered to SVG.
 when: designing a system or feature, planning a project, architecture or flow diagrams, sequence/state/ER diagrams, UI layouts and mockups
-model: gemma-4-26b-a4b     # the agent model when a step names none (MoE: fast here)
+model: gemma-4-12b     # the agent model when a step names none (MoE: fast here)
 skills: [diagram-first]
 requires: [node, chrome]   # Mermaid renders with the Mermaid CLI (npx) on your Chrome
 mcp_servers: [memory, diagram, image, export, web, browser, jobs]

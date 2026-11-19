@@ -16,6 +16,9 @@ telemetry:
   shared_metrics:
     enabled: false
     send: false
+# agent.disabled_toolsets was here: it did not change the tool list (prompt-size proved it),
+# so it was a false assurance. Enforcement is the gate plugin, and after the frontend pivot it is
+# simply not given doing-tools. See docs/FRONTEND.md.
 plugins:
   auto_update_check_hours: 0
   enabled: []

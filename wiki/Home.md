@@ -17,20 +17,57 @@ real runs.
    script and handed to Ariadne as a job. The model is unloaded while the job has the machine.
 4. **Nothing is interrupted by accident.** Work runs outside any terminal or chat. It pauses only when you park it
    or a login is needed, and it stops only when you stop it.
-5. **Hermes stays stock.** Everything Ariadne adds is configuration, plugins, MCP servers and skills on top of a
-   pinned Hermes. `upstream/` is never edited.
+5. **Hermes is the worker runtime, not the product.** Ariadne keeps what Hermes is good at - sessions, tools, MCP,
+   skills - and owns its own frontend. `upstream/` is never edited.
+
+Three documents outrank every page in this wiki: [`docs/DESIGN-RESET.md`](../docs/DESIGN-RESET.md) (the drill and
+the backend shape), [`docs/FRONTEND.md`](../docs/FRONTEND.md) (our own UI and chat, decoupled from the Hermes
+desktop shell), and [`docs/MCP.md`](../docs/MCP.md) (how Claude or any MCP client integrates). Where a page below
+disagrees with those, the page is stale - the status column says which.
+
+## The funnel
+
+```
+doors              our UI (browser) · terminal · MCP client
+                      │  same verbs, same document
+                    service.py ── present.py
+                      │
+                    store ── one queue, one truth
+                      │
+                    worker ── one Hermes session, one local model
+                      │
+                    gates → report → workspace + session memory
+```
+
+Many doors, one stream. No surface owns a rule (`service.py`); no surface formats a task (`present.py`).
 
 ## Pages
 
-| Start here | How it works | Run it | Reference |
-|---|---|---|---|
-| [Concepts](Concepts.md) | [Architecture](Architecture.md) | [Operations](Operations.md) | [CLI reference](CLI-Reference.md) |
-| [Status and roadmap](Status-and-Roadmap.md) | [Task lifecycle](Task-Lifecycle.md) | [Models and resources](Models-and-Resources.md) | [Flows and skills](Flows-and-Skills.md) |
-| [Design decisions](Decisions.md) | [Jobs](Jobs.md) | [Desktop](Desktop.md) | [Case studies](Case-Studies.md) |
-| | [Parking and KV cache](Parking-and-KV-Cache.md) | | |
-| | [Web, browser and logins](Web-and-Browser.md) | | |
+| Page | Status |
+|---|---|
+| [Task-Lifecycle](Task-Lifecycle.md) | current - the drill, retries, what each status means |
+| [Operations](Operations.md) | current - install, up, down, doctor |
+| [Jobs](Jobs.md) · [Parking-and-KV-Cache](Parking-and-KV-Cache.md) · [Web-and-Browser](Web-and-Browser.md) | current |
+| [Case-Studies](Case-Studies.md) | current |
+| [CLI-Reference](CLI-Reference.md) | partly current - missing `local-only` and the explicit flow/model rule |
+| [Flows-and-Skills](Flows-and-Skills.md) | **stale** - `writing` is retired; flows are coding, design, investigation, content |
+| [Models-and-Resources](Models-and-Resources.md) | **stale** - policy now lives in `serving/models.yaml` under `policy:` |
+| [Concepts](Concepts.md) | **stale** - the session is the unit of work; schedules are created from a session |
+| [Architecture](Architecture.md) | **stale** - the Hermes desktop plugin is retired; see `docs/FRONTEND.md` |
+| [Decisions](Decisions.md) | **stale** - missing the frontend pivot and the local-only provider lock |
+| [Status-and-Roadmap](Status-and-Roadmap.md) | **stale** - the migration order is in `docs/FRONTEND.md` |
+| [Desktop](Desktop.md) | **retired** - kept only until the new frontend lands |
+
+## Rules that do not bend
+
+- **Closed sets.** Flows (`flows/flows.yaml`), models (`policy.families` in `serving/models.yaml`), tools
+  (`flows/tools.yaml`). Unknown is refused, never guessed.
+- **Local-only inference.** Every `base_url` must be loopback, LAN, or allowlisted; a cloud provider name with no
+  `base_url`, or any `api_key`, stops the run before it starts. The model may still use the internet.
+- **Explicit choice.** The person names the flow, the model and the gates. Nothing is pre-selected.
 
 ## Status
 
-The coding flow is in beta. The design, writing and content flows have shipped but are not yet validated end to
-end. For what is running, what is stalled and what comes next, see [Status and roadmap](Status-and-Roadmap.md).
+Coding flow beta; design, investigation and content shipped but not validated end to end. The frontend is mid-pivot:
+the Hermes plugin page is retired in favour of our own UI, which does not exist yet - the terminal and MCP are the
+working doors today.

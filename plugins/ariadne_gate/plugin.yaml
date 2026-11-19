@@ -1,0 +1,6 @@
+name: ariadne_gate
+version: 0.1.0
+description: Ariadne gate - the chat home cannot do the work itself; every doing-tool is refused
+author: Adnan Alam
+provides_hooks:
+  - pre_tool_call

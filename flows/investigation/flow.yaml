@@ -1,0 +1,20 @@
+name: investigation
+status: experimental       # shipped, not yet validated end to end
+description: Investigate a question and return a cited report - gather evidence, separate fact from inference, name what is still unknown.
+when: research questions, comparing options or vendors, due diligence, reading a codebase or a document set to answer something, explaining why something behaves as it does (not fixing it)
+model: gemma-4-12b     # the agent model when a step names none (MoE: fast here)
+skills: [investigate]
+requires: [node, chrome]   # for the browser server; checked before a task runs
+mcp_servers: [memory, web, browser, export, jobs]
+toolsets:
+  plan: [file, skills, search]
+  execute: [file, terminal, skills, todo, search]
+plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, web_search, web_fetch,
+             navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
+checks: []
+max_turns: {plan: 15, execute: 60}
+run_budget: {plan: 1800, execute: 3600}
+browser:
+  real_logins: false       # a clean, isolated Chrome; `python -m ariadne browser debug on` attaches to your Chrome when a step needs a login
+network:
+  blocklist: []            # hosts this flow must not reach, e.g. [example.com]; everything else is allowed

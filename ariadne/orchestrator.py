@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import flows as flowlib
-from . import jobs, llm, park, paths
+from . import jobs, llm, park, paths, protocol, render
 from .memory import Memory, format_hits
 
-FINAL = ("done", "failed", "cancelled")
+FINAL = ("done", "failed", "cancelled", "rejected")
 WAITING = ("awaiting_gates", "awaiting_signoff", "needs_attention")   # the task needs the person who gave it
 GATES_QUESTION = ("Before this task starts: what are the check gates? List how we will know it is done, end to "
                   "end - commands that must pass (`run: pytest -q`) and outcomes a reviewer can verify (\"README "
@@ -71,7 +71,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks(
   id TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT, text TEXT, workspace TEXT, flow TEXT,
   status TEXT, plan TEXT DEFAULT '', feedback TEXT DEFAULT '', result TEXT DEFAULT '', error TEXT DEFAULT '',
-  models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0, gates TEXT DEFAULT '');
+  models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0, gates TEXT DEFAULT '',
+  model TEXT DEFAULT '', plan_json TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
@@ -93,7 +94,7 @@ class Store:
         with self._conn() as c:
             c.executescript(SCHEMA)
             have = [r["name"] for r in c.execute("PRAGMA table_info(tasks)")]
-            for col in ("models", "session", "gates"):
+            for col in ("models", "session", "gates", "model", "plan_json"):
                 if col not in have:
                     c.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
             if "learn" not in have:
@@ -117,7 +118,7 @@ class Store:
         from .activity import log
         log(f"task {tid}", f"{kind}: {detail}")
 
-    def submit(self, text, source="cli", workspace="", flow="", session="", gates=None):
+    def submit(self, text, source="cli", workspace="", flow="", session="", gates=None, model=""):
         """session: a Hermes session to continue (the caller's conversation); default: one session per task.
         gates: the check gates (strings; `run: cmd` for commands) - else taken from the brief's Gates/Checks/Done when
         section. Without gates the task waits (awaiting_gates) and asks for them: nothing starts without them."""
@@ -131,9 +132,10 @@ class Store:
         g = [gate(x) if isinstance(x, str) else x for x in (gates or [])] or parse_gates(text)
         status = "new" if g or not getattr(self, "require_gates", True) else "awaiting_gates"
         with self._conn() as c:
-            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session, gates, result) "
-                      "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (tid, now, now, source, text, workspace or "", flow or "", status,
-                                                         session, json.dumps(g), "" if g else GATES_QUESTION))
+            c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session, gates, "
+                      "result, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                      (tid, now, now, source, text, workspace or "", flow or "", status, session, json.dumps(g),
+                       "" if g else GATES_QUESTION, model or ""))
         self.event(tid, "brief", f"from {source}: {text[:300]}")
         self.event(tid, "gates", gates_text(g) if g else "none given: asked the person for them")
         return tid
@@ -149,7 +151,8 @@ class Store:
         if t["status"] == "awaiting_gates":
             self.update(tid, gates=json.dumps(g), status="new", result="")
         elif t["status"] in ("new", "awaiting_signoff", "needs_attention"):
-            self.update(tid, gates=json.dumps(g), status="new" if t["status"] != "new" else "new")
+            # New gates mean the approved plan may no longer satisfy them: plan again rather than execute blind.
+            self.update(tid, gates=json.dumps(g), status="new")
         else:
             raise TaskError(f"task {tid} is '{t['status']}'; gates can change before execution only")
         self.event(tid, "gates", gates_text(g))
@@ -215,6 +218,12 @@ class Store:
         the model plan: execution uses exactly these models, and fetches any that are not installed.
         Also re-approves a task that stopped for attention (a model failed to install, a tool was missing)."""
         t = self.get(tid, events=False)
+        if t["status"] == "needs_attention" and (t.get("error") or "") == "off-plan":
+            # The lifecycle's "stuck or off-plan -> backbrief" branch: the approved plan no longer fits, so the
+            # person gets a new backbrief to sign off. Approving must not silently re-run the plan that failed.
+            self._transition(tid, ("needs_attention",), "new", error="", result="")
+            self.event(tid, "sign-off", "approved: planning again after an off-plan stop; a new backbrief follows")
+            return
         mp = json.loads(t["models"]) if t.get("models") else None
         if models:
             if not mp:
@@ -433,6 +442,14 @@ TASK (from {source}):
 
 WORKSPACE: {workspace}
 {feedback}
+HOW THIS FLOW WORKS (flows/{flow}/FLOW.md - the coordination this plan must follow; it is the knowledge a small
+model cannot invent, so follow it unless the task clearly needs otherwise, and say why if you do not):
+{flow_brief}
+
+SHARED SKILLS for this flow (written by the larger models from earlier tasks and the person's feedback; they encode
+how this work is actually done here. Read the ones that apply with skill_view before planning, and follow them):
+{skills_block}
+
 CHECK GATES agreed with the person (the task is done only when every one passes; plan so that each will):
 {gates}
 
@@ -465,6 +482,16 @@ STEPS:
 GATES: <each gate G1..Gn, and which step makes it pass>
 RISKS: <what could go wrong, or 'none'>
 QUESTIONS: <anything the person must answer first, or 'none'>
+
+After that document, end with one fenced json block and nothing after it. The harness reads the block to build the
+sign-off sheet; it must be valid JSON with exactly these keys:
+
+```json
+{{"mission": "one line", "steps": [{{"n": 1, "text": "one step"}}],
+ "gates": ["which step makes each gate pass"], "risks": ["..."], "questions": ["..."]}}
+```
+
+Do not name models in the block: the person chooses the task's model at sign-off.
 """
 
 EXEC_PROMPT = """You are the {flow} worker of Ariadne. This is the EXECUTE phase. The plan below was approved by the person
@@ -496,6 +523,26 @@ def jobs_rule(flow):
     return JOBS_RULE if "jobs" in flow.mcp_servers else NO_JOBS_RULE
 
 
+def skills_block(flow_name: str) -> str:
+    """The flow's shared skills, name and description, for the plan prompt.
+
+    These are the skills the larger models wrote from earlier tasks and the person's feedback. Loading them into
+    the plan is what makes that writing steer the next run instead of sitting in a folder.
+    """
+    from . import skills as skilllib
+    try:
+        rows = skilllib.list_skills(flow_name)
+    except Exception:
+        return "(none yet)"
+    return "\n".join(f"- {r['name']}: {r['description']}" for r in rows) or "(none yet)"
+
+
+def _install_system_tools(names):
+    """Install the system tools the backbrief named. Reached only after the person approved the plan."""
+    from . import deps
+    deps.install(system=True)
+
+
 # ---------- model plan: a model per step, suggested by the planner, locked at sign-off ----------
 
 STEP_RE = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
@@ -503,8 +550,9 @@ MODEL_RE = re.compile(r"\bmodel:\s*`?([A-Za-z0-9][\w.\-]*)", re.I)
 SECTION_RE = re.compile(r"^[A-Z][A-Z ]+:")
 
 
-def parse_model_plan(plan_text, flow, catalog):
-    """The backbrief's steps and the model each names; a missing or unknown name gets the flow's agent model."""
+def parse_model_plan(plan_text, flow, catalog, default_model=None):
+    """The backbrief's steps and the model each names; a missing or unknown name gets the task's explicit model."""
+    default = default_model or flow.step_model
     steps, notes, in_steps = [], [], False
     for line in plan_text.splitlines():
         s = line.strip()
@@ -524,8 +572,8 @@ def parse_model_plan(plan_text, flow, catalog):
         if name and name not in catalog.models:
             notes.append(f"step {m.group(1)} named '{name}', which is not in the catalog; using {flow.step_model}")
             name = ""
-        steps.append({"n": int(m.group(1)), "text": body, "model": name or flow.step_model})
-    return {"steps": steps, "agent": flow.step_model, "notes": notes}
+        steps.append({"n": int(m.group(1)), "text": body, "model": name or default})
+    return {"steps": steps, "agent": default, "notes": notes}
 
 
 def apply_model_overrides(mp, overrides):
@@ -591,6 +639,7 @@ def step_groups(mp, catalog):
 def model_block(mp, flow, catalog):
     """What the harness adds to the backbrief: the model per step, what will be fetched, what tools are missing."""
     out = ["", "MODEL PLAN (sign-off locks these; anything not installed is fetched before step 1):"]
+    out.append(f"  task model: {mp.get('agent')}")
     for s in mp["steps"] or [{"n": "all", "model": mp["agent"]}]:
         m = catalog.get(s["model"])
         state = "installed" if m.installed() else f"not installed, {m.size_gb:g} GB"
@@ -601,16 +650,34 @@ def model_block(mp, flow, catalog):
     if todo:
         out.append("TO FETCH AFTER SIGN-OFF: " + ", ".join(f"{n} ({catalog.get(n).size_gb:g} GB)" for n in todo))
     gaps = missing_tools(mp, flow, catalog)
-    if gaps:
+    need = missing_system(flow)
+    if need:
+        # Named here, in the plan, because approving the brief is what authorises the download.
+        out.append("TO INSTALL AFTER SIGN-OFF: " + "; ".join(f"{m} ({flowlib.install_hint(m)})" for m in need))
+    bad = missing_servers(mp, flow, catalog)
+    if bad:
+        out.append("PLAN ERROR - the flow does not enable MCP server(s): " + ", ".join(bad)
+                   + f" (add them to flows/{flow.name}/flow.yaml)")
+    if gaps and not need:
         out.append("MISSING TOOLS (execution will not start until they are there): " + "; ".join(gaps))
     out.append("Change a model: approve with --model STEP=NAME (or all=NAME), or revise. Models: python -m ariadne models")
     return "\n".join(out)
 
 
+def missing_system(flow):
+    """System tools the flow declares and this machine lacks (installable, named in the backbrief)."""
+    return flowlib.missing_requirements(flow)
+
+
+def missing_servers(mp, flow, catalog):
+    """MCP servers the chosen models need but the flow does not enable - a planning error, not a download."""
+    return [s for s in needed_servers(mp, catalog) if s not in flow.mcp_servers]
+
+
 def missing_tools(mp, flow, catalog):
-    gaps = [f"{m} (python -m ariadne install --system)" for m in flowlib.missing_requirements(flow)]
+    gaps = [f"{m} ({flowlib.install_hint(m)})" for m in missing_system(flow)]
     gaps += [f"MCP server '{s}' (add it to mcp_servers in flows/{flow.name}/flow.yaml)"
-             for s in needed_servers(mp, catalog) if s not in flow.mcp_servers]
+             for s in missing_servers(mp, flow, catalog)]
     return gaps
 
 
@@ -681,15 +748,19 @@ Reply with only the flow name."""
 
 class Worker:
     def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
-                 catalog=None, installer=None, on_installed=None, kv=None, job_runner=None):
+                 catalog=None, installer=None, on_installed=None, kv=None, job_runner=None, unload=None,
+                 install_tools=None):
         from . import kvcache
         # Jobs run for real only with the real runner; tests pass a fake that never unloads the model server.
         self.job_runner = job_runner or (jobs.run if runner is hermes_run else
                                          (lambda j, db: jobs.run(j, db, unload=lambda: True, poll=0.05)))
+        # Same rule for freeing VRAM: only the real runner has a model server behind it.
+        self.unload = unload or (jobs.unload_models if runner is hermes_run else (lambda: True))
         self.kv = kv or (kvcache.default() if runner is hermes_run else kvcache.NoKVCache())
         from . import models as modellib
         self.catalog = catalog or modellib.load()
         self.installer = installer or modellib.install
+        self.install_tools = install_tools or _install_system_tools
         self.on_installed = on_installed or _reload_models
         self.store = store or Store()
         self.memory = memory or Memory()
@@ -699,21 +770,24 @@ class Worker:
         self.llm_chat = llm_chat or llm.chat
 
     def route(self, t):
-        if t["flow"] in self.flows:
-            return t["flow"], "given by the task"
+        """The flow, or None with the reason: a task outside the approved set is rejected, never guessed at."""
+        if t["flow"]:
+            if t["flow"] in self.flows:
+                return t["flow"], "given by the task"
+            return None, f"'{t['flow']}' is not an approved flow"
         if len(self.flows) == 1:
             return next(iter(self.flows)), "only flow"
         listing = "\n".join(f"- {f.name}: {f.when}" for f in self.flows.values())
         try:
             answer = self.llm_chat(self.router_model, [{"role": "user", "content": ROUTE_PROMPT.format(
                 flows=listing, text=t["text"])}]).lower()
-        except Exception as e:  # router down: fall back, say so
-            answer = ""
-            self.store.event(t["id"], "route", f"router failed ({e}); using the first flow")
+        except Exception as e:  # router down: say so, do not invent a flow
+            self.store.event(t["id"], "route", f"router failed ({e})")
+            return None, f"the router could not run ({e})"
         for name in self.flows:
             if re.search(rf"\b{re.escape(name)}\b", answer):
                 return name, f"router said '{answer[:60]}'"
-        return next(iter(self.flows)), f"router answer '{answer[:60]}' named no flow; using the first flow"
+        return None, f"the router named no approved flow (it said {answer[:60]!r})"
 
     def workspace(self, t):
         ws = t["workspace"] or str(paths.STATE / "workspace")
@@ -722,6 +796,15 @@ class Worker:
 
     def plan(self, t):
         name, why = self.route(t)
+        if not name:
+            approved = ", ".join(self.flows)
+            self.store.update(t["id"], status="rejected",
+                              result=(f"No approved flow: {why}.\n"
+                                      f"Approved flows: {approved}.\n"
+                                      "Give the task again with --flow <name>, or reword it so the router can pick "
+                                      "one of them."))
+            self.store.event(t["id"], "route", f"rejected: {why}")
+            return
         flow = self.flows[name]
         missing = flowlib.missing_requirements(flow)
         if missing:
@@ -732,29 +815,44 @@ class Worker:
             return
         self.store.update(t["id"], flow=name)
         self.store.event(t["id"], "route", f"{name} ({why})")
-        planner = self.catalog.get(flow.model)
+        planner = self.catalog.get((t.get("model") or "").strip() or flow.model)
         if not planner.installed():
-            msg = (f"flow '{name}' plans and works with {flow.model}, which is not installed ({planner.size_gb:g} GB). "
-                   f"Install it (python -m ariadne models install {flow.model}), then revise the task to retry.")
+            msg = (f"flow '{name}' plans and works with {planner.name}, which is not installed "
+                   f"({planner.size_gb:g} GB). Install it (python -m ariadne models install {planner.name}), "
+                   f"then revise the task to retry.")
             self.store.update(t["id"], status="needs_attention", result=msg)
             self.store.event(t["id"], "route", f"{flow.model} not installed")
             return
         ws = self.workspace(t)
         hits = self.memory.recall(f"{t['text']} {ws}", limit=5)
         feedback = f"\nFEEDBACK ON THE LAST PLAN (address it):\n{t['feedback']}\n" if t["feedback"] else ""
+        default_model = (t.get("model") or "").strip() or flow.step_model
         prompt = PLAN_PROMPT.format(flow=name, source=t["source"], text=t["text"], workspace=ws,
                                     gates=gates_text(json.loads(t.get("gates") or "[]")) or "(none)",
                                     feedback=feedback, memory=format_hits(hits),
+                                    flow_brief=flow.brief or "(this flow has no FLOW.md)",
+                                    skills_block=skills_block(name),
                                     exec_tools=", ".join(flow.execute_toolsets + [f"{m} (MCP)" for m in flow.mcp_servers]),
-                                    models=self.catalog.text(), default_model=flow.step_model, planner=flow.model)
+                                    models=self.catalog.text(), default_model=default_model, planner=planner.name)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
-        r = self.run(flow, "plan", prompt, ws, t, flow.model, "plan")
+        r = self.run(flow, "plan", prompt, ws, t, planner.name, "plan")
         if r.exit_code != 0 or not r.text:
             self.store.update(t["id"], status="failed", error=f"plan run failed (exit {r.exit_code}); log {r.log}")
             self.store.event(t["id"], "plan", f"failed, log {r.log}")
             return
-        mp = parse_model_plan(r.text, flow, self.catalog)
-        self.store.update(t["id"], status="awaiting_signoff", plan=r.text.rstrip() + "\n" + model_block(mp, flow, self.catalog),
+        try:
+            plan = protocol.parse(r.text, default_model)
+            mp = {"steps": plan["steps"], "agent": default_model, "notes": []}
+            document = render.backbrief(plan)
+            self.store.update(t["id"], plan_json=protocol.to_json(plan))
+        except protocol.PlanError as e:
+            # One release of tolerance: an older planner that answers in prose still reaches sign-off, and the
+            # backbrief says the structure was read from the text.
+            mp = parse_model_plan(r.text, flow, self.catalog, default_model=default_model)
+            mp["notes"].append(f"the reply had no usable JSON plan ({e}); read from the text instead")
+            document = r.text
+        self.store.update(t["id"], status="awaiting_signoff",
+                          plan=document.rstrip() + "\n" + model_block(mp, flow, self.catalog),
                           models=json.dumps(mp))
         self.store.event(t["id"], "backbrief", "ready for sign-off")
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: awaiting sign-off",
@@ -916,17 +1014,33 @@ class Worker:
         return failures
 
     def prepare(self, t, flow, mp):
-        """Before step 1: every tool the plan needs is there and every locked model is installed (fetched now if
-        not; the sign-off covered it). Returns what stops the task, or ''."""
-        gaps = missing_tools(mp, flow, self.catalog)
+        """Before step 1: every tool the plan needs is there and every locked model is installed.
+
+        The backbrief named anything missing, so approving it authorised the download: models are fetched and
+        system tools installed. Only a configuration error still stops the task.
+        """
+        bad = [f"MCP server '{s}' (add it to mcp_servers in flows/{flow.name}/flow.yaml)"
+               for s in missing_servers(mp, flow, self.catalog)]
         too_big = [n for n in needed_models(mp, self.catalog) if not self.catalog.fits(self.catalog.get(n))
                    and self.catalog.get(n).kind != "image"]
         if too_big:
             b = self.catalog.active_budget()
-            gaps.append(f"{', '.join(too_big)} too large for the '{b['profile']}' resource profile "
-                        f"(max {b['max_model_gb']} GB; python -m ariadne resources shared)")
-        if gaps:
-            return "Execution did not start; missing: " + "; ".join(gaps) + ". Fix that, then approve again."
+            bad.append(f"{', '.join(too_big)} too large for the '{b['profile']}' resource profile "
+                       f"(max {b['max_model_gb']} GB; python -m ariadne resources shared)")
+        if bad:
+            return "Execution did not start; missing: " + "; ".join(bad) + ". Fix that, then approve again."
+        need = missing_system(flow)
+        if need:
+            self.store.event(t["id"], "install", "installing after sign-off: " + ", ".join(need))
+            try:
+                self.install_tools(need)
+            except Exception as e:
+                return (f"Execution did not start: could not install {', '.join(need)}: {e}. Install it "
+                        f"(python -m ariadne install --system), then approve again.")
+            still = missing_system(flow)
+            if still:
+                return (f"Execution did not start; still missing {', '.join(still)}. Install it, then approve "
+                        "again.")
         from . import models as modellib
         fetch = modellib.missing(needed_models(mp, self.catalog), self.catalog)
         for name in fetch:
@@ -939,6 +1053,21 @@ class Worker:
         if fetch:
             self.on_installed()
         return ""
+
+    def _sleep(self, t, why):
+        """Give the machine back: unload the orchestrator model until a new plan is needed.
+
+        The planner is the largest model in the flow and is not used again until re-planning (revise, off-plan).
+        Holding it while the executor works is what made one GPU thrash: the worker's own model should be the only
+        thing on the card while a task runs.
+        """
+        try:
+            freed = self.unload()
+        except Exception as e:
+            self.store.event(t["id"], "vram", f"could not unload the orchestrator model: {e}")
+            return
+        if freed:
+            self.store.event(t["id"], "vram", f"orchestrator model unloaded ({why}); it waits for the task")
 
     def execute(self, t):
         flow = self.flows.get(t["flow"])
@@ -954,6 +1083,8 @@ class Worker:
         ws = self.workspace(t)
         self.checkpoint(t, flow, ws, flow.model, "plan approved", closes="plan",
                         extra="Include the approved plan's steps verbatim under OPEN.")
+        # The brief is delivered and signed off; the planner is not needed again until a re-plan.
+        self._sleep(t, "the plan is signed off")
         groups, reports = step_groups(mp, self.catalog), []
         for i, (agent, steps) in enumerate(groups):
             scope, extra, attempts, last = step_scope(steps, groups, mp, self.catalog), "", 0, i == len(groups) - 1
@@ -969,18 +1100,22 @@ class Worker:
                 out_of = "time" if r.exit_code == 124 else (
                     "turns" if r.exit_code != 0 and _turn_end_reason(flow.home, r.session_id) == "max_iterations_reached"
                     else "")
-                if out_of and last:
-                    # Out of time or turns, not out of options: what it wrote stays; the gates decide, and the loop
-                    # goes on (still bounded by max_iterations and the no-progress stop).
+                if out_of:
+                    # Out of time or turns is not out of options: what it wrote stays and the gates decide. This is
+                    # true for every step group, not only the last one - an unfinished group is unfinished, and the
+                    # next group (or QA) continues from the files it left behind.
                     what = "run budget" if out_of == "time" else "turn limit"
-                    self.store.event(t["id"], "execute", f"{what} used up (attempt {attempts}); checking the gates")
-                    r = RunResult(f"STOPPED ({what} used up) before finishing; continue from the files as they are.",
-                                  0, r.log)
+                    self.store.event(t["id"], "execute", f"{what} used up on {label} (attempt {attempts}); "
+                                                         "keeping what it wrote")
+                    r = RunResult(r.text.strip() or (f"STOPPED ({what} used up) before finishing; continue from the "
+                                                     "files as they are."), 0, r.log, r.session_id)
                 elif r.exit_code != 0 or not r.text:
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
                                         f"execute run failed (exit {r.exit_code}); log {r.log}")
                 if r.text.lstrip().upper().startswith("OFF-PLAN"):
-                    self.store.update(t["id"], status="needs_attention", result=r.text)
+                    # The plan was wrong, not the work: `error` marks why, so approving sends the task back to
+                    # planning (a new backbrief) instead of re-running the plan that just failed.
+                    self.store.update(t["id"], status="needs_attention", result=r.text, error="off-plan")
                     self.store.event(t["id"], "execute", "stopped: off-plan, back to the person for a new sign-off")
                     self.checkpoint(t, flow, ws, agent, "stopped off-plan", extra="Say why under OPEN.")
                     return
@@ -996,7 +1131,7 @@ class Worker:
                     has_cmds = flow.checks or any(g["type"] == "run" for g in json.loads(t.get("gates") or "[]"))
                     self.store.event(t["id"], "checks", "passed (every gate)" if has_cmds else
                                      "passed (review gates only; no command gates)")
-                    self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]), learn_model=agent)
+                    self._finish(t, flow, ws, "done", "\n\n".join(reports + [r.text]))
                     return
                 self.store.event(t["id"], "checks", f"failed: {failures[0][:300]}")
                 # Loop end: the gates pass, max_iterations is reached, or two iterations in a row fail as many
@@ -1006,17 +1141,20 @@ class Worker:
                 if attempts >= flow.max_iterations or stalled:
                     why = "no progress in the last two iterations" if stalled else f"{attempts} iterations"
                     return self._finish(t, flow, ws, "failed", "\n\n".join(reports + [r.text]),
-                                        f"gates still failing after {why}:\n" + "\n".join(failures), learn_model=agent)
+                                        f"gates still failing after {why}:\n" + "\n".join(failures))
                 self.store.event(t["id"], "iterate", f"{len(failures)} gate(s) failing; iteration {attempts + 1} "
                                                      f"of at most {flow.max_iterations}")
-                extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE GATES FAILED. Fix them, staying on the plan:\n"
+                extra = ("\nA PREVIOUS ATTEMPT FINISHED BUT THESE GATES FAILED. The cause may be in any step of the "
+                         "plan above, not only the last one that ran: read the plan, find the step that owns each "
+                         "failure, and fix it without redoing steps that are already proven.\n"
                          + "\n".join(failures) + "\n")
 
-    def _finish(self, t, flow, ws, status, result, error="", learn_model=None):
+    def _finish(self, t, flow, ws, status, result, error=""):
         self.store.update(t["id"], status=status, result=result or "", error=error)
         if (t.get("session") or t["id"]) == t["id"]:  # the task's own session ends with it; a caller's lives on
             self.kv.drop(self.segment(t, flow)[1])
         self.store.event(t["id"], "report", status + (f": {error[:300]}" if error else ""))
+        self._sleep(t, "the task is finished")
         self.memory.record("task", t["id"], f"{t['text']}\nstatus: {status}\nresult: {(result or error)[:1500]}",
                            [("uses_flow", "flow", flow.name), ("in_workspace", "workspace", ws)])
 
@@ -1079,7 +1217,8 @@ def _release(f):
 
 
 def worker_running():
-    f = _try_lock(LOCK)
+    # Resolved at call time: an ARIADNE_STATE (or a test's tmp dir) set after import must still be honoured.
+    f = _try_lock(paths.STATE / "worker.lock")
     if f is None:
         return True
     _release(f)
@@ -1172,6 +1311,20 @@ def _code_stamp():
     return max((f.stat().st_mtime for f in files if f.exists()), default=0)
 
 
+def _reconcile(store):
+    """A worker that starts finds whatever a previous worker left mid-run (crash, kill, reboot) and hands it back.
+
+    Nothing else can do this: the worker holds the single-process lock, so any row still in planning/executing at
+    this point has no worker behind it. Silence here is what leaves a task reading `executing` for two days.
+    """
+    for t in store.list(50):
+        if t["status"] in ("planning", "executing"):
+            store.update(t["id"], status="needs_attention",
+                         result="The worker restarted while this task was running. The work so far is in the "
+                                "workspace. Approve to continue it, or revise it.")
+            store.event(t["id"], "recover", "no worker behind it (crash, kill or reboot); back to the person")
+
+
 def serve(idle_exit=1800):
     from .deps import require
     require()
@@ -1190,6 +1343,7 @@ def serve(idle_exit=1800):
         print(f"  flow {name} -> {home}", flush=True)
         stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it
     w, last, stamp, restart = Worker(), time.time(), _code_stamp(), False
+    _reconcile(w.store)
     try:
         while True:
             if _code_stamp() > stamp:  # updated code or config: hand over to a fresh worker between tasks
@@ -1221,6 +1375,33 @@ def serve(idle_exit=1800):
 
 # ---------- CLI ----------
 
+def _default_workspace():
+    """The folder the person is standing in: the git root if there is one, else the cwd.
+
+    A task given from inside a repo must apply to that repo. Defaulting to empty silently sent the work to
+    .ariadne/workspace instead, where the model changed a copy nobody was looking at.
+    """
+    cwd = os.getcwd()
+    try:
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True,
+                           timeout=10)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return cwd
+
+
+def _default_session(workspace: str = "") -> str:
+    """A workstream is a folder: tasks given in the same repo build on each other.
+
+    The design's default was "session = repo folder name", so a second task in the same checkout continues the
+    first instead of starting a stranger every time.
+    """
+    name = Path(workspace or _default_workspace()).name
+    return re.sub(r"[^\w.-]+", "-", name).strip("-") or "main"
+
+
 def _print(t):
     print(json.dumps(t, indent=2, default=str))
 
@@ -1230,10 +1411,13 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("submit"); s.add_argument("text", nargs="?", default="")
     s.add_argument("--file", default="", help="read the task text from a file (long briefs, no shell quoting)")
-    s.add_argument("--workspace", default="")
+    s.add_argument("--workspace", default="", help="the folder the task applies to (default: the git root of the "
+                                                   "folder you run this from, else the current folder)")
     s.add_argument("--flow", default=""); s.add_argument("--wait", type=int, default=0)
     s.add_argument("--session", default="", help="continue this Hermes session (default: a new one for the task)")
     s.add_argument("--gate", action="append", default=[], help="a check gate ('run: pytest -q' for a command); repeatable")
+    s.add_argument("--json", action="store_true", help="machine output: the task row as JSON, no following")
+    s.add_argument("--no-follow", action="store_true", help="return as soon as the task is queued")
     gt = sub.add_parser("gates"); gt.add_argument("id"); gt.add_argument("gates", nargs="+")
     g = sub.add_parser("get"); g.add_argument("id")
     w = sub.add_parser("wait"); w.add_argument("id"); w.add_argument("--timeout", type=int, default=600)
@@ -1257,9 +1441,18 @@ def main(argv=None):
     st = Store()
     if args.cmd == "submit":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else args.text
-        tid = st.submit(text, "cli", args.workspace, args.flow, args.session, args.gate)
+        workspace = args.workspace or _default_workspace()
+        tid = st.submit(text, "cli", workspace, args.flow, args.session or _default_session(workspace), args.gate)
         ensure_worker()
-        _print(st.wait(tid, args.wait) if args.wait else {"id": tid, "status": "new"})
+        if args.json:
+            _print(st.wait(tid, args.wait) if args.wait else {"id": tid, "status": "new"})
+        elif args.no_follow:
+            print(f"{tid}: queued. Follow it with: ariadne follow {tid}")
+        else:
+            # The point of giving a task is to see it plan and then read the backbrief. `--json` is the escape
+            # hatch for scripts; the default is the human loop the README describes.
+            from . import console
+            return console.follow(st, tid, timeout=args.wait or 3600)
     elif args.cmd == "get":
         _print(st.get(args.id))
     elif args.cmd == "wait":

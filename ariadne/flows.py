@@ -16,6 +16,11 @@ from . import paths
 DEFAULT_PLAN_TOOLS = ["read_file", "search_files", "skill_view", "skills_list", "todo",
                       "memory_recall", "git_status", "git_diff", "git_log", "git_show"]
 
+# Every key flows/<name>/flow.yaml may carry. Anything else is a typo and is refused (see load_flow).
+FLOW_KEYS = {"name", "description", "when", "model", "execute_model", "reasoning", "status", "skills",
+             "mcp_servers", "toolsets", "plan_tools", "checks", "requires", "browser", "network",
+             "max_turns", "max_iterations", "run_budget"}
+
 # Settings every worker home gets (local models only; quiet, no background fetches). Mirrors profiles\llamaswap.
 BASE_CONFIG = {
     "_config_version": 12,  # current upstream schema; without it Hermes warns that it cannot migrate the file
@@ -49,6 +54,7 @@ class Flow:
     execute_toolsets: list = field(default_factory=lambda: ["file", "terminal", "skills", "todo"])
     plan_tools: list = field(default_factory=lambda: list(DEFAULT_PLAN_TOOLS))
     checks: list = field(default_factory=list)
+    brief: str = ""            # flows/<name>/FLOW.md: the coordination the planner must follow
     requires: list = field(default_factory=list)   # system tools the flow's MCP servers need (deps.SYSTEM_TOOLS, chrome)
     real_logins: bool = True          # browser: use the person's real Chrome profile (logins) unless a flow turns it off
     blocklist: list = field(default_factory=list)   # network: hosts this flow may not reach (everything else allowed)
@@ -89,7 +95,20 @@ def load_flow(folder):
             raise FlowError(f"{folder.name}/flow.yaml: '{key}' is required")
     if data["name"] != folder.name:
         raise FlowError(f"{folder.name}/flow.yaml: name '{data['name']}' must match its folder")
+    # Unknown keys are refused, not ignored: a typo ('max_turn' for 'max_turns') would otherwise keep the default
+    # silently, and the whole point of a flow folder is that its file says what happens.
+    unknown = sorted(set(data) - FLOW_KEYS)
+    if unknown:
+        raise FlowError(f"{folder.name}/flow.yaml: unknown key(s) {unknown}; known keys: {sorted(FLOW_KEYS)}")
+    for section, allowed in (("toolsets", {"plan", "execute"}), ("browser", {"real_logins"}),
+                             ("network", {"blocklist"})):
+        extra = sorted(set(data.get(section) or {}) - allowed)
+        if extra:
+            raise FlowError(f"{folder.name}/flow.yaml: unknown key(s) {extra} under '{section}'; "
+                            f"known: {sorted(allowed)}")
     ts = data.get("toolsets") or {}
+    brief_file = folder / "FLOW.md"
+    brief = brief_file.read_text(encoding="utf-8").strip() if brief_file.exists() else ""
     fl = Flow(name=data["name"], description=data["description"].strip(), when=data["when"].strip(),
               model=data.get("model", "qwen3.5-9b"), execute_model=str(data.get("execute_model") or ""),
               status=str(data.get("status") or "beta"),
@@ -98,7 +117,7 @@ def load_flow(folder):
               plan_toolsets=list(ts.get("plan") or ["file", "skills"]),
               execute_toolsets=list(ts.get("execute") or ["file", "terminal", "skills", "todo"]),
               plan_tools=list(data.get("plan_tools") or DEFAULT_PLAN_TOOLS),
-              checks=list(data.get("checks") or []), folder=folder,
+              checks=list(data.get("checks") or []), brief=brief, folder=folder,
               requires=[str(x).lower() for x in data.get("requires") or []],
               real_logins=bool((data.get("browser") or {}).get("real_logins", True)),
               blocklist=[str(h).strip().lower() for h in (data.get("network") or {}).get("blocklist") or []])
@@ -123,17 +142,62 @@ def load_flow(folder):
     return fl
 
 
+def _approved_flows(flows_dir):
+    """flows/flows.yaml: the closed set of flows a task may belong to (None when there is no manifest)."""
+    f = Path(flows_dir) / "flows.yaml"
+    if not f.exists():
+        return None
+    data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+    names = [str(n).strip() for n in (data.get("approved") or []) if str(n).strip()]
+    return names or None
+
+
+def _approved_tools(flows_dir):
+    """flows/tools.yaml: the closed set of MCP servers and system tools a flow may use."""
+    f = Path(flows_dir) / "tools.yaml"
+    if not f.exists():
+        return None, {}
+    data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+    approved = data.get("approved") or {}
+    return (set(approved.get("mcp") or []), set(approved.get("system") or [])), (data.get("install") or {})
+
+
+def install_hint(name: str, flows_dir=None) -> str:
+    """The command the backbrief should name for a missing system tool."""
+    _sets, hints = _approved_tools(flows_dir or paths.FLOWS_DIR)
+    return str(hints.get(name) or "python -m ariadne install --system")
+
+
 def load_flows(flows_dir=None):
     flows_dir = Path(flows_dir or paths.FLOWS_DIR)
+    approved = _approved_flows(flows_dir)
     out = {}
     for d in sorted(p for p in flows_dir.iterdir() if (p / "flow.yaml").exists()):
         fl = load_flow(d)
+        if approved is not None and fl.name not in approved:
+            raise FlowError(f"{fl.name}: not an approved flow; flows/flows.yaml approves {approved}")
         out[fl.name] = fl
+    if approved is not None:
+        missing = [n for n in approved if n not in out]
+        if missing:
+            raise FlowError(f"flows/flows.yaml approves {missing}, which have no flows/<name>/flow.yaml")
     registry = _mcp_registry(flows_dir)
     for fl in out.values():
         missing = [m for m in fl.mcp_servers if m not in registry]
         if missing:
             raise FlowError(f"{fl.name}: unknown MCP server(s) {missing}; define them in flows/mcp_servers.yaml")
+    tool_sets, _hints = _approved_tools(flows_dir)
+    if tool_sets is not None:
+        mcp_ok, system_ok = tool_sets
+        for fl in out.values():
+            bad = [m for m in fl.mcp_servers if m not in mcp_ok]
+            if bad:
+                raise FlowError(f"{fl.name}: MCP server(s) {bad} are not approved; flows/tools.yaml approves "
+                                f"{sorted(mcp_ok)}")
+            bad = [r for r in fl.requires if r not in system_ok]
+            if bad:
+                raise FlowError(f"{fl.name}: system tool(s) {bad} are not approved; flows/tools.yaml approves "
+                                f"{sorted(system_ok)}")
     if not out:
         raise FlowError(f"no flows in {flows_dir}")
     return out

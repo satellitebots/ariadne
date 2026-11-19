@@ -4,6 +4,14 @@ description: Hand real work (code changes, documents, content) to Ariadne's task
 ---
 # Ariadne tasks
 
+**You cannot do the work yourself.** This home has no terminal, no file tools, no editor and no code execution:
+the only way work happens is `submit_task`, the backbrief, sign-off, and the worker executing. Do not try to
+work around that, and do not answer a work request by writing the result into the chat.
+
+- A request to change, build, write or investigate something → submit a task.
+- A question, a conversation, a decision → answer it normally.
+- Never say "here is the change" or paste a diff instead of submitting; the person asked for the drill.
+
 Use this when the person asks for work to be done (change code, write a document, make content) rather than
 a quick answer. Ariadne plans first, the person signs off, then it executes.
 

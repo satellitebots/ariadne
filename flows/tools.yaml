@@ -1,0 +1,33 @@
+# Tools and MCP servers: a closed set, like flows and models.
+#
+# A flow may only use servers and system tools listed here. The planner is told this set, and anything it needs
+# that is missing becomes an explicit "TO INSTALL AFTER SIGN-OFF" line in the backbrief - the person approves the
+# download by approving the plan, and only then does Ariadne install it.
+approved:
+  mcp:
+    - memory
+    - jobs
+    - web
+    - git
+    - browser
+    - vscode
+    - export
+    - image
+    - diagram
+    - text
+  system:
+    - git
+    - uv
+    - ollama
+    - node
+    - chrome
+    - pandoc
+
+# How a missing system tool is installed, so the backbrief can name the exact command instead of "install it".
+install:
+  node: "winget install OpenJS.NodeJS.LTS (or: python -m ariadne install --system)"
+  chrome: "install Chrome, or: python -m ariadne install --system"
+  pandoc: "python -m ariadne install --system (fetches the pinned Pandoc)"
+  git: "winget install Git.Git (or: python -m ariadne install --system)"
+  uv: "python -m ariadne install --system"
+  ollama: "winget install Ollama.Ollama (or: python -m ariadne install --system)"

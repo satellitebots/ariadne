@@ -74,14 +74,17 @@ class StepBoundary:
 
 
 def status(store=None) -> dict:
-    """What the desktop shows: the task holding the model (if any), park state, recent activity."""
+    """What the desktop shows: the task holding the model (if any), park state, what needs the person, recent activity."""
     from . import activity
     from .orchestrator import Store
     store = store or Store()
-    active = [t for t in store.list(limit=30) if t["status"] in ("planning", "executing")]
+    rows = store.list(limit=30)
+    active = [t for t in rows if t["status"] in ("planning", "executing")]
     t = active[0] if active else None
     flag = requested()
-    out = {"busy": bool(t), "park": flag, "recent": activity.recent(10), "task": None}
+    needs = [{"id": r["id"], "status": r["status"], "text": (r["text"] or "").splitlines()[0][:120]}
+             for r in rows if r["status"] in ("awaiting_gates", "awaiting_signoff", "needs_attention")]
+    out = {"busy": bool(t), "park": flag, "recent": activity.recent(10), "task": None, "needs": needs}
     if t:
         full = store.get(t["id"])
         ev = [e for e in full.get("events", []) if " feedback:" not in e[:20]]

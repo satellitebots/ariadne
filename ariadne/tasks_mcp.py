@@ -25,50 +25,38 @@ def store():
     return _store
 
 
-STATUS = {"new": "queued", "awaiting_gates": "waiting for check gates", "planning": "planning",
-          "awaiting_signoff": "backbrief ready - waiting for your sign-off", "approved": "approved, queued",
-          "executing": "executing", "needs_attention": "stopped - needs you", "done": "done", "failed": "failed",
-          "cancelled": "cancelled"}
+from . import present, service
+
+# The cosmetic layer is `present.py`; nothing here formats a task on its own, so MCP, the chat, the terminal and
+# the desktop cannot drift apart.
+STATUS = present.STATUS
 
 
 def card(t, nxt=""):
-    """The task as Markdown, readable as-is in any chat surface (Hermes desktop, CLI chat, Claude)."""
-    lines = [f"## Task {t['id']} - {STATUS.get(t['status'], t['status'])}",
-             f"**Flow:** {t.get('flow') or '(routing)'} · **Session:** {t.get('session') or t['id']} · "
-             f"**Workspace:** {t.get('workspace') or '-'}", "", f"> {t['text'].strip().splitlines()[0][:200]}"]
-    gates = json.loads(t.get("gates") or "[]")
-    if gates:
-        lines += ["", "### Check gates"] + [f"- G{i} [{g['type']}] {g['text']}" for i, g in enumerate(gates, 1)]
-    if t.get("plan") and t["status"] in ("awaiting_signoff", "approved", "executing", "needs_attention"):
-        lines += ["", "### Backbrief", t["plan"].strip()]
-    if t.get("result") and t["status"] in ("done", "failed", "needs_attention", "awaiting_gates"):
-        lines += ["", "### Report" if t["status"] == "done" else "### Result", t["result"].strip()[:4000]]
-    if t.get("error"):
-        lines += ["", f"**Error:** {t['error'][:1500]}"]
-    if t.get("events"):
-        lines += ["", "### Recent activity"] + [f"- {e.splitlines()[0][:160]}" for e in t["events"][-6:]]
-    if nxt:
-        lines += ["", f"**Next:** {nxt}"]
-    return "\n".join(lines)
+    return present.text(t, nxt)
+
+
+def _next(t):
+    """Guidance for whoever is calling (a model, usually). Not cosmetics - the card comes from present."""
+    s = t["status"]
+    if s == "awaiting_gates":
+        return "Ask the person for the check gates (how we know it is done, end to end), then call set_gates."
+    if s == "awaiting_signoff":
+        return ("Show the backbrief to the person. They approve (approve_task, optionally changing models), "
+                "revise (revise_task) or cancel.")
+    if s == "needs_attention":
+        return ("The worker stopped (see result): off-plan, a model that would not install, or a missing tool. "
+                "The person fixes it and approves again, revises (revise_task) or cancels.")
+    if s not in FINAL:
+        return "Working. Call wait_task again."
+    return ""
 
 
 def _view(t):
-    keep = ("id", "status", "flow", "session", "source", "text", "workspace", "gates", "plan", "models", "result", "error",
-            "events")
-    v = {k: t.get(k) for k in keep if t.get(k)}
-    if t["status"] == "awaiting_gates":
-        v["next"] = "Ask the person for the check gates (how we know it is done, end to end), then call set_gates."
-    elif t["status"] == "awaiting_signoff":
-        v["next"] = ("Show the backbrief (plan, including its MODEL PLAN) to the person. They approve (approve_task, "
-                     "optionally changing models), revise (revise_task) or cancel.")
-    elif t["status"] == "needs_attention":
-        v["next"] = ("The worker stopped (see result): off-plan, a model that would not install, or a missing tool. "
-                     "The person fixes it and approves again, revises (revise_task) or cancels.")
-    elif t["status"] not in FINAL:
-        v["next"] = "Working. Call wait_task again."
-    # A Markdown card for people (show it as-is), then the machine-readable state.
-    state = {k: v[k] for k in ("id", "status", "flow", "session", "next") if k in v}
-    return card(t, v.get("next", "")) + "\n\n```json\n" + json.dumps(state, indent=1, default=str) + "\n```"
+    nxt = _next(t)
+    state = {"id": t["id"], "status": t["status"], "flow": t.get("flow") or "", "session": t.get("session") or "",
+             "actions": present.view(t)["actions"], "next": nxt}
+    return card(t, nxt) + "\n\n```json\n" + json.dumps(state, indent=1, default=str) + "\n```"
 
 
 def _guard(fn):
@@ -82,19 +70,40 @@ from .activity import instrument as _instrument  # noqa: E402
 _instrument(server, "tasks")
 
 @server.tool()
-def submit_task(text: str, gates: list[str] | None = None, workspace: str = "", flow: str = "", source: str = "mcp",
-                session: str = "") -> str:
-    """Brief: give Ariadne a task. workspace: folder it applies to (e.g. a repo path). flow: optional, else the
-    router picks (coding, design, writing, content). session: pass your own conversation id to continue one
-    worker conversation across tasks (it remembers earlier tasks in it); default: a new session per task.
+def submit_task(text: str, flow: str, model: str, gates: list[str] | None = None, workspace: str = "",
+                source: str = "mcp", session: str = "") -> str:
+    """Brief: give Ariadne a task. `flow` and `model` are REQUIRED and closed sets - call get_choices() for the
+    approved flows and agent models; an unnamed or unapproved one is refused, because a task that enters here must
+    be one the desktop would accept. workspace: the folder it applies to. session: your conversation id, to continue
+    one worker conversation across tasks; default: the workspace folder's name.
     gates: REQUIRED in practice - how we will know it is done, end to end: commands that must pass ("run: pytest -q")
-    and outcomes a reviewer checks ("DESIGN.md names one vector store and why"). Ask the person for them if they did
-    not say; without gates the task waits in awaiting_gates. Returns the task id; then call wait_task."""
+    and outcomes a reviewer checks ("DESIGN.md names one vector store and why"). Ask the person if they did not say;
+    without gates the task waits in awaiting_gates. Returns the task card; then call wait_task."""
     def go():
-        tid = store().submit(text, source or "mcp", workspace, flow, session, gates)
+        tid = service.submit(text, source=source or "mcp", workspace=workspace, flow=flow, model=model,
+                             session=session, gates=gates)
         ensure_worker()
-        return json.dumps({"id": tid, "status": "new", "next": "call wait_task(id) to get the backbrief"})
+        # Every task tool returns the same card, so the caller can show the brief (or the gates question) at once.
+        return _view(store().get(tid))
     return _guard(go)
+
+
+DRILL = [
+    "1. get_choices - the approved flows and agent models. Both are closed sets; never invent a name.",
+    "2. submit_task(text, flow, model, gates, workspace, session) - gates say how we know it is done, end to end.",
+    "3. wait_task(id) - the card comes back; call it again while the card says 'Working'.",
+    "4. On 'backbrief ready': show the person the card verbatim. They decide - you call approve_task, revise_task "
+    "or cancel_task. Never sign off on their behalf.",
+    "5. After approval the worker runs on a local model; wait_task again until done, failed, or 'needs you'.",
+    "6. get_status answers 'what is happening?' without touching a task; get_task re-reads one card.",
+]
+
+
+@server.tool()
+def get_choices() -> str:
+    """Read this first: the drill (which tool, in what order) plus the approved flows and agent models a task may
+    use. Both lists are closed sets - a name outside them is refused."""
+    return _guard(lambda: json.dumps({"drill": DRILL, **service.choices()}, indent=1))
 
 
 @server.tool()
@@ -111,6 +120,15 @@ def wait_task(id: str, timeout_seconds: int = 50) -> str:
 def get_task(id: str) -> str:
     """Current state of a task, with its backbrief, result and event log."""
     return _guard(lambda: _view(store().get(id)))
+
+
+@server.tool()
+def get_status() -> str:
+    """What the local model is doing right now: which task holds it, whether one is parked, and which tasks are
+    waiting on the person. Use it when they ask "what's happening?" or before deciding to wait on something."""
+    from . import park
+    return (present.inbox_text(service.inbox()) + "\n\n```json\n"
+            + json.dumps(park.status(store()), indent=2, default=str) + "\n```")
 
 
 @server.tool()

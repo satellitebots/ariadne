@@ -1,6 +1,0 @@
-name: offline_guard
-version: 0.1.0
-description: Ariadne offline guard - blocks non-local network access and network-bound tool calls
-author: Adnan Alam
-provides_hooks:
-  - pre_tool_call

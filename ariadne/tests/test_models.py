@@ -84,8 +84,12 @@ def worker(tmp, runner, installer, mcp_servers=None, kv=None):
 
 def test_catalog_has_a_model_per_job_that_runs_here():
     cat = modellib.load()
-    assert cat.defaults == {"coding": "qwen3.6-35b-a3b", "design": "gemma-4-26b-a4b", "writing": "gemma-4-26b-a4b",
+    assert cat.defaults == {"coding": "qwen3.6-35b-a3b", "design": "gemma-4-12b",
+                            "investigation": "gemma-4-12b", "content": "gemma-4-12b",
                             "quick": "qwen3.5-9b", "image": "z-image-turbo", "router": "router", "embed": "embed"}
+    assert cat.policy["families"] == ["gemma", "qwen", "sd-turbo", "z-image-turbo"]
+    assert cat.policy["image"] == "z-image-turbo"
+    assert all(m.family in cat.policy["families"] for m in cat.models.values())
     assert "deepseek-v4.1-flash" not in cat.models and "fimbulvetr-11b" not in cat.models
     assert all(m.size_gb <= 23 for m in cat.models.values())        # 8 GB GPU + 32 GB RAM
     for m in cat.models.values():
@@ -93,8 +97,10 @@ def test_catalog_has_a_model_per_job_that_runs_here():
         assert m.ollama or all("repo" in p and ("file" in p or "dir" in p) for p in m.parts.values()), m.name
     with pytest.raises(modellib.ModelError):
         cat.get("nope")
-    menu = cat.text().splitlines()                                 # the planner sees the MoE models first
-    assert menu[0].startswith("- qwen3.6-35b-a3b") and "MoE, 3B active" in menu[0]
+    menu = cat.text().splitlines()                                 # policy first, then the model menu
+    assert menu[0].startswith("Approved model families: gemma, qwen, sd-turbo, z-image-turbo")
+    rows = [l for l in menu if l.startswith("- ")]
+    assert rows[0].startswith("- qwen3.6-35b-a3b") and "MoE, 3B active" in rows[0]
     assert [m.moe for m in cat.pickable()].count(True) == 2
 
 

@@ -31,10 +31,19 @@ context:
 resources:
   profile: shared
 
+# Approved models: a closed set of families. A model outside these is refused at load, so it can never be planned,
+# fetched or run. Preference is for ~11B models on lighter steps; the MoE 35B-A3B does most task steps.
+policy:
+  families: [gemma, qwen, sd-turbo, z-image-turbo]
+  prefer_params_b: 11
+  default_agent: qwen3.6-35b-a3b
+  image: z-image-turbo            # preferred image model; sd-turbo stays for fast drafts
+
 defaults:
   coding: qwen3.6-35b-a3b
-  design: gemma-4-26b-a4b
-  writing: gemma-4-26b-a4b
+  design: gemma-4-12b
+  investigation: gemma-4-12b
+  content: gemma-4-12b
   quick: qwen3.5-9b
   image: z-image-turbo
   router: router
@@ -61,7 +70,7 @@ models:
 
   qwen3.5-9b:
     kind: agent
-    roles: [quick, coding, writing]
+    roles: [quick, coding, content]
     about: Qwen3.5 9B. Fits entirely on the GPU with a 64K context; fast. Small edits, summaries, simple steps.
     size_gb: 5.6
     ollama: {tag: "qwen3.5:9b", blob: sha256-02d45dc1cf451ba2475ac33b301c2dd8f985abe4c182ce04a1f2f5bf0260278d}
@@ -84,7 +93,7 @@ models:
   # ---- Gemma family: design and writing ----
   gemma-4-12b:
     kind: agent
-    roles: [design, writing]
+    roles: [design, content, investigation]
     about: Gemma 4 12B (dense). Design work when the MoE is not installed; 7.4 GB, mostly on the GPU.
     size_gb: 7.4
     weights: {repo: unsloth/gemma-4-12b-it-GGUF, file: gemma-4-12b-it-UD-Q4_K_XL.gguf}
@@ -92,7 +101,7 @@ models:
 
   gemma-4-26b-a4b:
     kind: agent
-    roles: [writing, design]
+    roles: [content, design, investigation]
     active_b: 4
     about: Gemma 4 26B-A4B (MoE, 4B active). Writing - clear, well-structured prose; experts in RAM, reasonably fast.
     size_gb: 17.0
@@ -101,7 +110,7 @@ models:
 
   gemma-4-31b:
     kind: agent
-    roles: [writing]
+    roles: [content]
     about: Gemma 4 31B (dense). Best local prose here, for long or important pieces; 18.8 GB, slow.
     size_gb: 18.8
     weights: {repo: unsloth/gemma-4-31B-it-GGUF, file: gemma-4-31B-it-UD-Q4_K_XL.gguf}

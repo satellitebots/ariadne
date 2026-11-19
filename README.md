@@ -7,7 +7,7 @@ from the terminal, the Hermes desktop app, or Claude (MCP). It plans with read-o
 with a model chosen for each step and the check gates it must pass, and only executes after you sign off. Then it
 works step by step, checks every gate, and iterates until they pass. Everything runs on your own GPU.
 
-**Status:** coding flow beta; design (Mermaid), writing and content flows shipped, not yet validated.
+**Status:** coding flow beta; design (Mermaid), investigation and content (written + images) shipped, not yet validated.
 
 **[Wiki](wiki/Home.md)**: concepts, architecture, jobs, operations, decisions, and where things stand.
 
@@ -49,20 +49,28 @@ Python env and pinned binaries (sha256-verified). Models download the first time
 ### Terminal
 
 ```sh
-python -m ariadne task submit --file brief.md --workspace C:\repo     # brief with a "Gates:" section
-python -m ariadne task submit "Diagram the auth flow" --flow design --gate "diagrams render" --session auth
-python -m ariadne task wait <id>                  # backbrief, then the report
-python -m ariadne task approve <id>               # or: revise <id> "feedback" / cancel <id>
-python -m ariadne task approve <id> --model 2=gemma-4-12b    # change a step's model before locking the plan
-python -m ariadne task gates <id> "run: pytest -q" "README covers every command"   # answer a gates question
-python -m ariadne chat                            # or talk it through with Hermes in the terminal
+python -m ariadne "fix the failing date test"          # one gesture: this folder, this session, watched live
+python -m ariadne submit --file brief.md              # brief with a "Gates:" section; follows it live
+python -m ariadne submit "Diagram the auth flow" --flow design --gate "diagrams render" --session auth
+python -m ariadne inbox                               # what needs you, what is running, what finished
+python -m ariadne show <id>                           # the backbrief as a person reads it
+python -m ariadne ok <id>                             # approve; --model 2=gemma-4-12b changes a step
+python -m ariadne fix <id> "use pytest, not unittest" # send it back to planning
+python -m ariadne no <id>                             # cancel
+python -m ariadne gates <id> "run: pytest -q" "README covers every command"
+python -m ariadne follow <id>                         # attach to a task's activity at any time
+python -m ariadne chat                                # optional: talk it through with Hermes
 ```
+
+`inbox`, `show` and `follow` never call a model, so they work while the GPU is busy or the models are down.
+`submit`, `ok`, `fix` and `gates` start the worker, which is what puts work on the GPU.
 
 ### Desktop
 
 Ariadne Desktop is the [Hermes desktop app](upstream/apps/desktop/README.md), rebranded and locked to your local
-runtime: chat with live tool output, side-by-side previews of what the worker produced (diagrams, docs, images,
-diffs), a file browser, and voice.
+runtime. It has two deliberately separate surfaces: **Tasks**, Ariadne's own page - inbox, backbrief, gates,
+sign-off, and what changed in the workspace - and **Chat**, the Hermes conversation with live tool output,
+side-by-side previews, a file browser, and voice.
 
 ```sh
 python -m ariadne desktop --cwd C:\path\to\repo   # first launch builds the app (needs Node.js; a few minutes)
@@ -70,21 +78,21 @@ python -m ariadne desktop --build                 # rebuild (after swapping artw
 python -m ariadne desktop --restart               # reopen with a fresh backend (after config or plugin changes)
 ```
 
-The app is a focused shell: new chat and your sessions; the Hermes pages Ariadne does not use (capabilities,
+The app is a focused shell: **Tasks** and **Chat**; the Hermes pages Ariadne does not use (capabilities,
 messaging platforms, artifacts, scheduled jobs) are hidden. The status bar shows what the local model is doing, and
-while a task holds it a banner above the message box says so. Your messages wait for the task's current run - nothing
+while a task holds it a banner above the message box says so, with **Approve / Revise / Cancel** when it is waiting on you. Your messages wait for the task's current run - nothing
 interrupts a task on its own. To talk now, press **Park task** (or `python -m ariadne park`): the task finishes the
 step in flight, parks its KV cache and waits; **Resume task** (`python -m ariadne park --resume`) wakes the cache and
 continues the same session. These are a Hermes desktop plugin (`desktop/plugin`, installed into the app's home), not
 changes to Hermes.
 
-It opens straight into chat: no setup screen, no gateway URL, no installer. If the local runtime is broken it says
+It opens on **Tasks** the first time (the app remembers your last route): no setup screen, no gateway URL, no installer. If the local runtime is broken it says
 so and stops, instead of offering to install or connect elsewhere. The app's state lives in `.ariadne/desktop-data`,
 separate from any stock Hermes install. Branding is `desktop/branding.json` plus `desktop/assets/`, applied to a
 throwaway copy of Hermes at the pinned commit (`upstream/` is never edited); every edit states how many places it
 expects to change, so a Hermes update that moves one stops the build and names it.
 
-Then just ask in the chat: *"Give Ariadne a task: add a --verbose flag to the CLI in this repo. Gates: pytest
+Give a task from **Tasks**, or ask in the chat: *"Give Ariadne a task: add a --verbose flag to the CLI in this repo. Gates: pytest
 passes; README documents the flag."* The app's assistant submits it, shows you the backbrief, and waits for your
 approve / revise / cancel before anything changes. Every task from one desktop conversation shares a session, so
 later tasks build on earlier ones.
@@ -96,7 +104,7 @@ python -m ariadne connect     # prints configs for Claude Code, Claude Desktop a
 ```
 
 `submit_task` (with `gates`), `set_gates`, `wait_task`, `approve_task`, `revise_task`, `cancel_task`, `get_task`,
-`list_tasks`, `list_sessions`, `feedback_task`, `list_skills`, `get_skill`, `save_skill`.
+`list_tasks`, `list_sessions`, `get_status`, `feedback_task`, `list_skills`, `get_skill`, `save_skill`.
 
 ## Watch it work
 

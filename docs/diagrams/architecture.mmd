@@ -1,9 +1,9 @@
 %%{init: {"theme": "base", "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 55, "padding": 12}, "themeVariables": {"fontFamily": "Arial, Helvetica, sans-serif", "fontSize": "15px", "lineColor": "#64748b", "edgeLabelBackground": "#ffffff", "clusterBkg": "#f8fafc", "clusterBorder": "#cbd5e1"}}}%%
 flowchart TB
-  CLISRC["Terminal (CLI)"]
+  CLISRC["Terminal (CLI): inbox, show, follow, ok"]
+  DESKSRC["Ariadne Desktop: Tasks page"]
+  CHATSRC["Hermes chat (conversational)"]
   MCPSRC["Claude, other large models (MCP)"]
-
-  GW[["Hermes chat"]]
 
   subgraph ARI[Ariadne]
     MCPS["MCP server (ariadne-tasks)"]
@@ -16,10 +16,12 @@ flowchart TB
   MODELS["Local models, one on the GPU"]
   TOOLS["MCP servers and tools (Git, terminal, editor, browser)"]
 
-  CLISRC <--> GW
+  CLISRC <-->|task store| ORCH
+  DESKSRC <-->|task store| ORCH
+  CHATSRC <-->|task store| ORCH
   MCPSRC <--> MCPS
-  GW <--> ORCH
   MCPS <--> ORCH
+  FLOWS -.->|chosen flow| WORK
   ORCH <==>|task, result| WORK
   ORCH <-->|recall, record| MEM
   WORK <-->|recall, record| MEM
@@ -34,8 +36,8 @@ flowchart TB
   classDef mem fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
   classDef tool fill:#ffedd5,stroke:#ea580c,color:#7c2d12
   classDef model fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
-  class CLISRC,MCPSRC src
-  class GW,WORK hermes
+  class CLISRC,DESKSRC,MCPSRC src
+  class CHATSRC,WORK hermes
   class MCPS,ORCH,FLOWS ari
   class MEM mem
   class TOOLS tool

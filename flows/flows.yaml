@@ -1,0 +1,18 @@
+# The approved flows: a closed set.
+#
+# A task is only accepted if it belongs to one of these. The orchestrator model is cheap and cannot invent the
+# coordination (which steps, which models, which tools) reliably, so that knowledge lives in each flow's FLOW.md
+# and skills. An unknown flow is rejected, not guessed at.
+#
+# Add a flow by adding `flows/<name>/` with flow.yaml + FLOW.md, then listing it here.
+approved:
+  - coding
+  - design
+  - investigation
+  - content
+
+notes:
+  coding: change code in a repository, prove it with its tests, commit locally
+  design: system and feature design, decided and diagrammed
+  investigation: answer a question with evidence and citations
+  content: written pieces and images for a channel (documents, posts, newsletters, blog, copy)

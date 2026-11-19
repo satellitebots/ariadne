@@ -31,6 +31,7 @@ class Model:
     name: str
     kind: str
     roles: list
+    family: str = ""                             # approved model family (gemma, qwen, sd-turbo, z-image-turbo)
     about: str = ""
     size_gb: float = 0
     weights: dict = field(default_factory=dict)   # part -> {repo, file|dir, sha256?}; one part may be the entry itself
@@ -85,6 +86,7 @@ class Catalog:
     context: dict = field(default_factory=lambda: dict(CONTEXT))
     resources: str = RESOURCES                   # default profile; the person's choice is in .ariadne/resources
     budget: dict = None                          # resources.budget() for the active profile, filled on first use
+    policy: dict = field(default_factory=dict)   # approved families and preferences from serving/models.yaml
 
     def active_budget(self):
         if self.budget is None:
@@ -112,16 +114,57 @@ class Catalog:
 
     def text(self):
         """The planner's menu: mixture-of-experts models first (cheaper prefill and generation here)."""
-        return "\n".join(m.line() for m in sorted(self.pickable(), key=lambda m: not m.moe))
+        head = self.policy_text()
+        body = "\n".join(m.line() for m in sorted(self.pickable(), key=lambda m: not m.moe))
+        return (head + "\n" + body) if head else body
+
+    def policy_text(self):
+        """The approved families and size preference, so the planner chooses inside the policy."""
+        p = self.policy or {}
+        families = ", ".join(p.get("families") or [])
+        if not families:
+            return ""
+        prefer = p.get("prefer_params_b")
+        default_agent = p.get("default_agent")
+        image = p.get("image")
+        bits = [f"Approved model families: {families}."]
+        if prefer:
+            bits.append(f"Prefer about {prefer}B parameters for lighter steps.")
+        if default_agent:
+            bits.append(f"{default_agent} for most task steps.")
+        if image:
+            bits.append(f"Image default: {image}.")
+        return " ".join(bits)
+
+
+def family_of(name: str) -> str:
+    """The family a model belongs to; policy.families in serving/models.yaml is the approved set."""
+    n = (name or "").lower()
+    if n.startswith("gemma"):
+        return "gemma"
+    if n.startswith("qwen") or n in ("router", "embed"):
+        return "qwen"
+    if n.startswith("sd-turbo") or n.startswith("sd_"):
+        return "sd-turbo"
+    if n.startswith("z-image"):
+        return "z-image-turbo"
+    return ""
 
 
 def load(path=None):
     data = yaml.safe_load((path or CATALOG).read_text(encoding="utf-8-sig")) or {}
+    policy = dict(data.get("policy") or {})
+    approved = [str(f).lower() for f in (policy.get("families") or [])]
     models = {}
     for name, d in (data.get("models") or {}).items():
         if d.get("kind") not in KINDS:
             raise ModelError(f"model {name}: kind must be one of {KINDS}")
-        models[name] = Model(name=name, kind=d["kind"], roles=list(d.get("roles") or []), about=d.get("about", ""),
+        family = str(d.get("family") or family_of(name)).lower()
+        if approved and family not in approved:
+            raise ModelError(f"model {name}: family '{family or '?'}' is not approved; serving/models.yaml allows "
+                             f"{approved}. Only approved families may be downloaded or run.")
+        models[name] = Model(name=name, kind=d["kind"], roles=list(d.get("roles") or []), family=family,
+                             about=d.get("about", ""),
                              size_gb=float(d.get("size_gb") or 0), weights=d.get("weights") or {},
                              ollama=d.get("ollama") or {}, args=d.get("args", ""), sd_args=d.get("sd_args", ""),
                              active_b=float(d.get("active_b") or 0))
@@ -136,7 +179,7 @@ def load(path=None):
         if m.kind == "agent" and re.search(r"(^|\s)(-c|--ctx-size)\s", m.args):
             raise ModelError(f"model {m.name}: set the window in context.window, not with -c in args")
     return Catalog(models, defaults, {k: int(v) for k, v in context.items()},
-                   str((data.get("resources") or {}).get("profile") or RESOURCES))
+                   str((data.get("resources") or {}).get("profile") or RESOURCES), policy=policy)
 
 
 # ---------- llama-swap entries ----------
