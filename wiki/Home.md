@@ -1,7 +1,8 @@
 # Ariadne wiki
 
-Ariadne is a harness for doing real work with **local models only**, on one consumer machine. It sits on an
-unmodified, pinned [Hermes Agent](https://github.com/NousResearch/hermes-agent) and adds a fixed way of working:
+Ariadne is a harness for doing real work with **local models only**, on one consumer machine. It is a lightweight,
+local-only fork of [Hermes Agent](https://github.com/NousResearch/hermes-agent): we keep the agent loop, sessions,
+tools, MCP and skills, and strip everything else. On top of that it adds a fixed way of working:
 the task comes with check gates, the model plans read-only, you sign off the plan, and then it executes and checks
 every gate until they pass.
 
@@ -17,13 +18,13 @@ real runs.
    script and handed to Ariadne as a job. The model is unloaded while the job has the machine.
 4. **Nothing is interrupted by accident.** Work runs outside any terminal or chat. It pauses only when you park it
    or a login is needed, and it stops only when you stop it.
-5. **Hermes is the worker runtime, not the product.** Ariadne keeps what Hermes is good at - sessions, tools, MCP,
-   skills - and owns its own frontend. `upstream/` is never edited.
+5. **Ariadne is the product.** Hermes is where the runtime came from: we keep the agent loop, sessions, tools, MCP
+   and skills, and strip the rest. See [`docs/FORK.md`](../docs/FORK.md).
 
-Three documents outrank every page in this wiki: [`docs/DESIGN-RESET.md`](../docs/DESIGN-RESET.md) (the drill and
-the backend shape), [`docs/FRONTEND.md`](../docs/FRONTEND.md) (our own UI and chat, decoupled from the Hermes
-desktop shell), and [`docs/MCP.md`](../docs/MCP.md) (how Claude or any MCP client integrates). Where a page below
-disagrees with those, the page is stale - the status column says which.
+Four documents outrank every page in this wiki: [`docs/FORK.md`](../docs/FORK.md) (what is in scope and what we
+strip), [`docs/DESIGN-RESET.md`](../docs/DESIGN-RESET.md) (the drill and the backend shape),
+[`docs/FRONTEND.md`](../docs/FRONTEND.md) (our own UI and chat), and [`docs/MCP.md`](../docs/MCP.md) (how Claude or
+any MCP client integrates). Where a page below disagrees with those, the page is stale - the status column says which.
 
 ## The funnel
 
