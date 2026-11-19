@@ -109,7 +109,7 @@ def main(argv=None):
             return 0
     known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
              "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
-             "connect", "token", "task", "desktop", "sessions", "chat", "local-only"}
+             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server"}
     # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
     # argument; an unquoted multi-word brief works too.
     if argv and argv[0] not in known and not argv[0].startswith("-") and (len(argv) > 1 or " " in argv[0]):
@@ -168,6 +168,10 @@ def main(argv=None):
         stopped = stop_all()
         print(f"Ariadne stopped: worker, Hermes gateways and models. Tasks back to you: {', '.join(stopped) or 'none'}")
         return 0
+    if cmd == "server":
+        # Where inference happens: our llama-server, a local Ollama, or an endpoint on the LAN. Model-free.
+        from . import serving
+        return serving.main(rest)
     if cmd == "models":
         from . import models
         return models.main(rest)

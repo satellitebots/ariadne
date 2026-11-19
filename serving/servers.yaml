@@ -1,0 +1,15 @@
+# Registered model servers. Committed defaults only - no URLs, no secrets.
+# The machine-local choice lives in .ariadne/servers.local.yaml (gitignored); `ariadne server` manages both.
+# Every address is checked by ariadne/local_only.py: loopback, LAN, or ARIADNE_ALLOW_HOSTS. Cloud inference is
+# refused here and at startup. See docs/MODELS.md.
+default: llama-server
+servers:
+  - kind: llama-server      # our own pinned binary in serving/bin; weights fetched into models/ on sign-off
+    url: http://127.0.0.1:8080
+    name: this machine
+  - kind: ollama            # a local Ollama; `ariadne install --system` installs it if absent
+    url: http://127.0.0.1:11434
+    name: ollama on this machine
+  - kind: remote            # an OpenAI-compatible or Ollama endpoint on the network; no weights downloaded here
+    url: ""
+    name: a server on the network
