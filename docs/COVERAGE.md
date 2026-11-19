@@ -74,10 +74,9 @@ One model at a time, and **callback rather than waiting**.
 | Gap | Where it lands |
 |---|---|
 | `ci`, `data`, `office`, `rag` MCP servers | names approved in `flows/tools.yaml`; declare them in `flows/mcp_servers.yaml` as they are built |
-| `ariadne/watchdog.py` | new module; started by `serve`, not by a task |
 | draw.io / diagrams.net export | `diagram` server |
 | reference ingest for content | `content` flow: a source pack step plus citations in the report |
 
-Built since this list was written: the task wall-clock and `timed_out` (B1). `flow.yaml` carries `task_budget`
-(seconds of worker time, 0 = no task-level limit); the budget is checked between phases, and expiry runs the gates
-that need no model - all pass -> `done`, anything left -> `timed_out` with the gate results and what was not reviewed.
+Built since this list was written: the task wall-clock and `timed_out` (B1), and the watchdog wired into the worker
+(B2: `_watchdog` in `orchestrator.serve`; unload via llama-swap `/unload`, kill via `serve.stop`, flag = every
+`planning`/`executing` task goes `needs_attention` with the readings). Threshold tuning still waits for a real load.

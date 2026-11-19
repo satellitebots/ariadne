@@ -9,15 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B2 - `ariadne/watchdog.py`  — DONE except wiring
-A script that babysits the machine: samples free RAM, free VRAM and server health on an interval; escalates
-**warn → unload → kill → flag the task `needs_attention`** with the readings; logs every sample to
-`.ariadne/watchdog.jsonl`. Injected callbacks so it is testable and so nothing else owns the kill path. Started by
-`serve`; `ariadne watchdog` for a single check. *Model-free.*
-**Built**: `ariadne/watchdog.py` + 5 tests - sampler (RAM via the OS, VRAM via nvidia-smi, health via HTTP),
-streak-based escalation warn -> unload -> kill -> flag, one jsonl row per sample, injected callbacks.
-**Left**: wire it into `serve` with real unload/kill/flag callbacks, and tune the thresholds under load.
-
 ### B3 - Route inference through the active model server
 `worker` and `llm` use `serving.active()` instead of assuming a local binary, so a LAN GPU box actually serves the
 run. `local_only` re-checked at launch. *Model-free with fakes; one live smoke test later.*
@@ -84,7 +75,9 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
-- `timed_out` and the task wall-clock (`orchestrator.py`, `present.py`, flows) - this commit
+- Watchdog wired into the worker (`_watchdog` in `orchestrator.serve`, real unload/kill/flag callbacks,
+  act-once escalation) - this commit
+- `timed_out` and the task wall-clock (`orchestrator.py`, `present.py`, flows) - `c334e8e`
 
 - Watchdog: escalation, sampling, jsonl trail (`ariadne/watchdog.py`) - this commit
 

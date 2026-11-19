@@ -1385,6 +1385,18 @@ def _reconcile(store):
             store.event(t["id"], "recover", "no worker behind it (crash, kill or reboot); back to the person")
 
 
+def _watchdog(store):
+    """Start the babysitter for as long as this worker lives; returns its stop function.
+
+    A script, never a model: it samples RAM/VRAM/health on an interval and escalates warn -> unload -> kill ->
+    `needs_attention` with the readings, logging every sample (docs/COVERAGE.md, the runtime contract).
+    """
+    from . import watchdog
+    stop = watchdog.start(store)
+    print(f"watchdog: every {watchdog.INTERVAL:g} s, log {watchdog.LOG}", flush=True)
+    return stop
+
+
 def serve(idle_exit=1800):
     from .deps import require
     require()
@@ -1404,6 +1416,7 @@ def serve(idle_exit=1800):
         stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it
     w, last, stamp, restart = Worker(), time.time(), _code_stamp(), False
     _reconcile(w.store)
+    stop_dog = _watchdog(w.store)
     try:
         while True:
             if _code_stamp() > stamp:  # updated code or config: hand over to a fresh worker between tasks
@@ -1427,6 +1440,7 @@ def serve(idle_exit=1800):
                 return 0
             time.sleep(2)
     finally:
+        stop_dog()
         _release(lock)
         if restart:
             print("code or config changed; starting a fresh worker", flush=True)

@@ -80,6 +80,23 @@ fixing when the console is reworked.
 sweep, and a started worker would run them on the GPU. B1's own row was closed with `cancel` plus an event naming
 this commit; the rest are being closed item by item as the same work lands here.
 
-### B2 — wiring the watchdog into `serve`
+### B2 — wiring the watchdog into `serve` — DONE
+
+**What was missing.** `watchdog.py` had the sampler and the ladder, but nothing started it; `serve` (the worker loop)
+knew nothing about it.
+
+**What changed.**
+- `watchdog.py`: `server_url()`, `unload_model()` (llama-swap `/unload`), `kill_server()` (`serve.stop()`),
+  `flag_tasks(store, why)` (every `planning`/`executing` task -> `needs_attention` with the readings and an event),
+  and `start(store, ...)` - one daemon thread, every callback injectable, `stop()` for the finally block.
+- `Watchdog.check`: at the top rung the action runs once. It used to re-run `flag` every sample for as long as the
+  machine stayed bad; now the row is still logged (with `repeat: true`) and the callback is not called again.
+- `orchestrator.serve`: `_watchdog(w.store)` starts it right after `_reconcile`, and the `finally` stops it.
+
+**Verified.** `pytest ariadne/tests/test_watchdog.py` -> 10 passed (5 new); full suite -> **140 passed in 82 s**.
+The thread test escalates for real against a fake sampler and injected callbacks, so no GPU and no kill path runs.
+Not proved: the thresholds under real VRAM pressure - deferred, needs the GPU (`docs/BACKLOG.md`).
+
+### B3 — route inference through the active model server
 
 (see below)

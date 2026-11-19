@@ -152,8 +152,13 @@ class Watchdog:
             level = "ok"                                  # a blip is not an incident
         else:
             # One step per sustained incident: warn, then unload, then kill, then hand the task back.
+            before = self.level
             self.level = min(self.level + 1, len(LEVELS) - 1)
             level = LEVELS[self.level]
+            if self.level == before:
+                # Already at the top: log the sample, but do not run the action again every 5 seconds.
+                self._write({**s, "level": level, "streak": self.streak, "task": task_id, "repeat": True})
+                return level
         entry = {**s, "level": level, "streak": self.streak, "task": task_id}
         if level == "unload" and self.unload:
             entry["action"] = _safe(self.unload)
@@ -181,6 +186,68 @@ def _safe(fn, *args):
         return str(fn(*args) or "done")
     except Exception as e:
         return f"failed: {e}"
+
+
+def server_url():
+    """The active model server's URL, or '' when none is registered. Model-free."""
+    try:
+        from . import serving
+        return (serving.active().get("url") or "").rstrip("/")
+    except Exception:
+        return ""
+
+
+def unload_model(base=""):
+    """Free the card: llama-swap's /unload stops every loaded model, and the next task loads what it needs."""
+    from . import jobs
+    base = (base or server_url()).rstrip("/")
+    if not base:
+        return "no model server is configured; nothing to unload"
+    return "model unloaded" if jobs.unload_models(base) else f"nothing answered at {base}; nothing to unload"
+
+
+def kill_server():
+    """The last resort before the OS starts killing things: stop llama-swap and any strays it left behind."""
+    from . import serve as model_server
+    model_server.stop()
+    return "model server killed"
+
+
+def flag_tasks(store, why):
+    """Hand whatever the worker is holding back to the person, with the readings that caused it."""
+    marked = []
+    for t in store.list(50):
+        if t["status"] in ("planning", "executing"):
+            store.update(t["id"], status="needs_attention",
+                         result=(f"The watchdog stopped this machine's work: {why}. The work so far is in the "
+                                 "workspace. Approve to continue it, or revise it."))
+            store.event(t["id"], "watchdog", why)
+            marked.append(t["id"])
+    return f"flagged {', '.join(marked)}" if marked else "no task was running"
+
+
+def start(store, url="", unload=None, kill=None, flag=None, **kw):
+    """The continuous watchdog `serve` runs: one daemon thread, one jsonl row per sample, real callbacks.
+
+    `stop()` ends it without waiting for the next interval. Every callback is injectable so the wiring can be
+    tested without touching the GPU, and so the kill path has exactly one owner. A sampler that raises is logged,
+    never fatal: the babysitter must not be the thing that takes the worker down.
+    """
+    import threading
+    dog = Watchdog(server_url=url or server_url(), unload=unload or unload_model,
+                   kill=kill or kill_server, flag=flag or (lambda tid, why: flag_tasks(store, why)), **kw)
+    stop = threading.Event()
+
+    def loop():
+        while not stop.is_set():
+            try:
+                dog.check()
+            except Exception as e:                      # a broken sample is a row, not a crash
+                dog._write({"ts": round(time.time(), 3), "level": "ok", "error": f"{type(e).__name__}: {e}"})
+            stop.wait(dog.interval)
+
+    threading.Thread(target=loop, name="ariadne-watchdog", daemon=True).start()
+    return stop.set
 
 
 def main(argv):
