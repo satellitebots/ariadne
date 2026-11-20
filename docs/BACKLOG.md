@@ -60,57 +60,10 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
 
 **Left: nothing.** B12.1-B12.8 are done; B15 (the wiki rewrite) is the last item.
 
-### B15 - Wiki rewrite
-The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),
-then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
-
-
-### B23 - Sessions are the context, tasks are the executions (correction)
-
-The design: a session is the durable workstream the person lives in; a task is one pass through the worker inside
-it. Today the surface fuses them and the schema under-serves the idea:
-
-- `Store.submit`'s docstring still reads "default: one session per task", and the code defaults a nameless task to a
-  fresh tid-session - the lock this item removes.
-- The `sessions` table has no `model` or `workspace` columns, so a session cannot hold its own pivot; it inherits
-  whatever its last task happened to use.
-- There is no "create a session without a task", and no "add another task to this session" in the console/UI.
-
-Contract to build:
-
-1. Schema: `sessions` gains `model`, `workspace`, `brief` (and exposes `flow` it already has). Migration in
-   `store.py`.
-2. `service.define_session(name, flow, model, workspace)` - creates the workstream with its pivot and no task.
-3. `service.sessions_show(name)` - the pivot plus its tasks, newest first (fields already assembled by
-   `sessions_view`).
-4. `service.submit` joins by name: a task in an existing session inherits the pivot unless it overrides for one run,
-   and never spawns its own session.
-5. Surface split: "New session" and "New task in <session>" are two different controls; the composer asks for the
-   session it belongs to rather than inventing one.
-6. Tests: a session exists before any task; two tasks coexist in one session; the session survives a task finishing;
-   a task can override the pivot for one run without mutating the session.
-
-Acceptance: `ariadne sessions` shows one `ariadne-dev` row with N tasks, not N one-task sessions.
-
-
-### B24 - One model, one thing: the busy gate and interrupt-first steering (the controlling rule)
-
-When `orchestrator_resident` is off (the default) and a task is actively executing, the machine belongs to that
-task. The person must not be able to start another one:
-
-- **Direct UI:** new session and new task are greyed out while it runs; in their place is **Stop**. Stop interrupts
-  the worker, the running task **parks**, and the worker is ready to listen.
-- **Chat:** typing while it runs replies "hardware occupied, parallel execution is off. Press <key> to interrupt."
-  Interrupt -> park -> listen is the **only** approved way to steer a running task.
-- `service.busy()` = a live worker owns a task in `planning`/`executing`. `submit` and `define_session` refuse with
-  that message when busy and resident is off, instead of queueing behind the running task.
-- Steering notes are accepted only for a parked or stopped task, never injected mid-run (this retires B21's
-  mid-run steer delivery in favour of interrupt-then-steer).
-- Turning `orchestrator_resident` on lifts the gate; we can prove the logic, not load-test it on this hardware.
-
-Acceptance: with a worker mid-task and the flag off, both `service.busy()` is true and every creation path returns
-the occupied message; Stop parks the task and the next submit succeeds.
-
+### B15 - Wiki rewrite  (done: 847ed0e; publish pending)
+The six stale pages rewritten to the authority docs and `Desktop.md` deleted (commit 847ed0e). Publishing
+with `tools/publish_wiki.py` remains a separate, manual step - it pushes the wiki to GitHub and is not run
+automatically.
 ## Explicitly deferred (needs a live model or the GPU)
 
 - The first end-to-end run of any flow, and the RAG case-study task still sitting `executing` in the store.
