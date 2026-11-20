@@ -8,11 +8,106 @@ an MCP bridge, a remote session dropping) kills everything in it. So they are st
 On Linux and macOS a new session (setsid) is enough.
 
 They stop only when asked: `python -m ariadne stop`, or S in the watch window."""
+import ctypes
 import os
 import subprocess
+import sys
+import threading
+from ctypes import wintypes
 from pathlib import Path
 
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+JOB_NAME = "Local\\ariadne"          # one named group: every process Ariadne starts belongs to it
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+PROCESS_SET_QUOTA = 0x0100
+PROCESS_TERMINATE = 0x0001
+
+_job_lock = threading.Lock()
+_job_handle = None
+
+
+class _IO_COUNTERS(ctypes.Structure):
+    _fields_ = [("ReadOperationCount", ctypes.c_ulonglong), ("WriteOperationCount", ctypes.c_ulonglong),
+                ("OtherOperationCount", ctypes.c_ulonglong), ("ReadTransferCount", ctypes.c_ulonglong),
+                ("WriteTransferCount", ctypes.c_ulonglong), ("OtherTransferCount", ctypes.c_ulonglong)]
+
+
+class _BASIC_LIMIT(ctypes.Structure):
+    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD)]
+
+
+class _EXTENDED_LIMIT(ctypes.Structure):
+    _fields_ = [("BasicLimitInformation", _BASIC_LIMIT), ("IoInfo", _IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+
+def _job():
+    """The named job object, created on first use. A named job is visible to every Ariadne process, so any of them
+    can adopt into it and `stop` can kill the whole group even if the process that started it is gone."""
+    global _job_handle
+    if os.name != "nt":
+        return None
+    with _job_lock:
+        if _job_handle:
+            return _job_handle
+        k = ctypes.windll.kernel32
+        k.CreateJobObjectW.restype = wintypes.HANDLE
+        h = k.CreateJobObjectW(None, JOB_NAME)
+        if not h:
+            return None
+        info = _EXTENDED_LIMIT()
+        # No KILL_ON_JOB_CLOSE: the group must survive the shell that launched it. `stop` terminates it explicitly.
+        info.BasicLimitInformation.LimitFlags = 0
+        k.SetInformationJobObject(h, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info))
+        _job_handle = h
+        return h
+
+
+def join():
+    """Put this process (and so everything it spawns) in the Ariadne job. Best effort: a process already inside a
+    job that forbids nesting still has its children adopted individually."""
+    h = _job()
+    if not h:
+        return False
+    k = ctypes.windll.kernel32
+    k.GetCurrentProcess.restype = wintypes.HANDLE
+    try:
+        return bool(k.AssignProcessToJobObject(h, k.GetCurrentProcess()))
+    except OSError:
+        return False
+
+
+def adopt(pid):
+    """Put an already-started process in the job; its own children inherit membership."""
+    h = _job()
+    if not h or not pid:
+        return False
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    ph = k.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, int(pid))
+    if not ph:
+        return False
+    try:
+        return bool(k.AssignProcessToJobObject(h, ph))
+    finally:
+        k.CloseHandle(ph)
+
+
+def terminate_job():
+    """The kill switch: terminate every process in the Ariadne job, including ones whose parent is long gone."""
+    h = _job()
+    if not h:
+        return False
+    try:
+        return bool(ctypes.windll.kernel32.TerminateJobObject(h, 1))
+    except OSError:
+        return False
 
 
 def _cmdline(args):
@@ -35,6 +130,7 @@ def spawn_detached(args, log: Path, cwd: Path, env_extra: dict | None = None) ->
         with open(log, "a", encoding="utf-8") as out:
             p = subprocess.Popen([str(a) for a in args], cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=out,
                                  stderr=out, creationflags=flags, close_fds=True)
+        adopt(p.pid)
         return p.pid
     except OSError:
         pass  # the parent's job does not allow breakaway: start it through WMI instead
@@ -48,7 +144,9 @@ def spawn_detached(args, log: Path, cwd: Path, env_extra: dict | None = None) ->
                        env=dict(os.environ, ARIADNE_SPAWN_CMD=cmd, ARIADNE_SPAWN_CWD=str(cwd)))
     if r.returncode != 0 or not r.stdout.strip().isdigit():
         raise OSError(f"could not start {args[0]} outside this session: {r.stderr.strip()[:300]}")
-    return int(r.stdout.strip())
+    pid = int(r.stdout.strip())
+    adopt(pid)
+    return pid
 
 
 def kill_tree(pid: int):

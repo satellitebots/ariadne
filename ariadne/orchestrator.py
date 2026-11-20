@@ -100,6 +100,7 @@ def stop_all(reason="stopped by you"):
     A task that was running goes back to the person (needs_attention) with its work kept in the workspace."""
     from . import park, procs
     from . import serve as model_server
+    procs.terminate_job()          # the group, including anything whose parent is already gone
     try:
         pid = json.loads(WORKER_PID.read_text())["pid"]
     except (OSError, ValueError, KeyError):

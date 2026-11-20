@@ -151,6 +151,11 @@ def create_app(store=None, chat_runner=None):
     def cancel(tid: str):
         return _doc(_call(service.cancel, tid, store=db()), db())
 
+    @app.post("/api/tasks/{tid}/steer")
+    def steer(tid: str, body: ReviseIn):
+        _call(service.steer, tid, body.feedback, store=db())
+        return _doc(_call(service.task, tid, store=db()), db())
+
     @app.post("/api/tasks/{tid}/feedback")
     def feedback(tid: str, body: ReviseIn):
         return _call(service.feedback, tid, body.feedback, store=db())

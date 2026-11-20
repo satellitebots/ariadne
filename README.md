@@ -66,7 +66,7 @@ python -m ariadne ui        # http://127.0.0.1:8917, loopback by default
 ```
 
 Sessions as the only navigation; the backbrief as a document; only the verbs legal for a task's status; live activity
-over SSE.
+over SSE. The same verbs as the terminal (`submit`, `steer`, `gates`, `ok`, `fix`, `no`) - one experience, four surfaces.
 
 ### Terminal
 
@@ -79,6 +79,8 @@ python -m ariadne ok <id>                             # approve; --model 2=gemma
 python -m ariadne fix <id> "use pytest, not unittest" # send it back to planning
 python -m ariadne no <id>                             # cancel
 python -m ariadne gates <id> "run: pytest -q" "README covers every command"
+python -m ariadne steer <id> "use pytest, not unittest"   # guide it while it runs
+python -m ariadne stop                                  # kill switch: the whole Ariadne group
 ```
 
 `inbox`, `show` and `follow` never call a model, so they work while the GPU is busy or the models are down.
