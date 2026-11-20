@@ -9,6 +9,7 @@ installed with the platform's package manager only when you pass --system; other
 import hashlib
 import json
 import shutil
+import platform
 import subprocess
 import sys
 import tarfile
@@ -184,15 +185,24 @@ def submodule_pin():
 
 
 def check(full=True):
-    """What is there and what is missing. full=False: only what running tasks needs (fast)."""
+    """What is there and what is missing. full=False: only what running tasks needs (fast).
+
+    Besides the system tools, three things a person has to be able to see: the Python the venv runs, where inference is
+    and whether it answers (`serving.active()`), and per flow the tools it declares - because a flow that cannot get
+    its requirements is refused before a plan, and this is how you find that out without giving it a task.
+    """
     r = Report()
     add = r.checks.append
+    add(Check(f"Python {platform.python_version()}", sys.version_info >= (3, 12),
+              "Ariadne needs 3.12 or newer", "uv python install 3.14"))
     for name, (cmd, why, _) in SYSTEM_TOOLS.items():
         add(Check(f"{name}", has_tool(name), why, tool_fix(name), required=name not in OPTIONAL_TOOLS))
     ok, label = gpu()
     add(Check(f"GPU: {label}", ok, "local models need a GPU (CPU works, but slowly)", "", required=False))
     add(Check("Chrome", bool(chrome_path()), "the visible browser (browser flows)",
               "install Google Chrome from google.com/chrome", required=False))
+    _server_check(add)
+    _flow_checks(add)
     pin = submodule_pin() if shutil.which("git") else ""
     head = _run(["git", "-C", str(paths.UPSTREAM), "rev-parse", "HEAD"]).stdout.strip() if (paths.UPSTREAM / ".git").exists() else ""
     add(Check(f"Hermes submodule at {pin[:10] or '?'}", bool(pin) and head == pin, "the agent engine", "auto"))
@@ -220,6 +230,40 @@ def check(full=True):
     add(Check("terminal entry point (.hermes-home)", (paths.GATEWAY_HOME / "skills" / "ariadne-tasks" / "SKILL.md").exists(),
               "Hermes home with the ariadne-tasks skill and MCP server", "auto"))
     return r
+
+
+def _server_check(add):
+    """Where inference is (our llama-server, a local Ollama, or a LAN box) and whether it answers right now."""
+    try:
+        from . import serving
+        srv = serving.active()
+    except Exception as e:
+        add(Check("model server", False, f"{type(e).__name__}: {e}", "python -m ariadne server setup", required=False))
+        return
+    where = f"{srv.get('kind')} {srv.get('url') or '(no url)'}"
+    try:
+        found = serving.probe(srv, timeout=2)
+        add(Check(f"model server: {where}", True,
+                  f"answers as {found['kind']}, {len(found.get('models') or [])} model(s)", "", required=False))
+    except Exception as e:
+        add(Check(f"model server: {where}", False, f"not answering ({e})",
+                  "python -m ariadne server setup   (model-free commands still work)", required=False))
+
+
+def _flow_checks(add):
+    """Each approved flow and the tools it declares: a flow that cannot reach its requirements is refused at submit."""
+    try:
+        from . import flows as flowlib
+        approved = flowlib.load_flows()
+    except Exception as e:
+        add(Check("approved flows", False, f"{type(e).__name__}: {e}", "python -m ariadne flows", required=False))
+        return
+    for name, fl in approved.items():
+        missing = flowlib.missing_requirements(fl)
+        needs = ", ".join(fl.requires) or "nothing"
+        add(Check(f"flow {name} ({fl.model})", not missing,
+                  f"needs {needs}" + (f"; missing: {', '.join(missing)}" if missing else ""),
+                  "python -m ariadne install --system", required=False))
 
 
 def require(full=False):

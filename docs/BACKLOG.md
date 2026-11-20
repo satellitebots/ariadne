@@ -14,10 +14,6 @@ Vendor the pin into `ariadne/runtime/`, then delete one subsystem per commit wit
 desktop app, messaging, connectors/sign-in, cloud providers, model catalog fetch, telemetry, update checks,
 computer-use. Log every removal in `docs/FORK.md`.
 
-### B13 - Install and doctor for the new dependency set
-Drop Node (it was only for the Electron build); `doctor` reports Python, Ollama or the active server, git, uv, GPU,
-and the tools the approved flows name.
-
 ### B15 - Wiki rewrite
 The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),
 then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
@@ -30,6 +26,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- Doctor for the real dependency set (Python, the active server, each flow's needs; Node stays) - this commit
 - `plugins/ariadne_gate` retired: the chat has no doing-tools to refuse - this commit
 - Schedules: cron rows in the store, inherited per session, swept by the worker - this commit
 - Our own chat: a session-bound conversation with no doing-tools by construction - this commit
