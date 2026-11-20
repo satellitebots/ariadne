@@ -95,9 +95,12 @@ def _ensure_worker():
 WORKER_PID = paths.STATE / "worker.pid"
 
 
-def stop_all(reason="stopped by you"):
+def stop_all(reason="stopped by you", hard=False):
     """Stop Ariadne's background work on purpose: the worker, the Hermes gateways it started, and the model server.
-    A task that was running goes back to the person (needs_attention) with its work kept in the workspace."""
+    A task that was running goes back to the person (needs_attention) with its work kept in the workspace.
+
+    hard=True is the kill switch: after the normal walk-down, force-kill anything still holding one of Ariadne's
+    ports and clear every stale pid/claim marker, so nothing survives a broken shutdown to poison the next start."""
     from . import park, procs
     from . import serve as model_server
     procs.terminate_job()          # the group, including anything whose parent is already gone
@@ -113,6 +116,18 @@ def stop_all(reason="stopped by you"):
         except Exception:
             pass
     model_server.stop()
+    if hard:
+        procs.kill_on_ports([paths.PORT_MCP, paths.PORT_MODELS, paths.PORT_UI, paths.PORT_BROWSER])
+        for stale in paths.STATE.glob("*.pid"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+        for stale in paths.STATE.glob("*.current.json"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
     park.resume()
     st = Store()
     stopped = []

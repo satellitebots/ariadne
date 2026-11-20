@@ -149,6 +149,38 @@ def spawn_detached(args, log: Path, cwd: Path, env_extra: dict | None = None) ->
     return pid
 
 
+def kill_on_ports(ports):
+    """Hard closeout: force-kill whatever is listening on the given ports, whatever started it.
+
+    The job object only reaches what joined the group. Anything spawned through another path (a hand-started
+    uvicorn, an orphaned browser debug port, a model server no pid file knows) dies here by what it holds open."""
+    killed = []
+    if os.name == "nt":
+        out = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            if "LISTEN" not in line:
+                continue
+            for port in ports:
+                if f":{port}" in line:
+                    pid = line.split()[-1]
+                    if pid.isdigit():
+                        subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                        killed.append(pid)
+    else:
+        import signal
+        for port in ports:
+            r = subprocess.run(["sh", "-c", f"lsof -t -i:{port} 2>/dev/null || true"],
+                               capture_output=True, text=True)
+            for pid in r.stdout.split():
+                if pid.strip().isdigit():
+                    try:
+                        os.kill(int(pid), signal.SIGKILL)
+                        killed.append(pid)
+                    except OSError:
+                        pass
+    return sorted(set(killed))
+
+
 def kill_tree(pid: int):
     if not pid:
         return

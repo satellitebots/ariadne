@@ -211,7 +211,7 @@ def main(argv=None):
         return casestudy.main(rest)
     if cmd == "stop":
         from .orchestrator import stop_all
-        stopped = stop_all()
+        stopped = stop_all(hard="--hard" in rest)
         print(f"Ariadne stopped: worker, Hermes gateways and models. Tasks back to you: {', '.join(stopped) or 'none'}")
         return 0
     if cmd == "watchdog":
