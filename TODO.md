@@ -5,6 +5,12 @@ the reasoning behind the fixed rules is in [wiki/Decisions.md](wiki/Decisions.md
 
 ## Now
 
+- [ ] **First live run.** The release is model-free verified; run one flow end to end on the GPU and record it the way
+      the case studies do.
+- [ ] **First overlay entry**, when a Hermes module genuinely has to differ: `overlay/<package>/<module>.py`, a
+      `overlay.yaml` row (module, why, test), and the test that proves our file wins.
+- [ ] Optionally move `worker.hermes_run` from the `hermes` CLI to in-process `AIAgent`; the bootstrap and overlay are
+      already in place.
 - [ ] **Stocks case study.** An independent Python package that pulls Yahoo Finance data and computes analytics,
       built end to end through Ariadne on jobs and the coding standards. Analytics only, not financial advice.
       Write-up in `case_study/`, code exported with `ariadne casestudy export`.
@@ -18,8 +24,7 @@ the reasoning behind the fixed rules is in [wiki/Decisions.md](wiki/Decisions.md
 ### Ways in
 - [ ] **Chat hijack as the main flow.** You just chat; Ariadne picks up the work from the chat session and runs the
       drill in the background, instead of you submitting tasks explicitly.
-- [ ] Slack channel.
-- [ ] Bind the MCP endpoint and desktop to the LAN (`up --lan`), behind the token. This needs a firewall decision
+- [ ] Bind the MCP endpoint and console to the LAN (`up --lan`), behind the token. This needs a firewall decision
       first.
 
 ### Machines and scale
