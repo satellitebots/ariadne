@@ -1,82 +1,53 @@
-# Gap analysis: why there is no simple system yet
+# Gap analysis: the session/task model and the two surfaces
 
-Written 2026-11-19, after twelve backlog items were closed and the product still could not run a task without
-Hermes. This document answers three questions: what actually went wrong, what is missing (with counts, not
-adjectives), and what it costs to close.
+Supersedes the earlier B12-centric gap analysis. This one is about what is actually wrong now: sessions and tasks are
+conflated, and the two entry surfaces have never been given their different contracts. The model, stated once:
 
-## 1. What went wrong
+- **A session is the host, not a task and not a gate.** It is the durable context a person lives in: a name, the
+  workspace work happens in, the flow and model as *defaults* for the tasks it hosts, and the memory/handoff that
+  carries between tasks. It has **no QA gate of its own and no execution of its own**. One session hosts many tasks.
+- **A task is the drill.** Defined first (brief -> backbrief -> sign-off), then executed step by step by the worker,
+  gated per task, reported per step. It is the durable unit that runs, retries, and finishes.
+- **The GPU handoff.** The defining model plans, then **sleeps**; the worker takes the full card. Limited VRAM means
+  the planner and the worker are never resident together. This is an optimization, not an afterthought.
+- **Two surfaces, deliberately different contracts:**
+  - **MCP** (a foreign agent, e.g. Claude): **one task at a time.** A connection may create a **disposable session**
+    to interactively define the durable task; that task then executes step by step and **each step is reported back**
+    over MCP. The connection never "lives in" a session; it drives tasks.
+  - **Direct** (console / chat / UI): the **home**. A session with current and past tasks, a conversation that
+    continues across them, work done the same modular way - defined first, then the defining model sleeps and the
+    worker runs - with no "one task at a time" ceiling.
 
-Three failures, in order of cost.
+## Where the code contradicts the model
 
-**1. The dependency on Hermes was never written down, so it could never be removed.**
-`DESIGN-RESET.md` decided Ariadne would not own an agent loop, and `FORK.md` made the pinned Hermes the runtime.
-That decision was defensible. What was missing was the interface: Ariadne's dependence on Hermes lived in five
-implicit places and nowhere else.
-
-| What Ariadne depended on | Where it lived | Consequence |
+| # | Contradiction | Evidence today |
 |---|---|---|
-| Toolset names (`file`, `terminal`, `skills`, `todo`, `search`) | an argv string in `hermes_run` | no way to know what a flow actually needs |
-| MCP servers, named `mcp-<server>` | an argv convention | the four servers built in B6 are unreachable without Hermes |
-| A session id | a regex over Hermes' stdout (`_SESSION_ID`) | resume is a text scrape, not a contract |
-| A gateway process | `stop_gateway()` after a timeout | a kill path tied to a process we do not own |
-| Task context (`ariadne_phase`, `ariadne_task`, `ariadne_workspace`) | files the jobs MCP server reads | the servers only work inside a Hermes run |
+| 1 | A nameless task spawns its own session | `store.submit` docstring: "default: one session per task"; the fallback is the task id itself |
+| 2 | A session cannot hold its own defaults | the `sessions` table has no `workspace` / `model` columns; it inherits whatever the last task used |
+| 3 | No session without a task, no view of one, no "another task here" | no `define_session`, no `sessions_show`; the surfaces fuse "new session" and "new task" |
+| 4 | The queue is not ordered | `claim_next` orders by `updated`, so any touch reorders the backlog |
+| 5 | MCP is poll-based and session-less | `wait_task` polls; no disposable-session define flow and no per-step push channel - the "reported back through each step" contract is not met |
+| 6 | The direct UI is a configuration form, not a home | `docs/UI-DIRECTION.md` lists it: three equal columns, form-first, status pills, chat buried, decision buried, mouse-only |
 
-Because the contract was implicit, "done" for any item meant "works when Hermes is installed". No item could be
-tested for ownership. When the decision was finally made to own the loop, the contract had to be reverse-engineered
-from a command line - which is exactly the work that should have been done before B1.
+## What is right and must not be rebuilt
 
-**2. The queue was capability-first and platform-last.**
-B1-B14 added wall-clock budgets, a watchdog, a store, four MCP servers, draw.io export, citations, an HTTP server,
-chat, schedules and a doctor. Every one of them plugged into a runtime that was scheduled to be replaced (B12 was
-item twelve). The four MCP servers are the clearest case: built, tested, and unreachable from Ariadne's own loop.
-Twelve items were "done" on a foundation with a known expiry date. The frame should have been item one.
+The worker and orchestrator (plan, backbrief, sign-off, gates, retries, per-link chains, wall-clock, `timed_out`), the
+store (minus schema and ordering), `service`/`present`/`protocol`/`render`, the four MCP servers, the runtime runner
+and the restored Hermes backend, `serving`, `watchdog`, `local_only`. The GPU handoff exists (`vram` unload after
+sign-off); it needs a test that pins it, not a rebuild.
 
-**3. The acceptance test was weaker than the claim.**
-B12.2's drill proves brief -> plan -> sign-off -> execute -> gates with `HERMES_EXE` pointed at a path that does not
-exist. That is real. But the scripted model makes exactly **one** tool call (`terminal`), and never touches an MCP
-server, a skill, or the web. So the drill proves the loop, the phase split, the gates and the workspace jail - not
-that a task can be done. The difference matters: a coding task names 24 tools and the runtime offers 2 of them.
+## Corrected order
 
-## 2. What is missing, counted
+1. **Session-as-host in the schema and service.** Add `workspace` and `model` to `sessions` (defaults, not gates);
+   `define_session`, `sessions_show`; `submit` joins an existing session and never spawns; kill the tid fallback;
+   `claim_next` by `created`. Acceptance: one session row holds N tasks.
+2. **The MCP contract.** A disposable session to define the durable task interactively, then step-wise reporting (a
+   callback/event channel, not polling). One task at a time, as it already is.
+3. **A test that pins the GPU handoff.** At sign-off the defining model unloads and the worker runs alone; assert the
+   `vram` event and that planner and worker never co-reside.
+4. **The direct UI, rebuilt as a home** (the four steps in `UI-DIRECTION.md`), the session as host, the task as the
+   document.
+5. **Queue truthfulness.** Reconcile the nine stale backlog rows against what is actually built.
+6. **Doc convergence and the wiki rewrite** (`CONVENTIONS.md`, supersession banners, the six stale pages).
 
-The runtime is `ariadne/runtime/` - 5 files, 363 lines, 6 tools (3 read-only). The flows ask for:
-
-| Surface | Coding | Content | Design | Investigation | Runtime today |
-|---|---|---|---|---|---|
-| MCP servers | 8 | 7 | 8 | 7 | **0** |
-| Skills | 2 | 3 | 1 | 1 | 0 (index only, in the plan prompt) |
-| Plan tools named | 24 | 14 | 15 | 14 | **2** (`read_file`, `search_files`) |
-| Execute toolsets | 5 | 4 | 4 | 5 | 2 (`file`, `terminal`, partly) |
-
-Distinct across all flows: 12 MCP servers, 7 skills, and 22 of the 24 tools the coding plan names. The 22 missing
-split as: browser 7, VS Code 6, skills 2, web 2, git 4, memory 1.
-
-What the worker does around the runner is complete and should not be rebuilt: planning, the backbrief, sign-off,
-gates, retries, per-link model chains, job cycles, wall-clock expiry, the store, the server and the console. The gap
-is entirely the runner's capability surface, plus the hooks the worker expects a runner to have.
-
-## 3. What it costs
-
-| Item | Work | Size |
-|---|---|---|
-| B12.3 MCP client in the runtime | spawn servers from `mcp_servers.yaml` over stdio, namespace `mcp__<server>__<tool>`, per-flow filtering, lifecycle per run | ~150 lines + test |
-| B12.4 skills as tools | `skills_list` / `skill_view` over `ariadne.skills` | ~50 lines + test |
-| B12.5 web search | `web_search` over `ddgs` (already installed); `web_fetch` already exists in `web_mcp` | ~40 lines + test |
-| B12.6 parity hooks | park, KV registration, jobs wake-up, per-run log artifact, `todo`, context trimming | ~270 lines + tests |
-| B12.7 flip and delete | default to the runtime; delete `hermes_run`, `_clean_output`, `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway` (~134 lines, 36 references) and the `upstream/` submodule | net -134 lines |
-| B12.8 chat on the runtime | `ariadne chat` currently launches `hermes chat` | ~80 lines |
-
-Total: roughly 600 lines against ~163,000 for option one (gutting the pin), with the whole difference being code we
-would have to maintain forever. **The rebuild is the cheaper option, and it is the only one that ends with a system
-Ariadne owns.**
-
-## 4. Order
-
-The queue is in `docs/BACKLOG.md` under B12.3-B12.8. The rule that was missing the first time: an item is done only
-when a test exercises it with no Hermes binary present. B12.3 comes first because twelve approved servers are already
-written and tested and the runtime cannot call any of them; B12.7 comes last because flipping the default before the
-surface exists would turn working Hermes tasks into broken runtime tasks.
-
-Not a gap, and not to be rebuilt: the task store, the orchestrator loop, gates, the HTTP server, the console, memory,
-the four newer MCP servers, draw.io export and citations. They are tested and they do not care which runner is under
-them.
+Each step lands with tests; steps 2 and 4 are where the two contracts stop being one code path.
