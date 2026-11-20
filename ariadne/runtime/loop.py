@@ -125,7 +125,7 @@ def _mark_omitted(content, n):
 
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
         transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None, web=None,
-        context_tokens=65536, trim_at=0.75, checkpoint=None):
+        context_tokens=65536, trim_at=0.75, checkpoint=None, native_tools=True, system=None):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
@@ -141,6 +141,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     trimmed list is what the session saves (the next run resumes what fits). `Answer.dropped` counts the messages
     removed this run.
 
+    `native_tools=False` removes the file, patch, search-in-files and terminal tools entirely (the chat's rule: it
+    composes and submits, it never works). `system` overrides the generated system prompt.
+
     `checkpoint`: an optional callable, asked at the top of every loop iteration after the first turn. When it
     returns true the run has finished a full turn (model call and its tool calls, the session saved) and stops at
     that step boundary with `stopped == "parked"`; the caller (the worker) then holds the model for the person and
@@ -148,11 +151,11 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     """
     if not (model or "").strip():
         raise RunError("a run needs an explicitly chosen model")
-    messages = session_mod.load(home, session) or [{"role": "system", "content": system_prompt(phase, str(workspace))}]
+    messages = session_mod.load(home, session) or [{"role": "system", "content": system or system_prompt(phase, str(workspace))}]
     messages.append({"role": "user", "content": prompt})
     started, answer = clock(), Answer(session=session)
     read = read_only(phase)
-    schemas = (tools_mod.offered(phase)
+    schemas = ((tools_mod.offered(phase) if native_tools else [])
                + (mcp.offered(read) if mcp else [])
                + (skills.offered() if skills else [])
                + (web.offered() if web else []))
@@ -185,8 +188,11 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
                 result = mcp.call(call["name"], call["arguments"], read_only=read)
             elif web is not None and call["name"] == "web_search":
                 result = web.call(call["name"], call["arguments"])
-            else:
+            elif native_tools:
                 result = tools_mod.call(call["name"], call["arguments"], workspace, phase)
+            else:
+                result = (f"ERROR: there is no {call['name']} tool in this conversation; it has only the tools it "
+                          "was offered")
             messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": result})
         session_mod.save(home, session, messages)
         if not reply["tool_calls"]:

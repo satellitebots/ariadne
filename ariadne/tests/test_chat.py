@@ -33,14 +33,36 @@ class Turn:
         return RunResult(self.text, self.code, "log")
 
 
-def test_the_chat_has_no_doing_tools_by_construction(env):
-    assert chat.TOOLSETS == ["mcp-ariadne_tasks", "skills", "clarify", "search"]
-    for forbidden in ("file", "terminal", "code", "browser", "computer", "connectors"):
-        assert forbidden not in chat.TOOLSETS
-    home = chat.compile_home()
-    cfg = (home / "config.yaml").read_text(encoding="utf-8")
-    assert "ariadne.tasks_mcp" in cfg and "base_url: http://127.0.0.1:8090/v1" in cfg
-    assert "ariadne_gate" not in cfg                  # the hook is retired: the toolset is the mechanism
+def test_the_chat_has_no_doing_tools_by_construction(env, monkeypatch):
+    from ariadne import runtime
+    from ariadne.runtime import mcp as mcp_mod
+    captured = {}
+
+    class FakePool:
+        def __init__(self, cfg, **kw):
+            self.cfg, self.closed = cfg, False
+
+        def offered(self, read_only=False):
+            return []
+
+        def call(self, *a, **k):
+            return "ERROR: none"
+
+        def close(self, wait=5):
+            self.closed = True
+
+    monkeypatch.setattr(mcp_mod, "Pool", FakePool)
+
+    def fake_run(*a, **kw):
+        captured.update(kw)
+        return runtime.Answer(text="ok")
+
+    monkeypatch.setattr(runtime, "run", fake_run)
+    assert chat.run_turn(chat.chat_home(), "p", "s", "m").text == "ok"
+    assert captured["native_tools"] is False                       # no file, patch, search or terminal tools at all
+    assert captured["system"] == chat.CHAT_SYSTEM
+    assert "ariadne_tasks" in captured["mcp"].cfg and captured["mcp"].closed
+    assert captured["mcp"].cfg["ariadne_tasks"]["args"] == ["-m", "ariadne.tasks_mcp"]
 
 
 def test_a_turn_carries_the_session_the_rule_and_the_person_words(env):

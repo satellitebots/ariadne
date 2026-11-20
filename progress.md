@@ -36,13 +36,13 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B9 | `ariadne/server` + `ariadne/ui` | done `0e70f97` |
 | B10 | Our own chat | done `0d8facd` |
 | B11 | Schedules from sessions | done `5ec4891` |
-| B12 | Own runtime (frame + drill) | **B12.1–B12.2 done**; B12.3–B12.8 queued |
+| B12 | Own runtime (frame + drill) | done `e19dffc` … `a8dd137` `45083f1` `c4a65f7` `734fe6d` `4bb9374` (flip) |
 | B13 | Install and doctor for the new dependency set | done `18502c0` |
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
 
-Suite: **127 tests at the start, 289 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 281 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -285,9 +285,26 @@ phases never park); and the markers `jobs_mcp` reads (`ariadne_task`, `ariadne_w
 into the flow home before the pool starts). KV needed no runtime code - `Worker.run` already restores and saves around
 any runner, which is now stated in the docstring. 8 tests. Suite: **289 passed**.
 
-**Queued (B12.7-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
-flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted
-capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
+**B12.7 - the flip - DONE.** The worker's default runner is `runtime_run`; `hermes_run` and its helpers
+(`_clean_output`, `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway`) and the gateway stops are
+deleted. Out of turns is exit 126, out of time 124, parked 125, so the worker's three tolerances survive without
+scraping a Hermes log. The flow no longer compiles a Hermes home: `compile_flow`, `BASE_CONFIG`,
+`install_shared_skills` and `compile_all` are replaced by `prepare_homes()` (mkdir only) and `mcp_server_config`;
+skills are read from the repo directly. `pyproject.toml` now carries Ariadne's real dependencies and `install()` syncs
+the venv from it instead of from the Hermes project. `deps.submodule_pin`, the doctor submodule check, the
+`test_hermes_contract` suite and the `upstream/` submodule (with `.gitmodules`) are gone. Tests that asserted compiled
+homes were rewritten to assert the runtime's config, the catalog window and `serving.endpoint()`. Suite: **281 passed**
+with no submodule and no `hermes` binary.
+
+**B12.8 - the chat on the runtime - DONE.** `chat.run_turn` runs on `runtime.run(..., native_tools=False)` with the
+`ariadne_tasks` MCP server and `web_search`; the file, patch, search-in-files and terminal tools do not exist in that
+conversation, so the rule is construction rather than a hook. `compile_home`, the `hermes chat` launch and the toolset
+list are deleted; `ariadne chat` is a terminal loop over the same `ask()`. 6 chat tests, rewritten to assert
+`native_tools=False`, the chat system prompt and the tasks server. Suite: **281 passed**.
+
+**Queue empty.** B12.1-B12.8 are done: the frame, the drill, MCP, skills, web search, trimming and logs, todo/park/
+markers, the flip and the chat. B15 (the wiki rewrite) is the last backlog item. The counted capability matrix and the
+three root causes that produced this queue are in `docs/GAP-ANALYSIS.md`.
 
 ### B16 — Model index: what this machine can run
 

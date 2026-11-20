@@ -69,11 +69,4 @@ def save(flow, name, content, note="", push=True, git=_git):
     if push:
         p = git("push", "origin", "HEAD")
         report.append("pushed" if p.returncode == 0 else "push failed: " + p.stderr.strip()[-300:])
-    from . import flows as flowlib
-    targets = [d.name for d in paths.FLOWS_DIR.iterdir() if (d / "flow.yaml").exists()] if flow == "common" else [flow]
-    for target in targets:
-        try:
-            flowlib.install_shared_skills(flowlib.load_flow(paths.FLOWS_DIR / target))
-        except Exception:  # the next compile picks it up anyway
-            pass
     return "; ".join(report)

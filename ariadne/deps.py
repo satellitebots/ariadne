@@ -179,11 +179,6 @@ def _run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kw)
 
 
-def submodule_pin():
-    out = _run(["git", "-C", str(paths.ROOT), "ls-files", "-s", "upstream"]).stdout.split()
-    return out[1] if len(out) > 1 else ""
-
-
 def check(full=True):
     """What is there and what is missing. full=False: only what running tasks needs (fast).
 
@@ -203,11 +198,9 @@ def check(full=True):
               "install Google Chrome from google.com/chrome", required=False))
     _server_check(add)
     _flow_checks(add)
-    pin = submodule_pin() if shutil.which("git") else ""
-    head = _run(["git", "-C", str(paths.UPSTREAM), "rev-parse", "HEAD"]).stdout.strip() if (paths.UPSTREAM / ".git").exists() else ""
-    add(Check(f"Hermes submodule at {pin[:10] or '?'}", bool(pin) and head == pin, "the agent engine", "auto"))
-    venv_ok = paths.VENV_PY.exists() and _run([str(paths.VENV_PY), "-c", "import mcp, ruamel.yaml, run_agent"]).returncode == 0
-    add(Check("Python env (.venv: Hermes + MCP SDK)", venv_ok, "Hermes and Ariadne's Python dependencies", "auto"))
+    venv_ok = paths.VENV_PY.exists() and _run(
+        [str(paths.VENV_PY), "-c", "import mcp, fastapi, uvicorn, ddgs, ruamel.yaml"]).returncode == 0
+    add(Check("Python env (.venv: MCP SDK, FastAPI, DDGS)", venv_ok, "Ariadne's Python dependencies", "auto"))
     entries = bin_entries()
     if not entries:
         add(Check(f"binaries for {paths.platform_key()}", False, "no pinned binaries for this platform", ""))
@@ -289,12 +282,9 @@ def install(system=False, slack=False, models=False):
                 print(f"  {name} is missing - install it with:  {fix}   (or rerun with --system)")
     if not shutil.which("git") or not shutil.which("uv"):
         sys.exit("git and uv are required before anything else; install them and rerun.")
-    print("  Hermes submodule"); subprocess.run(["git", "-C", str(paths.ROOT), "submodule", "update", "--init", "upstream"], check=True)
     print("  Python env")
-    extras = ["--extra", "mcp", "--extra", "ddgs"] + (["--extra", "slack"] if slack else [])
     env = dict(**__import__("os").environ, UV_PROJECT_ENVIRONMENT=str(paths.VENV))
-    subprocess.run(["uv", "sync", "--project", str(paths.UPSTREAM), "--frozen", "--no-dev", "--python", "3.14", *extras],
-                   check=True, env=env)
+    subprocess.run(["uv", "sync", "--project", str(paths.ROOT), "--python", "3.14"], check=True, env=env)
     subprocess.run(["uv", "pip", "install", "--python", str(paths.VENV_PY), "pytest==9.1.1"], check=True)
     for e in bin_entries():
         if not (bin_dir(e).exists() and any(bin_dir(e).iterdir())) or e["name"].endswith("-rt"):

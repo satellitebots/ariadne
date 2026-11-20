@@ -59,7 +59,7 @@ def test_the_coding_flow_gets_the_jobs_server_with_its_home(env):  # noqa: F811
     from ariadne import flows as flowlib
     from ariadne.tests.test_core import REPO_FLOWS
     fl = flowlib.load_flows(REPO_FLOWS)["coding"]
-    home = flowlib.compile_flow(fl, REPO_FLOWS)
-    cfg = (home / "config.yaml").read_text()
-    assert "ariadne.jobs_mcp" in cfg and fl.home.as_posix() in cfg
+    cfg = flowlib.mcp_server_config(fl, REPO_FLOWS)
+    assert "ariadne.jobs_mcp" in " ".join(cfg["jobs"]["args"])
+    assert cfg["jobs"]["env"]["ARIADNE_FLOW_HOME"] == fl.home.as_posix()
     assert orch.jobs_rule(fl) == orch.JOBS_RULE

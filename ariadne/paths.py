@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE = Path(os.environ.get("ARIADNE_STATE") or ROOT / ".ariadne")
 FLOWS_DIR = Path(os.environ.get("ARIADNE_FLOWS") or ROOT / "flows")
 PLUGINS_DIR = ROOT / "plugins"
-UPSTREAM = ROOT / "upstream"                 # Hermes, git submodule
 HOMES = STATE / "homes"                      # one generated Hermes home per flow (the worker)
 GATEWAY_HOME = ROOT / ".hermes-home"         # Hermes home for the terminal (CLI) entry point
 LOGS = STATE / "logs"
@@ -25,7 +24,7 @@ VENV = ROOT / ".venv"
 VENV_BIN = VENV / ("Scripts" if WINDOWS else "bin")
 VENV_PY = VENV_BIN / ("python.exe" if WINDOWS else "python")
 PYTHON = Path(sys.executable)
-HERMES_EXE = VENV_BIN / ("hermes.exe" if WINDOWS else "hermes")
+HERMES_EXE = VENV_BIN / ("hermes.exe" if WINDOWS else "hermes")   # sentinel: nothing may use it (the drill asserts)
 
 
 def platform_key():

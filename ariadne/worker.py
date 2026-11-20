@@ -37,106 +37,25 @@ class RunResult:
     session_id: str = ""     # the Hermes session the run used (printed by -Q)
 
 
-_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-
-
-def _clean_output(out):
-    """Hermes -Q prints tool previews (boxed, coloured diffs), the answer, then session info; keep the answer."""
-    lines = []
-    for l in _ANSI.sub("", out).splitlines():
-        if re.match(r"^\s*(session[ _]?id|session:|resume with)", l, re.I) or l.lstrip().startswith("│"):
-            continue
-        lines.append(l)
-    return "\n".join(lines).strip()
-
-
-_SESSION_ID = re.compile(r"session_id:\s*(\S+)")
-
-
-def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
-    """One headless Hermes run in the flow's worker home. session: a Hermes session id to resume (it keeps the model,
-    toolsets, skills and turn limit it was started with - Hermes refuses overrides on resume); None starts one."""
-    home = flow.home
-    # A checkpoint ("checkpoint:plan" / "checkpoint:execute") keeps the toolsets of the phase it closes (same system
-    # prompt, so the parked KV cache still matches) but runs read-only, with a few turns.
-    side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs
-    tools_phase = phase.split(":", 1)[1] if ":" in phase else phase
-    (home / "ariadne_phase").write_text("plan" if side else phase, encoding="utf-8")
-    (home / "ariadne_task").write_text(tid, encoding="utf-8")            # read by the jobs MCP server
-    (home / "ariadne_workspace").write_text(str(workspace), encoding="utf-8")
-    qfile = paths.LOGS / f"{tid}-{phase.replace(':', '-')}-{int(time.time())}.prompt.md"
-    qfile.write_text(prompt, encoding="utf-8")
-    # Hermes names an MCP server's toolset "mcp-<server>" (the bare name can collide with a built-in, e.g. memory).
-    toolsets = (flow.plan_toolsets if tools_phase == "plan" else flow.execute_toolsets) + [f"mcp-{m}" for m in flow.mcp_servers]
-    turns, budget = flow.max_turns.get(phase, 3), flow.run_budget.get(phase, flow.run_budget.get(tools_phase, 900))
-    cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool"]
-    if session:  # a resumed session keeps its launch settings; Hermes rejects any override (budget included)
-        cmd += ["--resume", session, "--no-restore-cwd"]
-    else:
-        cmd += ["--run-budget", str(budget), "--max-turns", str(turns), "-t", ",".join(toolsets)]
-        for s in flow.skills + flow.shared_skills:
-            cmd += ["-s", s]
-        if model:
-            cmd += ["-m", model]
-        if flow.reasoning.get(tools_phase):  # e.g. low for execute: think less, act more
-            cmd += ["--reasoning", flow.reasoning[tools_phase]]
-    env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
-    env.pop("ARIADNE_GUARD_ALL_PROCS", None)
-    log = qfile.with_suffix("").with_suffix(".log")
-    started = time.time()
-    p = subprocess.Popen(cmd, cwd=workspace, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                         encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
-    boundary = park.StepBoundary(home)
-    stdout = stderr = ""
-    while True:
-        try:
-            stdout, stderr = p.communicate(timeout=3)  # retrying after a timeout loses no output
-            code = p.returncode
-            break
-        except subprocess.TimeoutExpired:
-            pass
-        if time.time() > started + budget + 180:
-            _kill_tree(p)
-            stdout, stderr = p.communicate()
-            code = 124
-            stop_gateway(home)  # the gateway would keep generating for the killed client
-            break
-        if park.requested() and not side:
-            # Parked on purpose: let the model call / tool call in flight finish, then stop at that boundary.
-            if boundary.reached():
-                _kill_tree(p)
-                stdout, stderr = p.communicate()
-                code = PARKED
-                break
-        else:
-            boundary.pos = None
-    out = (stdout or "") + ("\n[stderr]\n" + stderr if (stderr or "").strip() else "")
-    if code == 124:
-        out = "(timed out)\n" + out
-    log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
-    sid = _SESSION_ID.findall(out) or ([session or _latest_session(home, started)] if code == PARKED else [])
-    return RunResult(_clean_output(stdout if code != 124 else out), code, str(log), sid[-1] if sid and sid[-1] else "")
-
-
 def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
-    """One run in Ariadne's own runtime instead of `hermes chat` (docs/BACKLOG.md B12).
+    """One run in Ariadne's own runtime: a prompt in, a report out, and a session id to resume.
 
-    Same contract as `hermes_run`: a prompt in, a report out, and a session id to resume. `session` is the runtime's
-    session name, so a failed gate resumes the same conversation. Out of turns or out of time comes back as 124, which
-    the worker already treats as "not failure, keep what was written, let the gates decide". The flow's MCP servers
+    `session` is the runtime's session name, so a failed gate resumes the same conversation. Out of time comes back as
+    124 and out of turns as 126 - neither is failure: the worker keeps what was written and lets the gates decide. The
+    flow's MCP servers
     ride along as `mcp__` tools; a server that will not start is said so in the report, not hidden. The flow's shared
     skills ride along as `skills_list`/`skill_view`, so a run can read a skill body, not just its plan-prompt line.
     `web_search` rides along too (the plan prompt already assumes it): DDGS behind an injectable transport, and
     nothing to close.
 
-    Before the run it writes the same markers `hermes_run` writes, into `flow.home`: `ariadne_phase` ("plan" for the
+    Before the run it writes the markers the flow's servers read, into `flow.home`: `ariadne_phase` ("plan" for the
     read-only side phases, else the phase), `ariadne_task` and `ariadne_workspace`. The markers are the contract with
     the flow's MCP servers: `jobs_mcp` reads `ariadne_task` and `ariadne_workspace` from `ARIADNE_FLOW_HOME`, so
     without them `submit_job` would record a job with no task. KV needs no code here: `Worker.run` restores and saves
     the cache around any runner, this one included.
 
-    A park request stops a non-side run at the next step boundary (a finished turn, after its tool calls), the same
-    as `hermes_run`: the run comes back `PARKED` (125), and `Worker.run` then holds the model for the person and
+    A park request stops a non-side run at the next step boundary (a finished turn, after its tool calls): the run
+    comes back `PARKED` (125), and `Worker.run` then holds the model for the person and
     resumes the same session with RESUME_PROMPT. Side runs (checkpoint/learn/review) never park - a checkpoint is the
     pause, not something to be interrupted by one.
 
@@ -145,13 +64,14 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     `RunResult.log` is that path. A full disk must not fail a task: if the write cannot happen, the result is
     returned with `log` left empty.
     """
+    from . import models as modellib
     from . import runtime
     from .runtime import mcp as mcp_mod
     from .runtime import skills as skills_mod
     from .runtime import web as web_mod
     home = Path(flow.home)
     home.mkdir(parents=True, exist_ok=True)
-    side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs, as in hermes_run
+    side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs
     (home / "ariadne_phase").write_text("plan" if side else phase, encoding="utf-8")
     (home / "ariadne_task").write_text(tid, encoding="utf-8")            # read by the jobs MCP server
     (home / "ariadne_workspace").write_text(str(workspace), encoding="utf-8")
@@ -168,13 +88,15 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
                         session=name, max_turns=flow.max_turns.get(phase, 40),
                         budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))),
                         mcp=pool, skills=box, web=search,
+                        context_tokens=int(modellib.load().context.get("window") or 65536),
                         checkpoint=None if side else park.requested,   # park at a step boundary; side runs never park
                         on_event=lambda kind, detail: events.append((kind, detail)))
     finally:
         if pool is not None:
             pool.close()
-    code = (124 if r.stopped in ("budget", "max_turns")
-            else PARKED if r.stopped == "parked"
+    code = (PARKED if r.stopped == "parked"
+            else 124 if r.stopped == "budget"
+            else TURNS if r.stopped == "max_turns"
             else (0 if r.stopped == "" else 1))
     if pool is not None and pool.errors:
         r.text = f"MCP servers unavailable: {len(pool.errors)} (see runtime log)\n" + r.text
@@ -201,45 +123,7 @@ def _run_log(flow, phase, model, name, workspace, tid, prompt, events, r):
 
 
 PARKED = 125  # exit code of a run stopped by a park request
-
-
-def _kill_tree(p):
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
-    else:
-        p.kill()
-
-
-_TURN_END = re.compile(r"Turn ended: reason=(\S+) .*?session=(\S+)")
-
-
-def _turn_end_reason(home, session_id):
-    """Why Hermes ended the run's last turn (e.g. max_iterations_reached), from its agent.log; '' if unknown."""
-    if not session_id:
-        return ""
-    try:
-        with open(Path(home) / "logs" / "agent.log", "rb") as f:
-            f.seek(0, os.SEEK_END)
-            f.seek(max(0, f.tell() - 400_000))
-            tail = f.read().decode("utf-8", "replace")
-    except OSError:
-        return ""
-    sid = session_id.strip()
-    reasons = [m.group(1) for m in _TURN_END.finditer(tail)
-               if len(m.group(2)) >= 12 and (sid.startswith(m.group(2)) or m.group(2).startswith(sid))]
-    return reasons[-1].split("(")[0] if reasons else ""
-
-
-def _latest_session(home, since):
-    """The Hermes session a killed run was writing (its id is only printed at a clean exit)."""
-    try:
-        c = sqlite3.connect(str(home / "state.db"), timeout=10)
-        r = c.execute("SELECT id FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 1",
-                      (since - 2,)).fetchone()
-        c.close()
-        return r[0] if r else ""
-    except sqlite3.Error:
-        return ""
+TURNS = 126   # exit code of a run stopped by its turn limit (not failure: the gates decide)
 
 
 # ---------- prompts ----------
@@ -578,13 +462,11 @@ Reply with only the flow name."""
 # ---------- the worker ----------
 
 class Worker:
-    def __init__(self, store=None, memory=None, flows=None, runner=hermes_run, router_model="router", llm_chat=None,
+    def __init__(self, store=None, memory=None, flows=None, runner=runtime_run, router_model="router", llm_chat=None,
                  catalog=None, installer=None, on_installed=None, kv=None, job_runner=None, unload=None,
                  install_tools=None, clock=None):
         from . import kvcache
-        if runner is hermes_run and os.environ.get("ARIADNE_RUNTIME", "").lower() in ("own", "native", "ariadne"):
-            runner = runtime_run   # our own loop instead of the Hermes CLI; same contract (B12)
-        real = runner in (hermes_run, runtime_run)
+        real = runner is runtime_run
         # Jobs run for real only with a real runner; tests pass a fake that never unloads the model server.
         self.job_runner = job_runner or (jobs.run if real else
                                          (lambda j, db: jobs.run(j, db, unload=lambda: True, poll=0.05)))
@@ -790,12 +672,7 @@ class Worker:
                          "parked: waiting for resume (desktop button or `python -m ariadne park --resume`)")
         park.wait_resumed()
         self.store.event(t["id"], "park", "resumed")
-        flow = self.flows.get(t.get("flow") or "")
-        if flow:   # debug mode may have changed while parked: the resumed run's browser follows it
-            try:
-                flowlib.compile_flow(flow)
-            except Exception as e:
-                self.store.event(t["id"], "park", f"could not refresh the flow's tools: {e}")
+        # Nothing to regenerate on resume: the runtime reads the flow's servers and browser setting on every run.
 
     def checkpoint(self, t, flow, ws, model, reason, closes="execute", extra=""):
         """Pause and compress at a phase boundary: the model that just worked (still loaded, cache hot) writes a
@@ -972,7 +849,7 @@ class Worker:
         return f"steps {', '.join(str(n) for n in link['steps'])}" if chain_len > 1 else "plan"
 
     def _run_session(self, t, flow, ws, mp, link, attempt, chain_len, reports, failures=()):
-        """One Hermes run for one link of the chain, in the session that link owns.
+        """One runtime run for one link of the chain, in the session that link owns.
 
         Start with the approved plan; a later attempt resumes the *same* session and is told only what failed. Returns
         the result, or None when the task has already been stopped (off-plan, or a run that died).
@@ -987,9 +864,7 @@ class Worker:
             prompt = RETRY_PROMPT.format(failures="\n".join(failures))
         r = self.run(flow, "execute", prompt, ws, t, link["agent"],
                      "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
-        out_of = "time" if r.exit_code == 124 else (
-            "turns" if r.exit_code != 0 and _turn_end_reason(flow.home, r.session_id) == "max_iterations_reached"
-            else "")
+        out_of = ("time" if r.exit_code == 124 else "turns" if r.exit_code == TURNS else "")
         if out_of:
             # Out of time or turns is not out of options: what it wrote stays and the gates decide. An unfinished
             # link is unfinished, and the next one (or QA) continues from the files it left behind.
@@ -1082,11 +957,3 @@ def _reload_models():
         serve.render_config()
     except (Exception, SystemExit) as e:  # models not set up: the run will fail and say so
         print(f"could not refresh the model server config: {e}", flush=True)
-
-def stop_gateway(home):
-    """Stop the Hermes gateway serving a worker home, if one is running (Hermes's own `gateway stop`)."""
-    if not (Path(home) / "gateway.pid").exists():
-        return
-    # --yes: also interrupt live sessions (an orphaned request would keep a model busy, or reload one later)
-    subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=dict(os.environ, HERMES_HOME=str(home)),
-                   stdin=subprocess.DEVNULL, capture_output=True, timeout=120)

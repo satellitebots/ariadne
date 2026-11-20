@@ -18,8 +18,3 @@ def test_page_text_keeps_the_main_content_and_code():
 def test_plain_text_passes_through():
     assert page_text('{"a": 1}', "application/json") == ("", '{"a": 1}')
 
-
-def test_hermes_has_the_search_toolset_and_the_ddgs_backend():
-    import toolsets
-    from plugins.web.ddgs import provider  # noqa: F401 -- the keyless backend the worker homes select
-    assert toolsets.TOOLSETS["search"]["tools"] == ["web_search"]

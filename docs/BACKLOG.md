@@ -45,20 +45,20 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
   `runtime_run` maps it to `PARKED` = 125, side phases never park), and the three markers `hermes_run` used to write
   (`ariadne_phase`, `ariadne_task`, `ariadne_workspace`) so `jobs_mcp` records a job against the right task. KV needed
   no code: `Worker.run` restores and saves around any runner. 8 tests; suite **289 passed**.
+- B12.7 the flip: `Worker`'s default runner is `runtime_run`, and `hermes_run`, `_clean_output`, `_kill_tree`,
+  `_turn_end_reason`, `_latest_session`, `stop_gateway` and the gateway calls are deleted (out of turns is now exit
+  126, out of time 124, parked 125). `flows.compile_flow`/`BASE_CONFIG`/`install_shared_skills`/`compile_all` are gone
+  in favour of `prepare_homes()` and `mcp_server_config`; the venv comes from Ariadne's own `pyproject.toml`
+  (`mcp`, `fastapi`, `uvicorn`, `ddgs`, `ruamel.yaml`), not from the Hermes project; `deps.submodule_pin` and the
+  submodule check are gone; the `upstream/` submodule and `.gitmodules` are deleted. The tests that asserted compiled
+  Hermes homes were rewritten to assert the runtime's config and the catalog window. Suite **281 passed** with no
+  submodule and no `hermes` binary.
+- B12.8 the chat on the runtime: `chat.run_turn` calls `runtime.run(..., native_tools=False)` with the
+  `ariadne_tasks` MCP server and `web_search`, so the file/patch/search/terminal tools do not exist in that
+  conversation at all; `compile_home`, the Hermes CLI launch and the toolset list are deleted, and `ariadne chat` is a
+  small terminal loop over the same `ask()`. 6 tests; suite **281 passed**.
 
-**Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
-exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
-`docs/GAP-ANALYSIS.md`.
-
-- **B12.7 flip the default and delete Hermes.** Make the runtime the default, delete `hermes_run`, `_clean_output`,
-  `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway` (~134 lines, 36 references) and the `upstream/`
-  submodule; update `docs/FORK.md` and `docs/DESIGN-RESET.md`.
-  *Done when:* the whole suite passes with no `upstream/` directory and no `hermes` binary, including the drill.
-  Net -134 lines.
-- **B12.8 the chat on the runtime.** `ariadne chat` still launches `hermes chat`; it moves onto `runtime.run` with the
-  same restricted toolset, then B15 writes the wiki about what actually ships.
-  *Done when:* chat answers with `upstream/` deleted.
-  ~80 lines.
+**Left: nothing.** B12.1-B12.8 are done; B15 (the wiki rewrite) is the last item.
 
 ### B15 - Wiki rewrite
 The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),

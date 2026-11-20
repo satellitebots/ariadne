@@ -53,12 +53,11 @@ def test_repo_flows_load_and_compile(env):
     fl = flowlib.load_flows(REPO_FLOWS)
     assert set(fl) == {"coding", "design", "investigation", "content"}
     assert fl["coding"].status == "beta" and fl["design"].status == "experimental"
-    home = flowlib.compile_flow(fl["coding"], REPO_FLOWS)
-    cfg = (home / "config.yaml").read_text()
-    assert "ariadne.memory_mcp" in cfg and "ariadne.git_mcp" in cfg and "ariadne_phase" in cfg
-    assert (home / "skills" / "fix-and-verify" / "SKILL.md").exists()
-    assert (home / "plugins" / "ariadne_phase" / "phase.py").exists()
-    assert "git_status" in json.loads((home / "ariadne_flow.json").read_text())["plan_tools"]
+    cfg = flowlib.mcp_server_config(fl["coding"], REPO_FLOWS)
+    assert "ariadne.memory_mcp" in " ".join(cfg["memory"]["args"])
+    assert "ariadne.git_mcp" in " ".join(cfg["git"]["args"])
+    assert "fix-and-verify" in fl["coding"].skills and "planning-lessons" in flowlib.shared_skill_dirs("coding")
+    assert "git_status" in fl["coding"].plan_tools
 
 
 def test_flow_validation(env, tmp_path):
@@ -261,12 +260,6 @@ def test_wait_returns_when_backbrief_ready(env):
     tid = w.store.submit("fix", "test", str(env))
     w.run_once()
     assert w.store.wait(tid, timeout=2, poll=0.1)["status"] == "awaiting_signoff"
-
-
-def test_clean_output_drops_tool_previews_and_session_lines():
-    raw = ("\x1b[2m│\x1b[0m \x1b[1mcalc.py\x1b[0m\n│ -    return a - b\n"
-           "Fixed calc.py; tests pass.\nSession ID: 20261117_abc\n")
-    assert orch._clean_output(raw) == "Fixed calc.py; tests pass."
 
 
 def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkeypatch):

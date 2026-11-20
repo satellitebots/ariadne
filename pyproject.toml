@@ -1,9 +1,12 @@
 [project]
 name = "ariadne-harness"
 version = "0.1.0"
-description = "A local-model agent harness built on Hermes Agent: brief, backbrief, sign-off, execute, report."
+description = "A local-model agent harness: brief, backbrief, sign-off, execute, report."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["mcp>=1.0", "fastapi>=0.110", "uvicorn>=0.29", "ddgs>=9", "ruamel.yaml>=0.18"]
+
+[project.optional-dependencies]
+parquet = ["pyarrow"]
 
 [project.scripts]
 ariadne = "ariadne.__main__:main"

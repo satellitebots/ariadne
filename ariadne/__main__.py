@@ -145,8 +145,8 @@ def main(argv=None):
     if cmd == "profile":
         return _profile() or 0
     if cmd == "flows":
-        from .flows import compile_all
-        for name, home in compile_all().items():
+        from .flows import prepare_homes
+        for name, home in prepare_homes().items():
             print(f"{name}: {home}")
         return 0
     if cmd == "watch":

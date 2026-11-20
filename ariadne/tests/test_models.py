@@ -301,10 +301,18 @@ def test_kv_cache_parks_per_session_step_and_model(tmp_path):
     assert "skipped" in KVCache(tmp_path, post=broken).save("s3", "m")   # never fails a task
 
 
-def test_compiled_flow_compresses_at_30k(tmp_path, monkeypatch):
+def test_runtime_run_uses_the_catalog_context_window(tmp_path, monkeypatch):
+    """The catalog's window is the runtime's, not a Hermes config file's: the loop is handed it on every run."""
+    from ariadne import runtime, worker as workerlib
     monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")
-    home = flowlib.compile_flow(flowlib.load_flows(REPO_FLOWS)["coding"], REPO_FLOWS)
-    from ariadne import yamlio
-    cfg = yamlio.safe_load((home / "config.yaml").read_text())
-    assert cfg["model"]["context_length"] == 65536
-    assert cfg["compression"]["threshold_tokens"] == 30000 and cfg["auxiliary"]["compression"]["provider"] == "auto"
+    captured = {}
+
+    def fake_run(*a, **kw):
+        captured.update(kw)
+        return runtime.Answer(text="ok")
+
+    monkeypatch.setattr(runtime, "run", fake_run)
+    fl = flowlib.Flow(name="windowtest", description="d", when="w", mcp_servers=[])
+    workerlib.runtime_run(fl, "execute", "p", str(tmp_path), "t1")
+    from ariadne import models as modellib
+    assert captured["context_tokens"] == modellib.load().context["window"] == 65536

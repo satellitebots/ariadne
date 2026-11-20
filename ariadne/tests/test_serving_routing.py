@@ -124,13 +124,11 @@ def test_llm_chat_and_health_go_to_the_active_server(env, stub, monkeypatch):
     assert body["model"] == "router" and body["chat_template_kwargs"]["enable_thinking"] is False
 
 
-def test_the_compiled_flow_home_points_at_the_active_server(env, stub, monkeypatch):
+def test_the_runtime_reads_the_active_server(env, stub, monkeypatch):
+    """No compiled home to keep in sync: the runtime's model client asks serving.endpoint() itself."""
     use(stub, monkeypatch)
-    fl = flowlib.load_flows(REPO_FLOWS)["coding"]
-    home = flowlib.compile_flow(fl, REPO_FLOWS)
-    cfg = (home / "config.yaml").read_text(encoding="utf-8")
-    assert f"base_url: {stub.url}/v1" in cfg
-    assert "8080" not in cfg and "8090" not in cfg          # nothing assumes the local binary's port
+    from ariadne import serving
+    assert serving.endpoint() == f"{stub.url}/v1"
 
 
 def test_kv_parking_and_unload_ask_the_active_server(env, stub, monkeypatch):

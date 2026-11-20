@@ -14,7 +14,6 @@ def fast(monkeypatch):
     monkeypatch.setattr(deps, "_run", lambda *a, **k: Done())
     monkeypatch.setattr(deps, "gpu", lambda: (True, "NVIDIA driver (nvidia-smi)"))
     monkeypatch.setattr(deps, "bin_entries", lambda *a, **k: [])
-    monkeypatch.setattr(deps, "submodule_pin", lambda: "0" * 40)
     monkeypatch.setattr(deps.paths, "VENV_PY", __import__("pathlib").Path(__file__))   # exists and is a file
 
 
