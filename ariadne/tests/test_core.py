@@ -155,7 +155,8 @@ def test_failing_gates_iterate_and_stop_when_no_progress(env):
     execs = [c for c in run.calls if c[1] == "execute"]
     assert len(execs) == 3                                  # stopped early, well before max_iterations (10)
     assert "GATES FAILED" in execs[-1][2]                   # each iteration was told what failed
-    assert "QA RESULTS" in [c for c in run.calls if c[1].startswith("checkpoint")][-1][2]
+    # a failed gate resumes the same session; nothing is compressed away between attempts (B4)
+    assert [c[1] for c in run.calls if c[1].startswith("checkpoint")] == ["checkpoint:plan"]
     assert w.flows["coding"].max_iterations == 10
 
 

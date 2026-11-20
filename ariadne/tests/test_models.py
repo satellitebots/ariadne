@@ -160,8 +160,8 @@ def test_backbrief_carries_a_model_per_step(env):
                                                   "qwen3.6-35b-a3b"]
     assert "gpt-9" in mp["notes"][0] and "qwen3.6-35b-a3b" in mp["notes"][0]
     assert orch.needed_servers(mp, cat) == ["image"]
-    groups = orch.step_groups(orch.parse_model_plan(PLAN, fl, cat), cat)
-    assert [(a, [s["n"] for s in ss]) for a, ss in groups] == [       # an image step is run by the execute model
+    chain = orch.chain_for(orch.parse_model_plan(PLAN, fl, cat), cat)
+    assert [(c["agent"], c["steps"]) for c in chain] == [            # an image step is run by the execute model
         ("qwen3.8-27b", [1]), ("gemma-4-26b-a4b", [2]), ("qwen3.8-27b", [3]), ("qwen3.6-35b-a3b", [4]),
         ("gemma-4-12b", [5])]
 

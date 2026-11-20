@@ -123,8 +123,11 @@ session gets a carry-forward note. No hidden spawning, no per-step reloads.
    below)*
 2. **One rulebook.** `service.py`; CLI, MCP and desktop become adapters. Delete the duplicate validation and diff the
    messages; they must be identical because they are the same function.
-3. **One session.** `worker.py` replaces the per-step loop; gate failures resume the session; delete `step_groups`,
-   `agent_for`, the per-step retry machinery, and the subprocess supervisor.
+3. **One session.** ~~`worker.py` replaces the per-step loop; gate failures resume the session; delete
+   `step_groups`, `agent_for`, the per-step retry machinery, and the subprocess supervisor.~~ **Done (B4)**:
+   `ariadne/worker.py` owns execution; the plan records `models.chain` (a session per agent model, with a
+   carry-forward note); a failed gate resumes the same Hermes session with only the failure; `step_groups` and
+   `agent_for` are gone.
 4. **The chat, honestly.** Launch the chat home with a minimal toolset (`-t mcp-ariadne_tasks,skills,clarify`), keep
    the gate only as a backstop, and retire `agent.disabled_toolsets` (it did not change the tool list, so it is a
    false assurance). The chat composes and submits; it does not work.

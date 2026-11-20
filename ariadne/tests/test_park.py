@@ -56,7 +56,8 @@ def test_a_run_out_of_turns_goes_to_the_gates(env, monkeypatch):  # noqa: F811
             if phase.startswith("review"):
                 return orch.RunResult("G1: PASS - seen", 0, "log")
             return orch.RunResult(self.plan if phase == "plan" else "done", 0, "log", "h")
-    monkeypatch.setattr(orch, "_turn_end_reason", lambda home, sid: "max_iterations_reached" if sid else "")
+    from ariadne import worker
+    monkeypatch.setattr(worker, "_turn_end_reason", lambda home, sid: "max_iterations_reached" if sid else "")
     run = Turns()
     w = make_worker(env, run)
     tid = w.store.submit("fix x", "test", str(env))

@@ -9,11 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B4 - `worker.py`: one session per task
-Replace per-step `hermes chat -z` spawning with a single session that carries the plan, gates at the edge, and
-`-r` resume on a failed gate. Per-step models become an explicit chain of sessions recorded in the plan. Deletes
-`step_groups`, `agent_for` and the per-step retry machinery. *Model-free with a fake runner.*
-
 ### B5 - `store.py` extraction
 Move the sqlite store out of the 1,482-line `orchestrator.py`; `service.py` becomes the only caller. Mechanical,
 proved by the existing suite. *Model-free.*
@@ -71,7 +66,8 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
-- Inference follows the active server (`serving.endpoint()`; llm, KV cache, image, jobs, flow homes) - this commit
+- One session per task: `ariadne/worker.py`, the plan's `models.chain`, resume on a failed gate - this commit
+- Inference follows the active server (`serving.endpoint()`; llm, KV cache, image, jobs, flow homes) - `0d08556`
 - Watchdog wired into the worker (`_watchdog` in `orchestrator.serve`, real unload/kill/flag callbacks,
   act-once escalation) - `41784f9`
 - `timed_out` and the task wall-clock (`orchestrator.py`, `present.py`, flows) - `c334e8e`

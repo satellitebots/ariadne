@@ -120,6 +120,33 @@ health, KV save, unload all arrive at the active endpoint; a cloud URL is refuse
 for a LAN server). Full suite -> **151 passed in 96 s**. Not proved: a live smoke test against a real LAN box -
 deferred with the GPU items.
 
-### B4 — `worker.py`: one session per task
+### B4 — `worker.py`: one session per task — DONE
+
+**What was missing.** Execution lived in a 1,482-line `orchestrator.py` and spawned a run per *step group*: every
+model change started a new Hermes session, and every failed gate was preceded by a checkpoint, so each retry began
+from a compressed summary instead of the session that had just done the work. That is the "second agent runtime"
+the design reset calls out.
+
+**What changed.**
+- New `ariadne/worker.py` (1,009 lines) owns execution: the runner, the prompts, the model plan, the `Worker`.
+  `orchestrator.py` is down to **620** lines (store, serve loop, CLI) and re-exports the names every surface and test
+  already imported. New `ariadne/errors.py` holds `TaskError` so neither module has to import the other.
+- The plan records `models.chain`: consecutive steps one agent model owns share a session; a generate/image step is
+  not a session (the agent calls it as a tool). It is printed in the backbrief ("2 sessions (a session per agent
+  model...)") and rewritten when `apply_model_overrides` changes a model.
+- `execute()` runs each link of the chain once and runs the gates **after the last one**; a failing gate resumes the
+  same session with `RETRY_PROMPT` (only the failures), bounded by `max_iterations` and the no-progress rule. No
+  checkpoint between attempts, so the context survives; a checkpoint still closes each link for the next model.
+- `step_groups` and `agent_for` are deleted. `parse_model_plan`/`model_summary`/`model_block` stay, now chain-aware.
+
+**Verified.** New `pytest ariadne/tests/test_worker_session.py` -> 4 passed (resume asserts the *same* session id and
+that no compression happens between attempts; the chain test asserts the recorded `models.chain` and the
+"NOW DO STEPS 2, 3 ONLY" scope). Full suite -> **155 passed in 96 s**. `ariadne flows`, `inbox` and `local-only` still
+run model-free. Not proved: a live run against a real model (deferred with the GPU items).
+
+**Also fixed here:** `park.resume()` retried instead of raising `WinError 32` when another thread is reading the flag
+file. It surfaced as a flaky `test_browser` failure once the timing shifted; the fix is in the product, not the test.
+
+### B5 — `store.py` extraction
 
 (see below)

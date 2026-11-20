@@ -38,10 +38,20 @@ def mark_parked(task_id, model):
 
 
 def resume():
-    try:
-        FLAG.unlink()
-    except FileNotFoundError:
-        pass
+    """Clear the park flag.
+
+    A reader (the worker, `park --status`, the activity window) may hold the file for a moment, and Windows refuses
+    to unlink an open file (WinError 32). Resuming must not fail because someone looked, so a busy file is retried
+    briefly instead of raised.
+    """
+    for _ in range(20):
+        try:
+            FLAG.unlink()
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(0.05)
 
 
 def wait_resumed(poll=3.0):

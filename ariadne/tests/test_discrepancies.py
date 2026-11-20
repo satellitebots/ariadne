@@ -67,7 +67,7 @@ def test_out_of_time_on_an_early_group_is_not_a_failure(env):
     w = make_worker(env, run)
     tid = w.store.submit("fix the add bug", "test", str(env))
     w.run_once()
-    assert len(orch.step_groups(json.loads(w.store.get(tid)["models"]), w.catalog)) == 2
+    assert len(orch.chain_for(json.loads(w.store.get(tid)["models"]), w.catalog)) == 2
     w.store.approve(tid)
     w.run_once()
     t = w.store.get(tid)
