@@ -293,7 +293,8 @@ def install(system=False, models=False):
     print("  Hermes submodule"); subprocess.run(["git", "-C", str(paths.ROOT), "submodule", "update", "--init", "vendor/hermes"], check=True)
     print("  Python env")
     extras = ["--extra", "mcp", "--extra", "ddgs"]   # no messaging extra: Ariadne has no messaging surface
-    env = dict(**__import__("os").environ, UV_PROJECT_ENVIRONMENT=str(paths.VENV))
+    env = dict(__import__("os").environ)
+    env["UV_PROJECT_ENVIRONMENT"] = str(paths.VENV)
     subprocess.run(["uv", "sync", "--project", str(paths.UPSTREAM), "--frozen", "--no-dev", "--python", "3.14", *extras],
                    check=True, env=env)
     subprocess.run(["uv", "pip", "install", "--python", str(paths.VENV_PY), "pytest==9.1.1"], check=True)
@@ -319,7 +320,8 @@ def install(system=False, models=False):
 
 
 def _run_in_venv(args):
-    env = dict(**__import__("os").environ, PYTHONPATH=str(paths.ROOT))
+    env = dict(__import__("os").environ)
+    env["PYTHONPATH"] = str(paths.ROOT)
     subprocess.run([str(paths.VENV_PY), *args], check=True, env=env, cwd=str(paths.ROOT))
 
 
