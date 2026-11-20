@@ -12,3 +12,5 @@ serving/bin/
 # local working notes (not checked in)
 work_*
 sandbox/
+node_modules/
+ariadne/ui/node_modules/
