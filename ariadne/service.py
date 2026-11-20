@@ -283,3 +283,24 @@ def sessions_view(limit=25, store=None):
                        "text": (t.get("text") or "").strip().splitlines()[:1]} for t in mine],
         })
     return out
+
+
+def task_events(tid, after_ts=0.0, store=None):
+    """The task's event trail newer than `after_ts`, oldest first - the per-step report a client walks."""
+    db = _db(store)
+    return [e for e in db.events_since(after_ts, limit=2000) if e.get("task_id") == tid]
+
+
+def wait_event(tid, after_ts=0.0, timeout=50, store=None):
+    """Block until the task logs an event newer than `after_ts`, then return (events, task-cardless).
+
+    The step callback: a client passes the largest ts it has seen each call and walks the task step by step instead
+    of one coarse wait for the end.
+    """
+    import time as _time
+    deadline = _time.time() + min(max(timeout, 1), 280)
+    while True:
+        events = task_events(tid, after_ts, store=store)
+        if events or _time.time() >= deadline:
+            return events, _db(store).get(tid, events=False)
+        _time.sleep(1.0)

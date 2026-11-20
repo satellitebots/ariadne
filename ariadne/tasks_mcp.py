@@ -92,7 +92,8 @@ def submit_task(text: str, flow: str, model: str, gates: list[str] | None = None
 DRILL = [
     "1. get_choices - the approved flows and agent models. Both are closed sets; never invent a name.",
     "2. submit_task(text, flow, model, gates, workspace, session) - gates say how we know it is done, end to end.",
-    "3. wait_task(id) - the card comes back; call it again while the card says 'Working'.",
+    "3. wait_task(id) - returns when it needs someone (backbrief ready, done). While it executes, walk it step by "
+    "step with wait_step(id, after_ts): each call returns the newest events (plan, step, job, gate, report).",
     "4. On 'backbrief ready': show the person the card verbatim. They decide - you call approve_task, revise_task "
     "or cancel_task. Never sign off on their behalf.",
     "5. After approval the worker runs on a local model; wait_task again until done, failed, or 'needs you'.",
@@ -116,6 +117,21 @@ def wait_task(id: str, timeout_seconds: int = 50) -> str:
         return _view(service.wait(id, timeout=max(1, min(int(timeout_seconds), 280)), store=store()))
     return _guard(go)
 
+
+
+
+@server.tool()
+def wait_step(id: str, after_ts: float = 0.0, timeout_seconds: int = 50) -> str:
+    """The step callback. Wait for the next event(s) on a running task and report them back. Pass the largest `ts`
+    you have seen as `after_ts` each call to walk the task step by step (plan -> step -> job -> gate -> report)
+    instead of the coarse wait_task. Returns the new events and the task status."""
+    def go():
+        events, t = service.wait_event(id, after_ts, timeout_seconds, store=store())
+        from . import present
+        return json.dumps({"events": events, "status": t["status"],
+                           "label": present.STATUS.get(t["status"], t["status"]),
+                           "event_count": len(events)}, indent=1, default=str)
+    return _guard(go)
 
 @server.tool()
 def get_task(id: str) -> str:
