@@ -92,6 +92,25 @@ Contract to build:
 
 Acceptance: `ariadne sessions` shows one `ariadne-dev` row with N tasks, not N one-task sessions.
 
+
+### B24 - One model, one thing: the busy gate and interrupt-first steering (the controlling rule)
+
+When `orchestrator_resident` is off (the default) and a task is actively executing, the machine belongs to that
+task. The person must not be able to start another one:
+
+- **Direct UI:** new session and new task are greyed out while it runs; in their place is **Stop**. Stop interrupts
+  the worker, the running task **parks**, and the worker is ready to listen.
+- **Chat:** typing while it runs replies "hardware occupied, parallel execution is off. Press <key> to interrupt."
+  Interrupt -> park -> listen is the **only** approved way to steer a running task.
+- `service.busy()` = a live worker owns a task in `planning`/`executing`. `submit` and `define_session` refuse with
+  that message when busy and resident is off, instead of queueing behind the running task.
+- Steering notes are accepted only for a parked or stopped task, never injected mid-run (this retires B21's
+  mid-run steer delivery in favour of interrupt-then-steer).
+- Turning `orchestrator_resident` on lifts the gate; we can prove the logic, not load-test it on this hardware.
+
+Acceptance: with a worker mid-task and the flag off, both `service.busy()` is true and every creation path returns
+the occupied message; Stop parks the task and the next submit succeeds.
+
 ## Explicitly deferred (needs a live model or the GPU)
 
 - The first end-to-end run of any flow, and the RAG case-study task still sitting `executing` in the store.

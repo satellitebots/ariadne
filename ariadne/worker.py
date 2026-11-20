@@ -911,7 +911,15 @@ class Worker:
         The planner is the largest model in the flow and is not used again until re-planning (revise, off-plan).
         Holding it while the executor works is what made one GPU thrash: the worker's own model should be the only
         thing on the card while a task runs.
+
+        Unless the person turned resident mode on: then the orchestrator stays loaded to plan and hold several
+        sessions at once, trading VRAM for concurrency.
         """
+        from . import settings
+        if settings.get("orchestrator_resident"):
+            self.store.event(t["id"], "vram",
+                             f"orchestrator stays loaded ({why}); resident mode leaves it for parallel sessions")
+            return
         try:
             freed = self.unload()
         except Exception as e:
