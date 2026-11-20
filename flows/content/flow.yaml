@@ -5,7 +5,7 @@ status: experimental       # shipped, not yet validated end to end
 model: gemma-4-12b     # the agent model when a step names none
 skills: [channel-content, draft-and-edit]
 requires: [node, chrome]   # for the browser server; checked before a task runs
-mcp_servers: [memory, browser, export, image, web, jobs]
+mcp_servers: [memory, browser, export, image, web, jobs, office]
 toolsets:
   plan: [file, skills, search]
   execute: [file, skills, todo, search]

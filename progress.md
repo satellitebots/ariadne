@@ -181,4 +181,14 @@ in `flows/mcp_servers.yaml`; enabled for `coding` and `investigation` per `docs/
 needs `pyarrow`, which this environment does not have - the tool says so and names the pip command.
 Tests: `ariadne/tests/test_data_mcp.py` -> 8 passed. Full suite **169 passed in 89 s**.
 
-**B6b `office`** — (below)
+**B6b `office` — DONE.** `ariadne/office_mcp.py`, stdlib only (`zipfile` + `xml.etree`): a docx/xlsx is a zip of
+XML, so no python-docx, no openpyxl, no Office. The document side takes Markdown - headings become real Word styles
+(navigation pane works), bullets/numbers/code/pipe tables become paragraphs and tables, `**bold**` and `` `code` ``
+become runs - because Markdown is what the design and content flows already produce. The sheet side takes explicit
+rows and keeps types (int/float/bool/text, inline strings), with multiple sheets, cleaned sheet names, and a reader
+that resolves the sheet list, relationships and shared strings. Absolute paths only; every failure returns as text.
+Registered in `flows/mcp_servers.yaml`; enabled for `design`, `investigation` and `content` per `docs/COVERAGE.md`.
+Tests: `ariadne/tests/test_office_mcp.py` -> 6 passed (a written document is read back through the same parser, so
+the round trip is real, not a byte match). Full suite **175 passed in 89 s**.
+
+**B6c `ci`** — (below)

@@ -5,7 +5,7 @@ when: designing a system or feature, planning a project, architecture or flow di
 model: gemma-4-12b     # the agent model when a step names none (MoE: fast here)
 skills: [diagram-first]
 requires: [node, chrome]   # Mermaid renders with the Mermaid CLI (npx) on your Chrome
-mcp_servers: [memory, diagram, image, export, web, browser, jobs]
+mcp_servers: [memory, diagram, image, export, web, browser, jobs, office]
 toolsets:
   plan: [file, skills, search]
   execute: [file, skills, todo, search]

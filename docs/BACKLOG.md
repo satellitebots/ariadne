@@ -13,7 +13,7 @@ own doc updated in the same commit.
 Declare each in `flows/mcp_servers.yaml` as it is built; names are already approved in `flows/tools.yaml`.
 - B6a `data`: csv/parquet/sqlite profile, query, transform. **Done** - `ariadne/data_mcp.py`; parquet needs pyarrow
   and says so.
-- B6b `office`: docx and xlsx read/write.
+- B6b `office`: docx and xlsx read/write. **Done** - `ariadne/office_mcp.py`, a docx/xlsx is a zip of XML.
 - B6c `ci`: Jenkins, GitHub Actions, GitLab - trigger, status, logs.
 - B6d `rag`: ingest, chunk, embed, vector store, retrieval eval with a numeric gate.
 *Model-free except embedding calls in B6d.*
