@@ -64,6 +64,34 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
 The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),
 then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
+
+### B23 - Sessions are the context, tasks are the executions (correction)
+
+The design: a session is the durable workstream the person lives in; a task is one pass through the worker inside
+it. Today the surface fuses them and the schema under-serves the idea:
+
+- `Store.submit`'s docstring still reads "default: one session per task", and the code defaults a nameless task to a
+  fresh tid-session - the lock this item removes.
+- The `sessions` table has no `model` or `workspace` columns, so a session cannot hold its own pivot; it inherits
+  whatever its last task happened to use.
+- There is no "create a session without a task", and no "add another task to this session" in the console/UI.
+
+Contract to build:
+
+1. Schema: `sessions` gains `model`, `workspace`, `brief` (and exposes `flow` it already has). Migration in
+   `store.py`.
+2. `service.define_session(name, flow, model, workspace)` - creates the workstream with its pivot and no task.
+3. `service.sessions_show(name)` - the pivot plus its tasks, newest first (fields already assembled by
+   `sessions_view`).
+4. `service.submit` joins by name: a task in an existing session inherits the pivot unless it overrides for one run,
+   and never spawns its own session.
+5. Surface split: "New session" and "New task in <session>" are two different controls; the composer asks for the
+   session it belongs to rather than inventing one.
+6. Tests: a session exists before any task; two tasks coexist in one session; the session survives a task finishing;
+   a task can override the pivot for one run without mutating the session.
+
+Acceptance: `ariadne sessions` shows one `ariadne-dev` row with N tasks, not N one-task sessions.
+
 ## Explicitly deferred (needs a live model or the GPU)
 
 - The first end-to-end run of any flow, and the RAG case-study task still sitting `executing` in the store.
