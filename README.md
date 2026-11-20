@@ -12,10 +12,10 @@ context handling and provider plumbing as the worker backend, and replace only t
 belongs to the orchestrator: the desktop app, the chat and the MCP hosting surface. The rest of Hermes - messaging,
 bots, connectors, cloud providers, telemetry, the desktop shell - is present in the tree but never started.
 
-**Status:** 0.1.0. Four flows (`coding`, `design`, `investigation`, `content`), 295 model-free tests, the drill proven
+**Status:** 0.1.1. Four flows (`coding`, `design`, `investigation`, `content`), 301 model-free tests, the drill proven
 end to end against a scripted model. No flow has been run against a live model yet; that is the deferred GPU item.
 
-**[Wiki](wiki/Home.md)** · [release notes](https://github.com/satellitebots/ariadne/releases/tag/ariadne-0.1.0) ·
+**[Wiki](wiki/Home.md)** · [release notes](https://github.com/satellitebots/ariadne/releases/tag/ariadne-0.1.1) ·
 [the fork and the overlay](docs/FORK.md) · [backlog](docs/BACKLOG.md)
 
 ![Architecture](docs/img/architecture.png)
