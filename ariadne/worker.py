@@ -679,6 +679,13 @@ class Worker:
                                     models=self.catalog.text(), default_model=default_model, planner=planner.name)
         self.store.event(t["id"], "plan", f"started ({len(hits)} memories recalled)")
         r = self.run(flow, "plan", prompt, ws, t, planner.name, "plan")
+        if r.exit_code == PARKED or (park.requested() and not r.text):
+            # Stop during planning: the run parked mid-call. Never mark this failed - that mistake is what made the
+            # orchestrator "hand off to the next task before sign-off": a parked plan became 'failed', then the loop
+            # claimed another task. Park it; it resumes the same call when the person resumes.
+            self.store.event(t["id"], "park", "planning stopped by the person; parked")
+            self._hold(t, planner.name)
+            return
         if r.exit_code != 0 or not r.text:
             self.store.update(t["id"], status="failed", error=f"plan run failed (exit {r.exit_code}); log {r.log}")
             self.store.event(t["id"], "plan", f"failed, log {r.log}")
