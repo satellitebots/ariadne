@@ -48,3 +48,11 @@ kill these processes themselves.
 | PC crashes under load | RAM pinned too high | Use `shared` or `light`; `max` is capped at 80% RAM |
 | The console is empty or the worker is missing | nothing is running, or the store is elsewhere | `python -m ariadne inbox`; `python -m ariadne up` |
 | A page needs a sign-in | The isolated browser has no logins | [Debug mode](Web-and-Browser.md) |
+
+
+## The watchdog never unloads under a running task
+
+Free RAM dipping below 1.5 GB while a model is generating used to unload the model, which killed the stream, which
+made the worker retry, which reloaded the model — a loop that looked like a crashing server. The watchdog now samples
+with the running task id and, while one is active, stops at `warn` and logs `suppressed` instead of unloading. It
+still unloads when the machine is idle, and `ariadne stop` remains the kill switch for the whole group.

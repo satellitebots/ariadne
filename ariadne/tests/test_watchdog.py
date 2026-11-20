@@ -34,10 +34,19 @@ def test_a_blip_is_not_an_incident(tmp_path):
 
 def test_escalation_is_warn_unload_kill_flag(tmp_path):
     wd, calls = _wd([True] * 8, tmp_path)
-    levels = [wd.check("t1") for _ in range(6)]
+    levels = [wd.check() for _ in range(6)]          # no task running: the full ladder is allowed
     assert levels == ["ok", "ok", "warn", "unload", "kill", "flag"]
     assert [c for c in calls if isinstance(c, str)] == ["unload", "kill"]
-    assert calls[-1][0] == "flag" and calls[-1][1] == "t1" and "free RAM" in calls[-1][2]
+    assert calls[-1][0] == "flag" and calls[-1][1] == "" and "free RAM" in calls[-1][2]
+
+
+def test_a_running_task_is_never_unloaded(tmp_path):
+    """The stream dies and the worker retries if the model goes away mid-generation; warn instead."""
+    wd, calls = _wd([True] * 8, tmp_path)
+    levels = [wd.check("t1") for _ in range(5)]
+    assert levels == ["ok", "ok", "warn", "warn", "warn"]
+    assert "unload" not in calls and "kill" not in calls
+    assert wd.history[-1]["suppressed"].startswith("a task is running")
 
 
 def test_recovery_forgets_the_streak(tmp_path):
@@ -53,7 +62,8 @@ def test_every_sample_is_logged_with_its_reasons(tmp_path):
         wd.check("t9")
     rows = [json.loads(line) for line in (tmp_path / "watchdog.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 4
-    assert rows[3]["level"] == "unload" and rows[3]["task"] == "t9"
+    assert rows[3]["level"] == "warn" and rows[3]["task"] == "t9"     # a task is running: no unload
+    assert rows[3]["suppressed"]
     assert rows[0]["reasons"] == ["free RAM 100 MB < 1500 MB"]
 
 
@@ -67,7 +77,7 @@ def test_run_stops_on_the_stop_flag(tmp_path):
 def test_the_flag_rung_acts_once_not_on_every_sample(tmp_path):
     """A sustained incident must not re-flag, re-kill or re-unload every interval."""
     wd, calls = _wd([True] * 10, tmp_path)
-    levels = [wd.check("t1") for _ in range(9)]
+    levels = [wd.check() for _ in range(9)]
     assert levels[2:] == ["warn", "unload", "kill", "flag", "flag", "flag", "flag"]
     assert [c[0] for c in calls if isinstance(c, tuple)] == ["flag"]          # one flag, not four
     rows = [json.loads(l) for l in (tmp_path / "watchdog.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -92,9 +102,7 @@ def test_flag_tasks_hands_the_running_task_back_to_the_person(tmp_path):
 def test_start_runs_the_watchdog_in_a_thread_and_stops_it(tmp_path):
     import time
     from ariadne import orchestrator as orch
-    st = orch.Store(tmp_path / "t.db", require_gates=False)
-    tid = st.submit("build it", "test", str(tmp_path))
-    st.update(tid, status="executing")
+    st = orch.Store(tmp_path / "t.db", require_gates=False)     # nothing running: the full ladder is allowed
     calls = []
     stop = watchdog.start(st, url="http://127.0.0.1:1", interval=0.01, thresholds={"consecutive": 1},
                           sampler=_sampler([True] * 50), log_path=tmp_path / "watchdog.jsonl",

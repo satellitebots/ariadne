@@ -159,7 +159,16 @@ class Watchdog:
                 # Already at the top: log the sample, but do not run the action again every 5 seconds.
                 self._write({**s, "level": level, "streak": self.streak, "task": task_id, "repeat": True})
                 return level
+        suppressed = ""
+        if task_id and level in ("unload", "kill"):
+            # Never pull the model out from under a generation: the stream dies, the worker retries, the machine
+            # thrashes. Report it, keep the rung at warn, and let the task finish or the gates decide.
+            level = "warn"
+            self.level = min(self.level, LEVELS.index("warn"))
+            suppressed = "a task is running; the model is not unloaded under it"
         entry = {**s, "level": level, "streak": self.streak, "task": task_id}
+        if suppressed:
+            entry["suppressed"] = suppressed
         if level == "unload" and self.unload:
             entry["action"] = _safe(self.unload)
         elif level == "kill" and self.kill:
@@ -238,10 +247,20 @@ def start(store, url="", unload=None, kill=None, flag=None, **kw):
                    kill=kill or kill_server, flag=flag or (lambda tid, why: flag_tasks(store, why)), **kw)
     stop = threading.Event()
 
+    def running():
+        """The task the worker is on, if any: the watchdog must not unload a model under it."""
+        try:
+            for t in store.list(50):
+                if t.get("status") in ("planning", "executing"):
+                    return t["id"]
+        except Exception:
+            pass
+        return ""
+
     def loop():
         while not stop.is_set():
             try:
-                dog.check()
+                dog.check(running())
             except Exception as e:                      # a broken sample is a row, not a crash
                 dog._write({"ts": round(time.time(), 3), "level": "ok", "error": f"{type(e).__name__}: {e}"})
             stop.wait(dog.interval)
