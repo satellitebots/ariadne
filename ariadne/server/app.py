@@ -126,6 +126,24 @@ def create_app(store=None, chat_runner=None):
                            for t in state["recent"]],
                 "worker": state["worker"], "text": present.inbox_text(state)}
 
+    class SessionIn(BaseModel):
+        name: str
+        flow: str = ""
+        model: str = ""
+        workspace: str = ""
+
+    @app.post("/api/sessions")
+    def session_create(body: SessionIn):
+        service.define_session(body.name, flow=body.flow, model=body.model, workspace=body.workspace, store=db())
+        for s in service.sessions_view(100, store=db()):
+            if s["name"] == body.name:
+                return s
+        raise HTTPException(status_code=500, detail="created but not visible")
+
+    @app.delete("/api/sessions/{name}")
+    def session_delete(name: str):
+        return _call(service.delete_session, name, store=db())
+
     @app.get("/api/sessions")
     def sessions(limit: int = 25):
         return _call(service.sessions_view, max(1, min(int(limit), 100)), store=db())

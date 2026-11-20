@@ -215,6 +215,18 @@ def sessions_show(name, store=None):
     raise TaskError(f"no session named {name!r}; `ariadne sessions` lists them")
 
 
+def delete_session(name, store=None):
+    """Delete an empty session. A session that hosts tasks is refused with the count."""
+    name = (name or "").strip()
+    if not name:
+        raise TaskError("name the session")
+    db = _db(store)
+    gone, n = db.session_delete(name)
+    if not gone:
+        raise TaskError(f"session {name} holds {n} task(s); cancel or move them to delete it")
+    return {"deleted": name}
+
+
 def events_since(since=0.0, limit=200, store=None):
     """Task events after `since`, oldest first: the live feed the UI streams."""
     return _db(store).events_since(since, limit)

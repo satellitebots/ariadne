@@ -199,6 +199,15 @@ class Store:
         with self._conn() as c:
             c.execute(f"UPDATE sessions SET {', '.join(f'{k}=?' for k in fields)} WHERE name=?", (*fields.values(), name))
 
+    def session_delete(self, name):
+        """(deleted, task_count): a session that hosts tasks is not deleted - work is never cascade-dropped."""
+        with self._conn() as c:
+            n = c.execute("SELECT count(*) FROM tasks WHERE session=?", (name,)).fetchone()[0]
+            if n:
+                return False, n
+            c.execute("DELETE FROM sessions WHERE name=?", (name,))
+            return True, 0
+
     def sessions(self, limit=20):
         with self._conn() as c:
             return [dict(r) for r in c.execute(
