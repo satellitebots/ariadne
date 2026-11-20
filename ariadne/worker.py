@@ -118,6 +118,24 @@ def hermes_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     return RunResult(_clean_output(stdout if code != 124 else out), code, str(log), sid[-1] if sid and sid[-1] else "")
 
 
+def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
+    """One run in Ariadne's own runtime instead of `hermes chat` (docs/BACKLOG.md B12).
+
+    Same contract as `hermes_run`: a prompt in, a report out, and a session id to resume. `session` is the runtime's
+    session name, so a failed gate resumes the same conversation. Out of turns or out of time comes back as 124, which
+    the worker already treats as "not failure, keep what was written, let the gates decide".
+    """
+    from . import runtime
+    name = session or f"{tid}-{phase.replace(':', '-')}"
+    r = runtime.run(prompt, home=flow.home, workspace=workspace, phase=phase, model=model or flow.model,
+                    session=name, max_turns=flow.max_turns.get(phase, 40),
+                    budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))))
+    code = 124 if r.stopped in ("budget", "max_turns") else (0 if r.stopped == "" else 1)
+    if not r.text.strip():
+        r.text = f"STOPPED ({r.stopped}) after {r.turns} turn(s); continue from the files as they are."
+    return RunResult(r.text, code, str(flow.home / "runtime-sessions"), name)
+
+
 PARKED = 125  # exit code of a run stopped by a park request
 
 
@@ -500,12 +518,15 @@ class Worker:
                  catalog=None, installer=None, on_installed=None, kv=None, job_runner=None, unload=None,
                  install_tools=None, clock=None):
         from . import kvcache
-        # Jobs run for real only with the real runner; tests pass a fake that never unloads the model server.
-        self.job_runner = job_runner or (jobs.run if runner is hermes_run else
+        if runner is hermes_run and os.environ.get("ARIADNE_RUNTIME", "").lower() in ("own", "native", "ariadne"):
+            runner = runtime_run   # our own loop instead of the Hermes CLI; same contract (B12)
+        real = runner in (hermes_run, runtime_run)
+        # Jobs run for real only with a real runner; tests pass a fake that never unloads the model server.
+        self.job_runner = job_runner or (jobs.run if real else
                                          (lambda j, db: jobs.run(j, db, unload=lambda: True, poll=0.05)))
-        # Same rule for freeing VRAM: only the real runner has a model server behind it.
-        self.unload = unload or (jobs.unload_models if runner is hermes_run else (lambda: True))
-        self.kv = kv or (kvcache.default() if runner is hermes_run else kvcache.NoKVCache())
+        # Same rule for freeing VRAM: only a real runner has a model server behind it.
+        self.unload = unload or (jobs.unload_models if real else (lambda: True))
+        self.kv = kv or (kvcache.default() if real else kvcache.NoKVCache())
         from . import models as modellib
         self.catalog = catalog or modellib.load()
         self.installer = installer or modellib.install

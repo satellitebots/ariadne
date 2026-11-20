@@ -36,12 +36,12 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B9 | `ariadne/server` + `ariadne/ui` | done `0e70f97` |
 | B10 | Our own chat | done `0d8facd` |
 | B11 | Schedules from sessions | done `5ec4891` |
-| B12 | Runtime fork strip | **not started** (see below) |
+| B12 | Own runtime (frame + drill) | **B12.1–B12.2 done**; B12.3–B12.8 queued |
 | B13 | Install and doctor for the new dependency set | done `18502c0` |
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
 
-Suite: **127 tests at the start, 234 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 247 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -222,16 +222,30 @@ GitLab; no embedding model has been loaded (the stub stands in). All three are o
 
 ## What remains, and why it was not started
 
-### B12 — Runtime fork strip (not started)
+### B12 — Own runtime: rebuild, not graft
 
-Vendor the pinned Hermes into `ariadne/runtime/`, then delete one subsystem per commit - desktop app, messaging,
-connectors/sign-in, cloud providers, model catalog fetch, telemetry, update checks, computer-use - with the suite green
-after each. That is a multi-hour, high-risk item: the submodule is a full application, the deletion list touches the
-agent loop's own imports, and a half-vendored tree is worse than a pinned submodule (it would leave `upstream/` and
-`ariadne/runtime/` both present and divergent, with the "one subsystem per commit" rule already broken). It was not
-started rather than half-done. The preconditions are in place: `upstream/` is clean at the pin (`git -C upstream
-status --short` empty), the fork's own modules are separated (`store.py`, `worker.py`, `service.py`), and
-`docs/FORK.md` is the log the item asks to extend.
+The original item (vendor the pin, delete one subsystem per commit) was measured and rejected: `agent/` alone is 468
+modules / 162,839 lines, and "delete one subsystem per commit" has no bottom. The instruction was to implement the
+server if that is cheaper, and it is: `ariadne/runtime/` is 363 lines and owns the loop.
+
+**Done.**
+- `ariadne/runtime/` - `model.py` (one OpenAI-compatible call with tools), `tools.py` (read/write/patch/search/list/
+  terminal, a workspace jail, plan-phase read-only enforced at dispatch), `session.py` (resumable message lists),
+  `loop.py` (96 lines; turn and time budgets).
+- `worker.runtime_run` - the same contract as `hermes_run` (prompt in, report out, session to resume), returning 124
+  for out-of-turns/time so the worker's existing "not failure, let the gates decide" rule applies unchanged.
+- `ARIADNE_RUNTIME=own` selects it; `Worker` recognises it as a real runner for jobs/KV/unload purposes.
+- The drill: `tests/test_runtime_drill.py` runs brief -> plan -> sign-off -> execute -> gates on the runtime with
+  `HERMES_EXE` pointed at a path that does not exist, and a tool call that writes a real file.
+
+**Verified.** `pytest ariadne/tests/test_runtime.py` -> 12 passed; `test_runtime_drill.py` -> 1 passed; full suite ->
+**247 passed in 118 s**. No model loaded. The drill's scripted model makes one `terminal` call and no MCP/skill/web
+call, so it proves the loop, the phase split, the gates and the jail - not that a real coding task can be done. That
+distinction is the core of `docs/GAP-ANALYSIS.md`.
+
+**Queued (B12.3–B12.8).** MCP client in the runtime, skills as tools, `web_search`, parity hooks (park, KV, jobs,
+logs, todo, context trimming), flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in
+`docs/BACKLOG.md`; the counted capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
 
 ### B15 — Wiki rewrite (not started)
 

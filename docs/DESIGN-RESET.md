@@ -29,6 +29,13 @@ bar, composer). Ariadne is an overlay on a pinned Hermes; the whole point of the
 So Ariadne must not own: an agent loop, a tool registry, a session store, a chat UI, or a model server. We own a task
 store, the decision protocol, flow data, model policy, and the gate runner. Anything else is re-implementation.
 
+**Amendment (2026-11-19, the person's instruction).** The alternative to owning the loop turned out to be owning a
+fork of the pin - `agent/` alone is 468 modules and 162,839 lines, and "delete one subsystem per commit" has no
+bottom. So the loop, the tool registry and the session list are now Ariadne's own, in `ariadne/runtime/`: one
+OpenAI-compatible call, six tools with a workspace jail, a resumable message list, and a 96-line loop. That is smaller
+than the glue the fork needed, it is model-free testable, and it is the reason a task can now run with `hermes`
+absent (`tests/test_runtime_drill.py`). The rest of this document stands.
+
 ## What we built, honestly
 
 - `orchestrator.py` (~1,300 lines): store, router, prompt assembly, plan parsing, execution loop, gate runner, retry

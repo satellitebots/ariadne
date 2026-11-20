@@ -9,10 +9,56 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B12 - Runtime fork strip
-Vendor the pin into `ariadne/runtime/`, then delete one subsystem per commit with the suite green after each:
-desktop app, messaging, connectors/sign-in, cloud providers, model catalog fetch, telemetry, update checks,
-computer-use. Log every removal in `docs/FORK.md`.
+### B12 - Own runtime: run a task without Hermes
+
+**Decision (person's instruction, 2026-11-19): rebuild, do not graft.** The pin's `agent/` alone is 468 modules /
+162,839 lines; gutting it is unbounded work that diverges from upstream forever. What Ariadne actually uses is one
+HTTP call, six tools, a message list and a loop - that is now `ariadne/runtime/`, owned here. This overrides
+DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-line fork, which is worse.
+
+**Done**
+- B12.1 the frame: `ariadne/runtime/` - `model.py` (OpenAI tool calls), `tools.py` (read/write/patch/search/list/
+  terminal, a workspace jail, and the plan phase read-only enforced at dispatch), `session.py` (resumable message
+  lists), `loop.py` (96 lines, turn and time budgets). 12 tests, no model.
+- B12.2 the drill, which is the acceptance test that was missing: `worker.runtime_run` + `Worker(runner=runtime_run)`
+  runs a full brief -> plan -> sign-off -> execute -> gates against a scripted model, with `HERMES_EXE` pointed at a
+  path that does not exist, and a tool call that writes a real file (`tests/test_runtime_drill.py`).
+- `ARIADNE_RUNTIME=own` switches a worker onto it; the default is still Hermes until B12.6.
+
+**Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
+exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
+`docs/GAP-ANALYSIS.md`.
+
+- **B12.3 MCP in the runtime.** Attach every server in `flows/mcp_servers.yaml` over stdio, namespaced
+  `mcp__<server>__<tool>`, filtered by the flow's `mcp_servers` list and by phase (read-only phases get the server's
+  read-only tools only). `mcp` and `httpx` are already installed. The four servers built in B6 are unreachable from
+  the runtime today; this is the item that makes them real.
+  *Done when:* a drill run calls `mcp__data__profile` on a real csv and `mcp__web__web_fetch` on a local URL, and the
+  plan phase is refused a write tool from a server.
+  ~150 lines + test.
+- **B12.4 skills as tools.** `skills_list` and `skill_view` over `ariadne.skills`, so the bodies of the 7 flow skills
+  are readable in a run and not just their names in the plan prompt.
+  *Done when:* the plan drill reads `fix-and-verify` and the backbrief quotes it.
+  ~50 lines + test.
+- **B12.5 web search.** `web_search` over `ddgs` (installed); `web_fetch` already exists in `web_mcp` and arrives with
+  B12.3. Without this a runtime plan cannot research, which is half of what the plan prompts ask for.
+  *Done when:* a run searches, gets results, and fetches one of them.
+  ~40 lines + test.
+- **B12.6 parity hooks.** Park (`StepBoundary` + `park.requested()`), KV registration, the jobs wake-up loop
+  (`JOB SUBMITTED` -> unload -> run -> resume the same session), a per-run `.log` artifact like `hermes_run` writes, a
+  `todo` tool, and context trimming (the message list grows unbounded today).
+  *Done when:* a task pauses and resumes on the runtime, a submitted job runs with the model unloaded, and a
+  long run stays inside the context window.
+  ~270 lines + tests.
+- **B12.7 flip the default and delete Hermes.** Make the runtime the default, delete `hermes_run`, `_clean_output`,
+  `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway` (~134 lines, 36 references) and the `upstream/`
+  submodule; update `docs/FORK.md` and `docs/DESIGN-RESET.md`.
+  *Done when:* the whole suite passes with no `upstream/` directory and no `hermes` binary, including the drill.
+  Net -134 lines.
+- **B12.8 the chat on the runtime.** `ariadne chat` still launches `hermes chat`; it moves onto `runtime.run` with the
+  same restricted toolset, then B15 writes the wiki about what actually ships.
+  *Done when:* chat answers with `upstream/` deleted.
+  ~80 lines.
 
 ### B15 - Wiki rewrite
 The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),
