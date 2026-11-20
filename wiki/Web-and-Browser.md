@@ -22,7 +22,7 @@ card numbers or keys, never create accounts, and never get around CAPTCHAs. When
    ```
    python -m ariadne browser debug on     # first time: allow it at chrome://inspect/#remote-debugging
    (sign in to the site in your own Chrome)
-   python -m ariadne park --resume        # or R in the watch window, or Resume in the desktop app
+   python -m ariadne park --resume        # or R in the watch window, or Resume in the console
    ```
 4. The task resumes in the same session. Its browser now attaches to your Chrome (which asks before each
    connection), and the model checks that it is signed in before going on.

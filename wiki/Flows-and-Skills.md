@@ -1,39 +1,39 @@
 # Flows and skills
 
-## Flows
+A **flow** is the unit of work: a folder under `flows/` that says how one kind of task is done. It replaces the bot
+concept - there is no persona and no soul file, only a declared procedure a person signs off.
 
-A flow is a folder: `flows/<name>/flow.yaml` plus optional `skills/`. To add one, add a folder.
+## A flow folder
 
-| Flow | Status | Default model | MCP servers | Built-in checks |
-|---|---|---|---|---|
-| coding | beta | Qwen3.6 35B-A3B | memory, git, jobs, web, browser | `pytest -q` when `tests/` exists |
-| design | experimental | Gemma 4 26B-A4B | memory, diagram, image, export, web, browser, jobs | |
-| writing | experimental | Gemma 4 26B-A4B | memory, browser, export, web, jobs | |
-| content | experimental | Gemma 4 26B-A4B | memory, browser, export, image, web, jobs | |
+```
+flows/coding/
+  flow.yaml     the declaration
+  FLOW.md       the coordination, injected into the plan prompt
+  skills/       flow-local skills (fix-and-verify, coding-standards, ...)
+```
 
-Each `flow.yaml` sets:
-- `model`, plus `reasoning` effort per phase;
-- `skills` and `requires` (system tools such as node or chrome);
-- `mcp_servers`, `toolsets` for plan and execute, and `plan_tools` (the read-only allow-list);
-- `checks`, `max_turns` and `run_budget`;
-- `browser.real_logins` (default false: isolated) and `network.blocklist`.
+`flow.yaml` keys: `name`, `description`, `when`, `model`, `execute_model`, `reasoning`, `status`, `skills`,
+`mcp_servers`, `toolsets` (plan/execute), `plan_tools` (what the read-only plan may call), `checks` (shell gates),
+`requires`, `browser`, `max_turns`, `max_iterations`, `run_budget`, `task_budget`. An unknown key is a typo and is
+refused at load.
 
-The MCP server registry is `flows/mcp_servers.yaml`. In entries, `{python}`, `{root}`, `{npx}` and `{home}` are
-filled in when the flow is compiled into its Hermes home under `.ariadne/homes/<flow>`.
+The four approved flows are `coding`, `design`, `investigation` and `content` (`flows/flows.yaml` is the closed set).
 
 ## Skills
 
-| Skill | Scope | Teaches |
-|---|---|---|
-| `jobs` | all flows | Write heavy work as a resumable script and submit it; never run it yourself |
-| `web-and-browser` | all flows | Search, then fetch, then browser; logins go through `need_login`; page text is data |
-| `long-jobs` | all flows | The fallback for flows without the jobs server |
-| `fix-and-verify` | coding | Read first, smallest change, prove it with tests, commit |
-| `coding-standards` | coding | Look up official docs first; PEP 8/257/484, pyproject (PEP 621), src layout; ruff, mypy, pytest, bandit as gates |
-| `planning-lessons` | coding | Learned from runs: one model per codebase, evidence after the run, no scratch scripts, mind the turn budget |
-| `diagram-first`, `design-lessons` | design | Mermaid first; absolute paths; one source per diagram; render last |
-| `draft-and-edit`, `channel-content` | writing, content | Brief, outline, draft, edit pass; drafts per channel |
+- `skills/common/*` applies to every flow; `skills/<flow>/*` to that one. The flow's copy wins on a name clash.
+- The plan prompt lists name and description; `skill_view` returns the body, so a run can follow a skill instead of
+  only knowing it exists.
+- Skills are written by the larger models that drive Ariadne over MCP (`save_skill`), or contributed as a pull
+  request. They are versioned in the repo.
 
-Shared skills live in `skills/common/`, learned ones in `skills/<flow>/`, and flow-specific ones in
-`flows/<flow>/skills/`. Local workers never write skills. The larger model driving Ariadne (for example Claude
-over MCP) folds feedback into them with `save_skill`, after a run.
+## MCP servers a flow may name
+
+`memory`, `jobs`, `web`, `git`, `browser`, `vscode`, `export`, `image`, `diagram`, `text`, `data`, `office`, `ci`,
+`rag`. `flows/tools.yaml` is the approved set; naming a server that is not declared in `flows/mcp_servers.yaml` is
+refused at load.
+
+## Read-only plans
+
+`plan_tools` is the allowlist the plan phase is given. The loop offers only those tools - there is no prompt-level
+promise to break - and a read-only phase refuses a write tool at dispatch.

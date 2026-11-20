@@ -6,10 +6,10 @@
 |---|---|---|---|
 | 1 | Brief | You | Task text, workspace, check gates. With no gates, the task waits in `awaiting_gates` and asks for them. |
 | 2 | Route | Router model | Picks the flow, unless you named one. |
-| 3 | Plan | Flow's planner | Read-only tools only (enforced by the `ariadne_phase` plugin). Reads the workspace, searches the web and docs, recalls memory. |
+| 3 | Plan | Flow's planner | Read-only tools only (enforced at dispatch: the plan phase is not offered write tools). Reads the workspace, searches the web and docs, recalls memory. |
 | 4 | Backbrief | Planner → you | Mission, steps, a model per step, a gate→step map, risks. Status `awaiting_signoff`. |
 | 5 | Sign-off | You | Approve (optionally overriding a step's model), revise with feedback, or cancel. Approving locks the plan. |
-| 6 | Execute | Each step's model | Step groups run in order. A checkpoint between groups writes a handoff brief. Heavy work goes out as [jobs](Jobs.md). A needed login [pauses the task](Web-and-Browser.md). |
+| 6 | Execute | Each step's model | Each link of the model chain runs in order. A checkpoint between groups writes a handoff brief. Heavy work goes out as [jobs](Jobs.md). A needed login [pauses the task](Web-and-Browser.md). |
 | 7 | QA | Gate commands + reviewer | Command gates run; review gates are judged by a separate read-only reviewer run. Failures go back to step 6 with the reasons. |
 | 8 | Report | Worker | What changed and how it was verified. Status `done`. |
 

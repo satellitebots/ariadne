@@ -5,7 +5,7 @@
   doctor                     check every dependency (changes nothing)
   install [--system] [--models]   install what is missing (--system: git/uv/ollama/node via winget, brew or apt;
                              --models: also fetch the default models now instead of when a plan first picks them)
-  models [list | install NAME... | install --defaults]   the model catalog (serving/models.yaml)
+  models [list | index | install NAME...]   the catalog; index: what this machine can run, by tier
   kv [list | drop SESSION]   parked KV caches, per session, step and model
   park [--resume | --status]   pause the running task at its next step boundary to have the model (never automatic)
   browser [status | debug on|off]   debug on: the models' browser attaches to your Chrome and its logins
@@ -25,7 +25,7 @@
   fix [ID] "feedback"        send it back to planning with what to change
   no [ID]                    cancel it
   gates ID GATE...           answer "what are the check gates?"
-  chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
+  chat [--session NAME]      the conversation bound to a session (submits tasks; it cannot do the work); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
   schedules [create SESSION --cron EXPR --brief TEXT | on NAME | off NAME | rm NAME]   standing briefs

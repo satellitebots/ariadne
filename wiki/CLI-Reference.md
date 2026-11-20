@@ -1,45 +1,29 @@
 # CLI reference
 
-`python -m ariadne <command>`. Add `--watch` to any command to open the activity window too.
+`ariadne <command>` (or `python -m ariadne <command>`).
 
-## Setup
-
-| Command | Does |
+| Command | What it does |
 |---|---|
-| `doctor` | Check every dependency; changes nothing |
-| `install [--system] [--models]` | Install what is missing (`--system`: git, uv, ollama, node; `--models`: fetch the default models now) |
-| `models [list \| install NAME... \| install --defaults]` | The model catalog |
-| `resources [max\|shared\|light]` | How much of the machine the models may take |
+| *(none)* | the inbox: what needs you, what is running, what finished |
+| `"a brief"` | one gesture: this folder, this session, followed live |
+| `submit "text" --flow F --model M` | give a task (also `--file`, `--gate`, `--workspace`, `--session`) |
+| `inbox` / `show [ID]` / `follow [ID]` | state, one card, live activity |
+| `ok [ID]` / `fix [ID] "feedback"` / `no [ID]` / `gates ID ...` | sign off, revise, cancel, answer the gates |
+| `task ...` | the same verbs: submit / wait / approve / revise / cancel / list / get |
+| `sessions` | sessions: tasks, segments, last handoff |
+| `schedules ...` | standing briefs (create / on / off / rm) |
+| `chat [--session NAME]` | the conversation bound to a session; submits, never works |
+| `ui [--port N]` | the console (loopback by default; `ARIADNE_BIND` for the LAN) |
+| `watch` | live activity |
+| `models [list]` | the catalog |
+| `models index [--json] [--pulse KIND] [--refresh]` | what this machine can run, by tier |
+| `models install NAME...` | fetch and verify weights |
+| `resources [max\|shared\|light]` | how much of the machine models may take |
+| `kv [list\|drop]`, `park [--resume\|--status]` | parked caches, pausing |
+| `browser [status\|debug on\|off]` | the models' browser and its logins |
+| `up [--lan]` / `down` / `stop` | model server + MCP endpoint; stop everything |
+| `connect [--host H]` | print MCP client configs |
+| `doctor` / `install [--system] [--models]` | check; install what is missing |
+| `serve` / `profile` / `flows` / `token` | lower-level pieces |
 
-## Run
-
-| Command | Does |
-|---|---|
-| `up [--lan]` / `down` | Start or stop the models and the MCP endpoint |
-| `task submit TEXT --workspace DIR [--flow F] [--gate G]... [--session S]` | Give a task (or `--file brief.md`) |
-| `task gates ID GATE...` | Answer a gates question |
-| `task wait ID` / `task get ID` / `task list` | Follow a task |
-| `task approve ID [--model N=MODEL]` / `revise ID "feedback"` / `cancel ID` | Sign off |
-| `chat [--session NAME]` | Talk to Hermes in the terminal |
-| `desktop [--cwd DIR] [--build] [--restart]` | Ariadne Desktop |
-| `connect [--host H]` | Print MCP client configs (Claude Code, Claude Desktop, others) |
-
-## Control
-
-| Command | Does |
-|---|---|
-| `watch [--open\|--always\|--never]` | Live activity |
-| `park [--resume \| --status]` | Pause the running task at its next step boundary, or resume it |
-| `stop` | Stop the worker, gateways and models; running tasks come back to you |
-| `browser [status \| debug on\|off]` | Attach the models' browser to your Chrome for logins, or go back to isolated |
-| `kv [list \| drop SESSION]` | Parked KV caches |
-| `sessions` | Sessions, their tasks and last handoff brief |
-| `casestudy export WORKSPACE NAME` | Snapshot a workspace into `case_study/projects/NAME` |
-
-## MCP tools
-
-| Server | Tools |
-|---|---|
-| `ariadne-tasks` (for Claude and other callers) | `submit_task`, `set_gates`, `wait_task`, `approve_task`, `revise_task`, `cancel_task`, `get_task`, `list_tasks`, `list_sessions`, `feedback_task`, `list_skills`, `get_skill`, `save_skill` |
-| `jobs` (for the local models) | `submit_job`, `list_jobs`, `job_result`, `need_login` |
-| `web` (for the local models) | `web_fetch` |
+`desktop` is retired: `ariadne ui` is the console.

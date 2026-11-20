@@ -1,41 +1,41 @@
 # Models and resources
 
-Reference machine: RTX 3070 Laptop (8 GB VRAM), 32 GB RAM, Windows 11. llama.cpp behind llama-swap.
+Ariadne owns model management end to end: the catalog, the server registry, the weights and the pins.
 
-## Catalog (`serving/models.yaml`)
+## The catalog
 
-| Use | Default | Also |
-|---|---|---|
-| Coding | Qwen3.6 35B-A3B (MoE, 3B active) | Qwen3.8 27B (dense, for the hardest steps), Qwen3.5 9B (quick steps) |
-| Design, writing, content | Gemma 4 26B-A4B (MoE) | Gemma 4 12B, Gemma 4 31B (best prose, slow) |
-| Images | Z-Image-Turbo | SD Turbo |
-| Routing, memory | Qwen3.5 4B, Qwen3 Embedding 0.6B | |
+`serving/models.yaml` is a **closed set**. Each entry declares kind (`agent`, `generate`, `image`, `embed`), roles,
+size, weights (Hugging Face repo/file, or an Ollama blob) and llama-server arguments. `policy.families` is the approved
+set; a model outside it is refused. The LFS sha256 is pinned in `.ariadne/model-pins.json` on first fetch and verified
+after.
 
-Plans favour mixture-of-experts models: with only a few billion parameters active, they run several times faster
-on this hardware than a dense model. `python -m ariadne models` lists the catalog. A model downloads the first
-time a signed-off plan needs it.
+## Where inference happens
 
-## How the models are served
+`serving/servers.yaml` (committed) plus `.ariadne/servers.local.yaml` (this machine) name one active server:
 
-- **One agent model at a time** on the GPU. llama-swap swaps them, with KV cache parking so a swap costs a disk
-  read, not a re-read of the conversation.
-- **The embedding model runs on the CPU in its own group** (`side`, persistent, non-exclusive). Before this,
-  every embedding call evicted the 22 GB agent model and the next agent call loaded it back ("swap thrash" in the
-  RAG case study).
-- **Jobs unload everything** before they run (llama-swap `/unload`).
+- our pinned `llama-server` (binary in `serving/bin`, sha256 in `serving/bin.lock`), started by Ariadne;
+- a local `ollama`;
+- a `remote` OpenAI-compatible/Ollama URL on the LAN - no weights downloaded here.
+
+`serving.endpoint()` is the single answer to "where is inference"; every caller reads it. `local_only` refuses any
+endpoint that is not loopback, RFC1918/ULA/link-local, a LAN suffix or in `ARIADNE_ALLOW_HOSTS`, and refuses any key.
+
+## The model index
+
+At every startup and on demand (`python -m ariadne models index`), Ariadne measures GPU/VRAM, RAM, CPU, cores,
+backend and free disk, then gives every catalog model one verdict:
+
+- `gpu`: weights + 1.5 GB (KV at the 64K window, CUDA context, buffers) fits in 90% of VRAM;
+- `hybrid`: it fits inside the profile's total, so part of the weights runs on the CPU (MoE models note why that
+  costs less);
+- `no`: it does not fit, with both numbers in the reason.
+
+The planner's menu uses the same rule, so the catalog and the index cannot disagree. `--pulse agent|image|embed`
+asks Hugging Face for the most downloaded models of that task, estimates a q4 size from the reported parameter
+count, filters by the same arithmetic and caches for a day (`--refresh` polls again). Suggestions never edit the
+catalog.
 
 ## Resource profiles
 
-`python -m ariadne resources <profile>`, applied between tasks:
-
-| Profile | GPU | RAM | Priority |
-|---|---|---|---|
-| **max** | up to 100% | up to 80%, model pinned in RAM (mlock) | high |
-| **shared** | leaves headroom | leaves headroom | normal |
-| **light** | up to 80% | up to 50% | low |
-
-The limits are measured at boot and written to `.ariadne/limits.json`. On the reference machine that is 8.0 GB of
-GPU memory, 31.9 GB of RAM, and a largest model of 33.5 GB under `max`.
-
-**Why the 80% RAM cap:** on 18 Nov the PC hard-crashed (Kernel-Power 41, no hardware errors). `max` had pinned 90%
-of RAM while a CPU-heavy ingest and a QA run were going. The RAM cap was lowered to 80%; the GPU cap stays at 100%.
+`python -m ariadne resources [max|shared|light]` chooses how much of the machine models may take; the worker applies it
+between tasks. `shared` is the default: VRAM with headroom, the rest on the CPU in RAM, normal priority.

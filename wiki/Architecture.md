@@ -1,42 +1,55 @@
 # Architecture
 
-![Architecture](../docs/img/architecture.png)
+Ariadne orchestrates; Hermes works. The orchestrator owns the drill, the state and every surface. The worker backend
+is the pinned Hermes tree, imported/launched as-is and overlaid at module level when something must differ.
 
-## The pieces
+## Components
 
-| Piece | What it is | Where |
+| Surface | What it is | Where |
 |---|---|---|
-| Entry points | Terminal (`python -m ariadne task ...`, `chat`), Ariadne Desktop (rebranded Hermes desktop), MCP for Claude and other large models (`ariadne-tasks` server, local or over HTTP with a bearer token) | `__main__.py`, `desktop.py`, `tasks_mcp.py`, `host.py` |
-| Task store | SQLite: tasks, events, sessions, jobs | `.ariadne/tasks.db`, `orchestrator.py`, `jobs.py` |
-| Worker | Routes a task to a flow, runs plan, checkpoint, execute, QA and jobs; detached from any session | `orchestrator.py` (`Worker`), `procs.py` |
-| Hermes runs | Each phase is one headless `hermes chat` run in the flow's own Hermes home, resumed by session id | `orchestrator.hermes_run`, `.ariadne/homes/<flow>` |
-| Flows | One folder per kind of work, compiled into a Hermes home (config, toolsets, MCP servers, skills, plugins) | `flows/`, `flows.py` |
-| MCP servers | memory, jobs, web, git, browser (Chrome DevTools MCP), diagram, image, export, text, vscode | `*_mcp.py`, `flows/mcp_servers.yaml` |
-| Hermes plugins | `ariadne_phase`: the plan phase may only call read-only tools, and every tool call is logged. `offline_guard`: a strict no-network mode for the `guard-proof` profile | `plugins/` |
-| Model server | llama-swap + llama.cpp. Agent models swap on one GPU; the embedding model sits in a persistent CPU group | `serve.py`, `serving/` |
-| Resources | Measures the machine at boot, sets limits per profile | `resources.py`, `.ariadne/limits.json` |
-| KV cache | Saves and restores llama.cpp slots per session, step and model | `kvcache.py`, `.ariadne/kv/` |
-| Memory | A small graph in SQLite with full-text recall, shared by every task | `memory.py`, `.ariadne/memory.db` |
-| Activity | One log per day; the watch window merges it with the worker, model server and Hermes logs | `activity.py`, `.ariadne/logs/` |
+| Console | FastAPI + a static ES-module SPA, no bundler | `ariadne/server/`, `ariadne/ui/` |
+| Terminal | `python -m ariadne ...` | `ariadne/__main__.py` |
+| Chat | a conversation bound to one session; submits, never works | `ariadne/chat.py` |
+| MCP hosting | our task/server surface for Claude and other clients | `ariadne/tasks_mcp.py`, `ariadne/host.py` |
+| Chat/worker state | sqlite task store, memory, session files | `.ariadne/` |
 
-## Processes
+## The task path
 
 ```
-you ──► terminal / desktop / MCP ──► tasks.db ◄──► worker (detached)
-                                                   │
-                                                   ├─► hermes chat (one run per phase, flow home)
-                                                   │      └─► MCP servers (stdio): memory, jobs, web, git, browser ...
-                                                   ├─► jobs (shell, model unloaded)
-                                                   └─► llama-swap :8090 ──► llama.cpp (agent model on GPU, embed on CPU)
+you -> console / terminal / chat / MCP -> service.py -> tasks.db <- worker (detached)
+                                                             |
+                                                             +-> Hermes (pinned checkout, overlay) -> model server
+                                                             +-> MCP servers (memory, jobs, web, git, browser,
+                                                                  data, office, ci, rag, diagram, export, image, text)
+                                                             +-> gates (shell commands, reviewers)
 ```
 
-The worker and llama-swap are started *detached*. On Windows they break away from the caller's job object, or
-start through WMI when that is not allowed, so closing a terminal or losing a remote session does not kill them.
-They stop only through `ariadne stop` or the watch window. See [Operations](Operations.md).
+`service.py` owns every verb; `present.py` owns every rendering. A surface never touches `Store` and never formats a
+task, so the doors cannot drift.
 
-## What lives where
+## Module map
 
-- `upstream/`: Hermes, as a git submodule pinned to `458a0046ad`. It is never edited. A contract test
-  (`test_hermes_contract.py`) fails loudly if a Hermes update moves something Ariadne relies on.
-- `.ariadne/`: all state (tasks, memory, KV caches, logs, worker homes, desktop data, limits). It is not checked in.
-- `case_study/`: write-ups plus snapshots of the projects the models built (`case_study/projects/`).
+- `orchestrator.py` - the worker process, the serve loop, the CLI. `worker.py` - planning, sign-off, execution,
+  gates, retries, model chains, park, jobs. `store.py` - the store and the schema.
+- `runtime/` - the **fallback** agent loop (model call, eight tools, MCP pool, skills reader, web search, trimming,
+  logs, todo, park). Selected with `ARIADNE_RUNTIME=own`; the default is Hermes.
+- `flows.py` - flow loading, validation, home compilation, `mcp_server_config`; `protocol.py` + `render.py` - the plan
+  as data and its one renderer.
+- `serving.py` + `resources.py` - where inference is and how much of the machine it may use; `models.py` +
+  `modelindex.py` - the catalog and the hardware shortlist.
+- `overlay.py` + `bootstrap.py` + `overlay.yaml` - the module overlay over `vendor/hermes`.
+- `vendor/hermes/` - the pinned checkout. Never edited.
+
+## The overlay
+
+Import order is repo root, then `vendor/hermes`, then site-packages (`bootstrap.start()`). A module we own lives in
+`overlay/<package>/<module>.py`; `overlay.apply()` prepends that package's `__path__` with the overlay directory, so
+our file wins for that module and every other module still comes from the submodule. `overlay.yaml` records module,
+reason and test; `overlay.check()` fails the suite on a missing one. Updates are a pointer bump plus
+`uv sync --project vendor/hermes --frozen` - see `tools/sync_hermes.py`.
+
+## State
+
+`.ariadne/` holds everything: `tasks.db` (the store and events), `memory.db`, `logs/`, `homes/<flow>/` (compiled
+flow homes, sessions, markers), `runtime-sessions/`, `park.json`, `limits.json`, `model-pins.json`, `servers.local.yaml`.
+It is gitignored; nothing in it is required to read the code.

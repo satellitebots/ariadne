@@ -5,15 +5,15 @@
 There is one GPU and one model slot. While a task runs, your chat waits for the task's current run to finish.
 Nothing interrupts a task on its own. To have the model now:
 
-- **Park** (desktop *Park task*, **P** in the watch window, `python -m ariadne park`): the task finishes the model
+- **Park** (console *Park*, **P** in the watch window, `python -m ariadne park`): the task finishes the model
   or tool call in flight, stops at that step boundary, saves its KV cache and waits.
-- **Resume** (desktop *Resume task*, **R**, `python -m ariadne park --resume`): the cache is restored and the
+- **Resume** (console *Resume*, **R**, `python -m ariadne park --resume`): the cache is restored and the
   *same* Hermes session continues, told to pick up where it left off.
 
 A park never resumes on its own. The only other thing that parks a task is a step that needs a login
 (`need_login`, see [Web, browser and logins](Web-and-Browser.md)).
 
-The state is one file, `.ariadne/park.json`, so the worker, CLI, watch window and desktop plugin all see the same
+The state is one file, `.ariadne/park.json`, so the worker, CLI, watch window and console all see the same
 thing.
 
 ## KV cache parking

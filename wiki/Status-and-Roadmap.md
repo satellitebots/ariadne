@@ -1,31 +1,26 @@
 # Status and roadmap
 
-*As of 18 Nov 2026.*
+## Proven
 
-## Where things stand
+- The full suite: **295 tests**, model-free, in about three minutes.
+- The drill: brief -> plan -> sign-off -> execute -> gates, proven against a scripted model with `HERMES_EXE` pointed
+  at a path that does not exist (the fallback runtime path).
+- The worker on Hermes: `hermes.exe` at the pin reports v0.23.2 and `import run_agent` resolves; the default runner is
+  `hermes_run`.
+- The overlay: an overlaid module wins while the rest still resolves upstream, with the ledger checked by tests.
+- The model index on this machine: RTX 3070 Laptop, 8 GB VRAM, 31.9 GB RAM - 4 models `gpu`, 6 `hybrid`, none too
+  large.
 
-| Area | State |
-|---|---|
-| Coding flow | Beta. Validated on the todo app; RAG build partly done |
-| Design flow | Used for the RAG design (about 85%); still marked experimental |
-| Writing, content flows | Shipped, not validated |
-| Jobs | Built and tested (unit and worker-loop tests); not yet used on a real run |
-| Web search, `web_fetch`, browser, debug-mode logins | Built and tested; not yet used on a real run |
-| Coding standards skill | Written; to be calibrated on the stocks run |
-| Desktop | Changes in; not being run until the end |
-| Worker and models | Down since the 18 Nov crash; nothing starts on its own |
-| RAG build task `t1117-202509-ce9e` | Stale `executing`. Library + 24 tests committed; ingest never committed (killed in the crash); `_debug_*.py` left behind |
+## Deferred (needs the GPU or a live model)
+
+- The first end-to-end run of each flow against a real model.
+- Watchdog thresholds under real VRAM pressure.
+- A live CI provider (Jenkins/GitHub/GitLab) and a live embedding model.
+- The LAN smoke test.
 
 ## Next
 
-1. **Stocks case study.** Hand back the stale RAG task (`ariadne stop`), start the worker and models (pick `max`
-   or `shared`), and submit the stock analytics package with gates. Watch the first jobs.
-2. **Calibrate skills from that run.** Update `jobs`, `coding-standards` and `planning-lessons` with what the
-   models actually did.
-3. **RAG build.** Redo the ingest and eval as jobs: clean up the debug scripts, then resume or resubmit.
-4. **Validate** the writing and content flows, then the desktop.
-
-## Later
-
-All the parked ideas are in [TODO.md](../TODO.md): chat hijack, the two home servers, compression and
-instruction-decay telemetry, default quality gates, Slack, and others.
+- The first real overlay entry, when a module genuinely has to differ.
+- Optionally, moving `hermes_run` from the `hermes` CLI to in-process `AIAgent`; the bootstrap and overlay are
+  already in place for it.
+- Keep this wiki honest as the code moves.

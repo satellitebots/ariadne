@@ -42,9 +42,9 @@ kill these processes themselves.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | A task shows `executing` but nothing runs | The worker died (crash or reboot) | `python -m ariadne stop` hands the task back; approve it to continue |
-| GPU busy, chat waits | A task holds the model | Park it, or wait; the desktop banner says which task |
+| GPU busy, chat waits | A task holds the model | Park it, or wait; the console banner says which task |
 | Every call reloads a model | Two models fighting for one slot | Keep embeddings in the CPU side group; send heavy work as [jobs](Jobs.md) |
 | Terminal command timed out | Long work run in the model's terminal | It should be a job |
 | PC crashes under load | RAM pinned too high | Use `shared` or `light`; `max` is capped at 80% RAM |
-| Desktop asks for a gateway URL or offers an installer | Not Ariadne's build, or a broken runtime | `python -m ariadne desktop --build`; see [Desktop](Desktop.md) |
+| The console is empty or the worker is missing | nothing is running, or the store is elsewhere | `python -m ariadne inbox`; `python -m ariadne up` |
 | A page needs a sign-in | The isolated browser has no logins | [Debug mode](Web-and-Browser.md) |

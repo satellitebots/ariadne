@@ -1,32 +1,15 @@
-# Design decisions
-
-The rules Ariadne is built on, and why. Change these only on purpose.
-
-## Non-negotiables
+# Decisions
 
 | Decision | Why |
 |---|---|
-| **Hermes stays stock.** `upstream/` is a pinned submodule, never edited. Ariadne adds config, plugins, MCP servers, skills and a branding overlay. | Upgrades stay possible. A contract test fails loudly when Hermes moves something Ariadne depends on. |
-| **Local models only.** Tools may use the internet; models never leave the machine. | Privacy and cost: the point of the project. |
-| **Gates before work.** No gates, no start. | "Done" has to be checkable, or a small model will declare victory. |
-| **Read-only planning, human sign-off.** | Nothing changes until you have seen the plan and the model per step. |
-| **Deliberate pauses only.** Nothing interrupts a task on its own; you park it, or a login pauses it. | Losing half-done work is worse than waiting. |
-| **Models write, Ariadne runs.** Heavy work is a job, run with the model unloaded. | One machine cannot hold the model and the work at once. |
-| **Models never handle credentials.** Logins go to the person in debug mode. | Safety; nothing to leak. |
-| **Stopping is explicit.** Detached processes, stopped from the watch window or `ariadne stop`. | A dropped terminal or remote session must not kill a task. |
-
-## Defaults that may change
-
-| Default | Reasoning | Revisit when |
-|---|---|---|
-| MoE models for planning and steps | Several times faster on 8 GB | Bigger GPU |
-| `max` = 100% GPU, 80% RAM | The 90% RAM crash | More RAM, or the load moves to servers |
-| QA: 10 rounds, stop after 2 without progress | Bounded cost | Gates get more reliable |
-| Isolated browser by default | No logins unless asked | |
-| Desktop validated last | Terminal and MCP are the main paths | After the coding flow is stable |
-
-## Out of scope for now
-
-- Spreading load across the two home servers (one has 64 GB RAM and no GPU).
-- The Slack channel.
-- One Python environment per workspace, shared by the worker's terminal and the gate commands.
+| **Local inference only** | A cloud provider is refused by `local_only` at every command that can start a model. A localhost/LAN Ollama server is allowed through the serving registry; nothing else is. |
+| **No messaging** | Telegram, Slack, Discord and the bot gateway are not surfaces Ariadne has. Nothing to connect, nothing to configure. |
+| **Flows replace bots** | A Hermes bot is a persona with a soul file. Ariadne's unit is a flow: `flow.yaml` + `FLOW.md` + skills + gates, declaring model, toolsets, MCP servers, plan allowlist and how done is checked. A person signs off a plan, not a personality. |
+| **Hermes is the worker backend** | The loop, tools, skills, MCP client, compression and provider handling are Hermes's. Reimplementing them would be a rewrite with no upside. |
+| **Overlay, not subtree, not root merge** | The submodule stays pristine and updatable; our modules live in `overlay/` and win by `sys.path` + `__path__`. No 163k-line diff in our history, no broken absolute imports. |
+| **Replace only the wrong hook** | Console app, chat and MCP hosting became ours because their integration points belong to the orchestrator. Everything else stays Hermes's. |
+| **Explicit choice, enforced** | A task needs an explicit flow and an explicit agent model. `service.submit` refuses otherwise, so every door refuses identically. |
+| **Read-only plans at dispatch** | The plan/review/checkpoint phases are not offered write tools at all - a property of the loop, not a promise in a prompt. |
+| **The gates decide** | Out of time or out of turns is not failure: the work stays and the gates decide. Two iterations with no progress stop the loop. |
+| **One model on the GPU** | The worker unloads between phases; jobs run with the model unloaded and wake the same session with the result. |
+| **The index is deterministic** | The shortlist is weights + a fixed overhead against VRAM and the profile's total. Hugging Face suggestions are opt-in, cached, and never edit the catalog. |

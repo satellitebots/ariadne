@@ -1,23 +1,14 @@
-**[Home](Home.md)**
-
-**Start**
-- [Concepts](Concepts.md)
-- [Status and roadmap](Status-and-Roadmap.md)
-- [Design decisions](Decisions.md)
-
-**How it works**
+- [Home](Home.md)
 - [Architecture](Architecture.md)
-- [Task lifecycle](Task-Lifecycle.md)
+- [Concepts](Concepts.md)
+- [Task Lifecycle](Task-Lifecycle.md)
+- [Flows and Skills](Flows-and-Skills.md)
+- [Models and Resources](Models-and-Resources.md)
 - [Jobs](Jobs.md)
-- [Parking and KV cache](Parking-and-KV-Cache.md)
-- [Web, browser and logins](Web-and-Browser.md)
-
-**Run it**
+- [Parking and KV Cache](Parking-and-KV-Cache.md)
+- [Web and Browser](Web-and-Browser.md)
+- [CLI Reference](CLI-Reference.md)
 - [Operations](Operations.md)
-- [Models and resources](Models-and-Resources.md)
-- [Desktop](Desktop.md)
-
-**Reference**
-- [CLI reference](CLI-Reference.md)
-- [Flows and skills](Flows-and-Skills.md)
-- [Case studies](Case-Studies.md)
+- [Decisions](Decisions.md)
+- [Status and Roadmap](Status-and-Roadmap.md)
+- [Case Studies](Case-Studies.md)
