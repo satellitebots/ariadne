@@ -65,10 +65,16 @@ def _update(jid, db_path=None, **f):
         c.execute(f"UPDATE jobs SET {', '.join(k + '=?' for k in f)} WHERE id=?", (*f.values(), jid))
 
 
-def unload_models(base="http://127.0.0.1:8090"):
+def unload_models(base=None):
     """Free the GPU and RAM for the job: llama-swap's /unload stops every loaded model (the job loads what it uses)."""
+    if base is None:
+        try:
+            from . import serving
+            base = serving.base()
+        except Exception:
+            base = "http://127.0.0.1:8090"
     try:
-        urllib.request.urlopen(base + "/unload", timeout=60).read()
+        urllib.request.urlopen(base.rstrip("/") + "/unload", timeout=60).read()
         return True
     except Exception:
         return False

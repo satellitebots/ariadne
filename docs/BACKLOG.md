@@ -9,10 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B3 - Route inference through the active model server
-`worker` and `llm` use `serving.active()` instead of assuming a local binary, so a LAN GPU box actually serves the
-run. `local_only` re-checked at launch. *Model-free with fakes; one live smoke test later.*
-
 ### B4 - `worker.py`: one session per task
 Replace per-step `hermes chat -z` spawning with a single session that carries the plan, gates at the edge, and
 `-r` resume on a failed gate. Per-step models become an explicit chain of sessions recorded in the plan. Deletes
@@ -75,8 +71,9 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- Inference follows the active server (`serving.endpoint()`; llm, KV cache, image, jobs, flow homes) - this commit
 - Watchdog wired into the worker (`_watchdog` in `orchestrator.serve`, real unload/kill/flag callbacks,
-  act-once escalation) - this commit
+  act-once escalation) - `41784f9`
 - `timed_out` and the task wall-clock (`orchestrator.py`, `present.py`, flows) - `c334e8e`
 
 - Watchdog: escalation, sampling, jsonl trail (`ariadne/watchdog.py`) - this commit

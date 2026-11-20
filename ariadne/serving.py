@@ -4,8 +4,12 @@ Three kinds (docs/MODELS.md): our own pinned `llama-server`, a local `ollama`, o
 Ollama endpoint on the LAN. One is active at a time. The choice is committed defaults (`serving/servers.yaml`) plus
 a machine-local override (`.ariadne/servers.local.yaml`, gitignored) - never a Hermes config, never a cloud URL:
 every address is checked by `local_only` before it is used or saved.
+
+`endpoint()` is the one answer to "where is inference": llm, the KV cache, image generation, jobs and the compiled
+flow homes all ask it, so a server chosen here really serves the run (B3) instead of only being reported.
 """
 import json
+import os
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -15,7 +19,7 @@ from . import local_only, paths, yamlio
 KINDS = ("llama-server", "ollama", "remote")
 SERVERS_FILE = paths.ROOT / "serving" / "servers.yaml"
 LOCAL_FILE = paths.STATE / "servers.local.yaml"
-DEFAULT = {"kind": "llama-server", "url": "http://127.0.0.1:8080", "name": "this machine"}
+DEFAULT = {"kind": "llama-server", "url": "http://127.0.0.1:8090", "name": "this machine"}
 OLLAMA_URL = "http://127.0.0.1:11434"
 
 
@@ -66,6 +70,29 @@ def check_url(srv):
     if not local_only.is_lan_host(host):
         raise ServingError(f"{url} is not this machine or the LAN; Ariadne does not use cloud inference "
                            f"(add the host to ARIADNE_ALLOW_HOSTS only if it really is on your network)")
+
+
+def endpoint(srv=None):
+    """The OpenAI-compatible base URL (…/v1) every model call goes to: the active server, or ARIADNE_LLM_URL.
+
+    One function answers "where is inference", and it is checked by the same lock as the registry: a LAN GPU box
+    serves a run only because this is what `llm`, the KV cache, image generation and the compiled flow homes read.
+    """
+    override = os.environ.get("ARIADNE_LLM_URL", "").strip()
+    if override:
+        check_url({"url": override})
+        return override.rstrip("/")
+    srv = srv or active()
+    check_url(srv)   # a server passed in explicitly gets the same lock as the registered one
+    url = (srv.get("url") or "").rstrip("/")
+    if not url:
+        raise ServingError("the active server has no URL; run `ariadne server remote <url>` or `ariadne server setup`")
+    return url if url.endswith("/v1") else url + "/v1"
+
+
+def base(srv=None):
+    """The same server without /v1, for its own endpoints (/unload, /health, /api/*, /upstream/*)."""
+    return endpoint(srv).removesuffix("/v1").rstrip("/")
 
 
 def _get_json(url, timeout=5):

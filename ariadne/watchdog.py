@@ -246,8 +246,14 @@ def start(store, url="", unload=None, kill=None, flag=None, **kw):
                 dog._write({"ts": round(time.time(), 3), "level": "ok", "error": f"{type(e).__name__}: {e}"})
             stop.wait(dog.interval)
 
-    threading.Thread(target=loop, name="ariadne-watchdog", daemon=True).start()
-    return stop.set
+    thread = threading.Thread(target=loop, name="ariadne-watchdog", daemon=True)
+    thread.start()
+
+    def stop_it():
+        stop.set()
+        thread.join(timeout=5)   # the loop wakes at once; waiting means no sample outlives its caller
+
+    return stop_it
 
 
 def main(argv):

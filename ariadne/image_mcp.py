@@ -27,7 +27,8 @@ def _size_error(width, height):
 
 def _free_gpu():
     try:
-        url = paths.LLM_BASE_URL.removesuffix("/v1") + "/api/models/unload"
+        from . import serving
+        url = serving.base() + "/api/models/unload"
         urllib.request.urlopen(urllib.request.Request(url, data=b"", method="POST"), timeout=30)
     except Exception:
         pass

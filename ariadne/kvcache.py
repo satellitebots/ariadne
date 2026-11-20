@@ -32,7 +32,8 @@ def _slug(s):
 
 
 def _post(model, action, filename, timeout=600):
-    base = paths.LLM_BASE_URL.removesuffix("/v1").rstrip("/")
+    from . import serving
+    base = serving.base()   # the active server, never a hardcoded port: a LAN box parks and wakes too
     req = urllib.request.Request(f"{base}/upstream/{model}/slots/0?action={action}",
                                  data=json.dumps({"filename": filename}).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")

@@ -65,6 +65,15 @@ def _kill_strays():
 
 
 def stop():
+    """Stop the model server we started. A LAN box or a local Ollama is not ours to stop."""
+    from . import serving
+    try:
+        srv = serving.active()
+    except serving.ServingError:
+        srv = {"kind": "llama-server"}
+    if srv.get("kind") != "llama-server":
+        print(f"the active server is {srv.get('kind')} at {srv.get('url') or '(no url)'}; nothing of ours to stop")
+        return 0
     pid = _pid()
     if pid:
         try:
@@ -81,10 +90,23 @@ def stop():
 
 
 def start(listen="127.0.0.1:8090", wait=60):
-    """Start llama-swap detached (own process group; log in .ariadne/logs/llama-swap.log)."""
-    if llm.is_up():
-        print(f"models already up on {paths.LLM_BASE_URL}")
+    """Start our llama-server when it is the active server; an Ollama or a LAN box only has to answer.
+
+    The choice comes from `serving.active()` (docs/MODELS.md): there is no point starting a local binary when the
+    person pointed Ariadne at a GPU box, and pretending to "start" it would hide that it is down.
+    """
+    from . import serving
+    try:
+        srv = serving.active()
+    except serving.ServingError as e:
+        sys.exit(str(e))
+    target = serving.endpoint(srv)
+    if llm.is_up(target):
+        print(f"models already up on {target}")
         return 0
+    if srv.get("kind") != "llama-server":
+        sys.exit(f"the active model server is {srv.get('kind')} at {srv.get('url') or '(no url)'}, and it is not "
+                 f"answering {target}.\n  start it there, or switch:  python -m ariadne server setup")
     swap = deps.find_bin("llama-swap", "llama-swap")
     if not swap:
         sys.exit("llama-swap is missing: run  python -m ariadne install")

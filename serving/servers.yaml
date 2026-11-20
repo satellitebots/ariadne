@@ -5,7 +5,7 @@
 default: llama-server
 servers:
   - kind: llama-server      # our own pinned binary in serving/bin; weights fetched into models/ on sign-off
-    url: http://127.0.0.1:8080
+    url: http://127.0.0.1:8090
     name: this machine
   - kind: ollama            # a local Ollama; `ariadne install --system` installs it if absent
     url: http://127.0.0.1:11434

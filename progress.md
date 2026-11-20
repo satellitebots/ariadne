@@ -97,6 +97,29 @@ knew nothing about it.
 The thread test escalates for real against a fake sampler and injected callbacks, so no GPU and no kill path runs.
 Not proved: the thresholds under real VRAM pressure - deferred, needs the GPU (`docs/BACKLOG.md`).
 
-### B3 — route inference through the active model server
+### B3 — route inference through the active model server — DONE
+
+**What was missing.** `serving.py` could register and probe a server, but every actual model call used the hardcoded
+`paths.LLM_BASE_URL` (8090) or its own guess: `llm`, `kvcache`, `image_mcp`, `jobs.unload_models`, and the compiled
+flow homes. So `ariadne server remote http://gpu.lan:11434` changed what `ariadne server` *reported* and nothing
+else. The committed registry also said llama-server was on **8080** while `serve.start` listens on **8090**.
+
+**What changed.**
+- `serving.endpoint()` (…/v1) and `serving.base()` (no /v1) are now the single answer to "where is inference", and
+  they run `check_url` on whatever they return - including an explicitly passed server and `ARIADNE_LLM_URL`.
+- `llm`, `kvcache._post`, `image_mcp._free_gpu`, `jobs.unload_models`, `watchdog.server_url`, and
+  `flows.compile_flow` (primary **and** fallback provider) all read it. A compiled flow home now carries the LAN
+  address, so Hermes itself goes there.
+- `serve.start` starts our llama-server only when that is the active kind; for `ollama`/`remote` it checks the
+  endpoint answers and refuses loudly if not. `serve.stop` will not touch a server that is not ours.
+- `orchestrator.serve` re-checks `local_only.check_home()` before it takes the worker lock.
+- `serving/servers.yaml` + `serving.DEFAULT`: 8080 -> 8090, matching where we listen.
+
+**Verified.** `pytest ariadne/tests/test_serving_routing.py` -> 11 passed against a loopback stub HTTP server (chat,
+health, KV save, unload all arrive at the active endpoint; a cloud URL is refused; `serve` does not spawn our binary
+for a LAN server). Full suite -> **151 passed in 96 s**. Not proved: a live smoke test against a real LAN box -
+deferred with the GPU items.
+
+### B4 — `worker.py`: one session per task
 
 (see below)

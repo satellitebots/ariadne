@@ -236,6 +236,15 @@ def compile_flow(fl, flows_dir=None):
     cfg = json.loads(json.dumps(BASE_CONFIG))
     cfg["model"]["default"] = fl.model
     from . import models as modellib
+    from . import serving
+    try:
+        # Where inference actually is (B3): our llama-server, a local Ollama, or a box on the LAN. The flow home is
+        # what Hermes reads, so this is the line that makes a chosen server serve the run.
+        cfg["model"]["base_url"] = serving.endpoint()
+        for fb in cfg.get("fallback_providers") or []:
+            fb["base_url"] = serving.endpoint()
+    except serving.ServingError as e:
+        raise FlowError(f"{fl.name}: no usable model server: {e}")
     ctx = modellib.load().context
     cfg["model"]["context_length"] = ctx["window"]
     # Context compression (Hermes's own compressor): past compress_at tokens the run pauses, the same model

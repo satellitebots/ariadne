@@ -1399,7 +1399,13 @@ def _watchdog(store):
 
 def serve(idle_exit=1800):
     from .deps import require
+    from . import local_only
     require()
+    bad = local_only.check_home()
+    if bad:
+        # Re-checked at launch, not only when the profile was written: inference stays on this machine or the LAN.
+        print("refusing to start: inference must stay local:\n  - " + "\n  - ".join(bad), flush=True)
+        return 2
     lock = _try_lock(LOCK)
     if lock is None:
         print("another Ariadne worker is running", flush=True)

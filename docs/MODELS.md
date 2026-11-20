@@ -79,9 +79,16 @@ ariadne models use <name>      make a model the default for new tasks
 
 ## To build
 
-1. `serving/servers.yaml` + `.ariadne/servers.local.yaml`, and a `ModelServer` type (kind, url, probe, list, load,
-   unload) in `ariadne/serving.py`.
-2. `models setup` with the probe → ask → reconcile → persist flow; `models server` to switch.
-3. Route every inference call through the active server instead of assuming a local binary — this is also what makes
-   a LAN GPU box usable from a laptop.
-4. `local_only` checks the server URL at registration and at startup, not only the provider config.
+1. ~~`serving/servers.yaml` + `.ariadne/servers.local.yaml`, and a `ModelServer` type (kind, url, probe, list) in
+   `ariadne/serving.py`.~~ **Built**: `serving.py` (kind, url, `probe`, `reconcile`, `use`), plus `endpoint()` /
+   `base()` - the one answer to "where is inference".
+2. `models setup` with the probe → ask → reconcile → persist flow; `models server` to switch. **Partly built**: the
+   flow lives in `ariadne server setup`; `ariadne models setup` still has to become its alias.
+3. ~~Route every inference call through the active server instead of assuming a local binary.~~ **Built** (B3):
+   `llm`, the KV cache, image generation, jobs' unload, the watchdog and every compiled flow home read
+   `serving.endpoint()`; `serve` starts our binary only when it is the active kind.
+4. ~~`local_only` checks the server URL at registration and at startup.~~ **Built**: `serving.check_url` on every
+   `endpoint()`, and `orchestrator.serve` re-checks the home before it starts a worker.
+
+`ARIADNE_LLM_URL` remains an escape hatch for a one-off endpoint; it is checked by the same lock, so it cannot
+become a cloud provider.
