@@ -191,4 +191,15 @@ Registered in `flows/mcp_servers.yaml`; enabled for `design`, `investigation` an
 Tests: `ariadne/tests/test_office_mcp.py` -> 6 passed (a written document is read back through the same parser, so
 the round trip is real, not a byte match). Full suite **175 passed in 89 s**.
 
-**B6c `ci`** — (below)
+**B6c `ci` — DONE.** `ariadne/ci_mcp.py`: three providers behind four verbs (`ci_pipelines`, `ci_status`,
+`ci_trigger`, `ci_logs`) - GitHub Actions (workflow dispatch, runs, the logs zip), GitLab (pipelines, jobs trace) and
+Jenkins (build / buildWithParameters, builds json, consoleText). Pipelines are named in `.ariadne/ci.yaml`
+(gitignored); the entry stores `token_env`, never the token, so copying the file cannot leak a secret. Log output is
+trimmed to a tail on purpose: the point is not to pour a 40 MB log into a 9B model's context. A redirect that leaves
+the host drops the Authorization header (GitHub sends logs to a signed URL). No network in the tests: a loopback stub
+serves all three providers, so the request paths, bodies, auth headers and parsers are real.
+Registered in `flows/mcp_servers.yaml`; enabled for `coding` (p80 CI). Tests: `ariadne/tests/test_ci_mcp.py` -> 11
+passed. Full suite **186 passed in 92 s**. Named gap: none of the three has been driven against a live server - that
+needs the person's URL and token, and is on the deferred list with the GPU work.
+
+**B6d `rag`** — (below)

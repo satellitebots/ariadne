@@ -66,3 +66,9 @@ office:   # Word (.docx) and Excel (.xlsx) read/write with no dependency (ariadn
   args: ["-m", "ariadne.office_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 240
+ci:       # Jenkins / GitHub Actions / GitLab: trigger, status, logs (ariadne/ci_mcp.py; pipelines in
+          # .ariadne/ci.yaml - gitignored; the entry names the env var holding the token, never the token)
+  command: "{python}"
+  args: ["-m", "ariadne.ci_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 120
