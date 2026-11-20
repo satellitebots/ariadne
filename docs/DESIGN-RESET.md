@@ -172,6 +172,11 @@ not supported.
 
 ## Scheduled jobs are scheduled durable tasks
 
+**Built (B11):** the row lives in the store (`schedules`), `service.schedule_create(session, cron, brief, overrides)`
+inherits the session's flow, model, workspace and gates, `schedule.sweep()` runs in the worker's serve loop and
+submits a normal `source="schedule"` task per due occurrence, and a refused submission disables the schedule instead
+of retrying forever. `ariadne schedules` lists/switches them; the MCP door has `create_schedule`/`list_schedules`.
+
 A schedule is a **standing brief**, not a separate kind of work:
 
 ```yaml

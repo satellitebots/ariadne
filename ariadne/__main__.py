@@ -28,6 +28,7 @@
   chat [--session NAME]      talk to Hermes in the terminal (ariadne-tasks skill); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
+  schedules [create SESSION --cron EXPR --brief TEXT | on NAME | off NAME | rm NAME]   standing briefs
   watch [--open|--always|--never]   live activity: tasks, MCP calls, worker, models, Hermes tool and model calls
                              (--open: in its own window; --always: every run opens it; --never: only on --watch)
   --watch                    with any command: open the activity window too
@@ -113,7 +114,7 @@ def main(argv=None):
     known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
              "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
              "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit",
-             "ui"}
+             "ui", "schedules"}
     # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
     # argument; an unquoted multi-word brief works too.
     if argv and argv[0] not in known and not argv[0].startswith("-") and (len(argv) > 1 or " " in argv[0]):
@@ -193,6 +194,10 @@ def main(argv=None):
     if cmd in ("inbox", "show", "follow", "ok", "fix", "no", "gates"):
         from . import console
         return console.main([cmd, *rest])
+    if cmd == "schedules":
+        # A standing brief; reading and switching one is model-free, so it runs before the dependency gate.
+        from . import schedule
+        return schedule.main(rest)
     deps.require()  # everything below needs the dependencies
     if cmd == "serve":
         from . import serve

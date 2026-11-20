@@ -224,6 +224,23 @@ def list_sessions(limit: int = 10) -> str:
 
 
 @server.tool()
+def create_schedule(session: str, cron: str, brief: str = "") -> str:
+    """A standing brief: a normal task on a cron schedule, continuing the session's chain. It inherits the session's
+    flow, model, workspace and gates from its most recent task, and creating it authorises every later run. A failed
+    run goes to the person; nothing retries in a loop."""
+    def go():
+        row = service.schedule_create(session, cron, brief, store=store())
+        return json.dumps(row, indent=1, default=str)
+    return _guard(go)
+
+
+@server.tool()
+def list_schedules() -> str:
+    """What is scheduled: name, cron, flow/model, enabled, and the last task it submitted."""
+    return json.dumps(service.schedules(store=store()), indent=2, default=str)
+
+
+@server.tool()
 def list_tasks(limit: int = 10) -> str:
     """Recent tasks and their status."""
     return json.dumps(service.tasks(max(1, min(int(limit), 50)), store=store()), indent=2, default=str)

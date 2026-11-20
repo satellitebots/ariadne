@@ -212,6 +212,12 @@ def serve(idle_exit=1800):
                 model_server.apply_if_changed()
             except (Exception, SystemExit) as e:
                 print(f"could not apply the resource profile: {e}", flush=True)
+            try:  # due schedules become normal tasks in their own session (a standing brief, not a new kind of job)
+                from . import schedule
+                for name, tid in schedule.sweep(w.store):
+                    print(f"schedule {name} -> {tid}", flush=True)
+            except Exception as e:
+                print(f"schedule sweep failed: {e}", flush=True)
             if any(t["status"] in ("new", "approved") for t in w.store.list(50)):
                 if not ensure_llm():
                     print("local models are not reachable; waiting", flush=True)

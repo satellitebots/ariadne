@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS tasks(
   models TEXT DEFAULT '', session TEXT DEFAULT '', learn INTEGER DEFAULT 0, gates TEXT DEFAULT '',
   model TEXT DEFAULT '', plan_json TEXT DEFAULT '', run_started REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS schedules(
+  name TEXT PRIMARY KEY, cron TEXT, brief TEXT, flow TEXT, model TEXT, workspace TEXT, gates TEXT DEFAULT '[]',
+  enabled INTEGER DEFAULT 1, created REAL, last_run REAL DEFAULT 0, last_task TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
   segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', summary TEXT DEFAULT '',
@@ -278,6 +281,57 @@ class Store:
             for tid in tids:
                 c.execute("UPDATE tasks SET learn=0 WHERE id=?", (tid,))
                 c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), "skill", "feedback folded into a skill"))
+
+    # ---------- schedules: a standing brief, not a new kind of job ----------
+
+    def schedules(self, enabled_only=False):
+        with self._conn() as c:
+            q = "SELECT * FROM schedules" + (" WHERE enabled=1" if enabled_only else "") + " ORDER BY name"
+            return [dict(r) for r in c.execute(q)]
+
+    def schedule(self, name):
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM schedules WHERE name=?", (name,)).fetchone()
+        if not r:
+            raise TaskError(f"no schedule {name}")
+        return dict(r)
+
+    def schedule_create(self, name, cron, brief, flow, model, workspace="", gates=(), now=None):
+        """A schedule inherits the session's flow, model, workspace and gates; creating it is the standing authorisation."""
+        now = time.time() if now is None else now
+        name = (name or "").strip()
+        if not name:
+            raise TaskError("a schedule needs a name (it is also the session its runs continue)")
+        if not (brief or "").strip():
+            raise TaskError("a schedule needs a brief: what should be true when a run is done?")
+        with self._conn() as c:
+            if c.execute("SELECT 1 FROM schedules WHERE name=?", (name,)).fetchone():
+                raise TaskError(f"schedule {name} already exists; edit it instead of creating it twice")
+            c.execute("INSERT INTO schedules(name, cron, brief, flow, model, workspace, gates, enabled, created, "
+                      "last_run) VALUES (?,?,?,?,?,?,?,1,?,0)",
+                      (name, cron, brief.strip(), flow, model, workspace or "",
+                       json.dumps([gate(g) if isinstance(g, str) else g for g in gates]), now))
+        return self.schedule(name)
+
+    def schedule_update(self, name, **fields):
+        allowed = {k: v for k, v in fields.items() if k in ("cron", "brief", "flow", "model", "workspace", "gates",
+                                                            "enabled")}
+        if not allowed:
+            raise TaskError("nothing to change")
+        if "gates" in allowed and not isinstance(allowed["gates"], str):
+            allowed["gates"] = json.dumps([gate(g) if isinstance(g, str) else g for g in allowed["gates"]])
+        with self._conn() as c:
+            c.execute(f"UPDATE schedules SET {', '.join(k + '=?' for k in allowed)} WHERE name=?",
+                      (*allowed.values(), name))
+        return self.schedule(name)
+
+    def schedule_ran(self, name, when, task_id):
+        with self._conn() as c:
+            c.execute("UPDATE schedules SET last_run=?, last_task=? WHERE name=?", (when, task_id, name))
+
+    def schedule_delete(self, name):
+        with self._conn() as c:
+            c.execute("DELETE FROM schedules WHERE name=?", (name,))
 
     def claim_next(self, now=None):
         """Oldest task that needs the worker: new -> planning, approved -> executing (atomic).

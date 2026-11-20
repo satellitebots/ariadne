@@ -5,6 +5,7 @@ and no surface may accept what another would refuse. Presentation is not here; s
 reached only from here (and from the worker, which records progress while a task runs): a surface holds at most a
 store handle to pass in, it never calls a store method itself.
 """
+import json
 from pathlib import Path
 
 from . import flows as flowlib
@@ -121,6 +122,40 @@ def feedback(tid, text, store=None):
 def event(tid, kind, detail="", store=None):
     """Record something that happened to a task (a sign-in, a marker) without changing its status."""
     _db(store).event(tid, kind, detail)
+
+
+def schedule_create(session, cron, brief="", overrides=None, store=None, now=None):
+    """A standing brief for a session. It inherits the flow, model, workspace and gates of the session's most recent
+    task - choices the person already made at submit - and creating it is the authorisation for every later run."""
+    from . import schedule as sched
+    over = dict(overrides or {})
+    sched.parse(cron)                                  # refuse a cron nobody can read, before anything is written
+    db = _db(store)
+    session = (session or "").strip()
+    if not session:
+        raise TaskError("a schedule needs a session: it is the chain its runs continue")
+    mine = [t for t in db.list(200) if (t.get("session") or "") == session]
+    if not mine:
+        raise TaskError(f"session {session} has no task yet; a schedule inherits its flow, model, workspace and "
+                        f"gates from one")
+    last = db.get(mine[0]["id"], events=False)
+    gates = over["gates"] if over.get("gates") is not None else json.loads(last.get("gates") or "[]")
+    return db.schedule_create(session, cron, brief or (last.get("text") or "").splitlines()[0],
+                              over.get("flow") or last.get("flow") or "", over.get("model") or last.get("model") or "",
+                              over.get("workspace", last.get("workspace") or ""), gates, now=now)
+
+
+def schedules(store=None):
+    return _db(store).schedules()
+
+
+def schedule_set(name, enabled, store=None):
+    return _db(store).schedule_update(name, enabled=1 if enabled else 0)
+
+
+def schedule_delete(name, store=None):
+    _db(store).schedule_delete(name)
+    return {"deleted": name}
 
 
 def events_since(since=0.0, limit=200, store=None):
