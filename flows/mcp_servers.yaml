@@ -56,3 +56,8 @@ text:     # drafts by a generate-kind catalog model, e.g. Fimbulvetr for prose (
   args: ["-m", "ariadne.text_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 900
+data:     # csv / parquet / sqlite: profile, query, transform without loading the file into the context (ariadne/data_mcp.py)
+  command: "{python}"
+  args: ["-m", "ariadne.data_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 120

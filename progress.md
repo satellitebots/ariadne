@@ -174,4 +174,11 @@ sign-off behaviour in the same commit that moves files, which B5 was told not to
 
 ### B6 — MCP servers: `data`, `office`, `ci`, `rag`
 
-(see below)
+**B6a `data` — DONE.** `ariadne/data_mcp.py`, stdlib only: a csv, parquet (via pyarrow when present) or sqlite file
+becomes a table in an in-memory SQLite database, so one language covers profile / query / transform. `query` is
+SELECT-only, `transform` writes csv/json/sqlite to an absolute path, and every failure comes back as text. Registered
+in `flows/mcp_servers.yaml`; enabled for `coding` and `investigation` per `docs/COVERAGE.md`. Named gap: parquet
+needs `pyarrow`, which this environment does not have - the tool says so and names the pip command.
+Tests: `ariadne/tests/test_data_mcp.py` -> 8 passed. Full suite **169 passed in 89 s**.
+
+**B6b `office`** — (below)

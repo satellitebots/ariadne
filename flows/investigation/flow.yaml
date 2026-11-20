@@ -5,7 +5,7 @@ when: research questions, comparing options or vendors, due diligence, reading a
 model: gemma-4-12b     # the agent model when a step names none (MoE: fast here)
 skills: [investigate]
 requires: [node, chrome]   # for the browser server; checked before a task runs
-mcp_servers: [memory, web, browser, export, jobs]
+mcp_servers: [memory, web, browser, export, jobs, data]
 toolsets:
   plan: [file, skills, search]
   execute: [file, terminal, skills, todo, search]
