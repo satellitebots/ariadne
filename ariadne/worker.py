@@ -128,6 +128,11 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     skills ride along as `skills_list`/`skill_view`, so a run can read a skill body, not just its plan-prompt line.
     `web_search` rides along too (the plan prompt already assumes it): DDGS behind an injectable transport, and
     nothing to close.
+
+    After a normal return the run leaves one log artifact under `paths.LOGS` (`<tid>-<phase>-<epoch>.log`): header
+    (flow, phase, model, session, workspace), the prompt, one line per tool call, the report and the stop reason.
+    `RunResult.log` is that path. A full disk must not fail a task: if the write cannot happen, the result is
+    returned with `log` left empty.
     """
     from . import runtime
     from .runtime import mcp as mcp_mod
@@ -140,11 +145,13 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
         pool = mcp_mod.Pool(cfg, plan_allowed=flow.plan_tools)
     box = skills_mod.Box(flow)
     search = web_mod.Search()    # web_search in every run; it holds no server, so there is nothing to close
+    events = []
     try:
         r = runtime.run(prompt, home=flow.home, workspace=workspace, phase=phase, model=model or flow.model,
                         session=name, max_turns=flow.max_turns.get(phase, 40),
                         budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))),
-                        mcp=pool, skills=box, web=search)
+                        mcp=pool, skills=box, web=search,
+                        on_event=lambda kind, detail: events.append((kind, detail)))
     finally:
         if pool is not None:
             pool.close()
@@ -153,7 +160,24 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
         r.text = f"MCP servers unavailable: {len(pool.errors)} (see runtime log)\n" + r.text
     if not r.text.strip():
         r.text = f"STOPPED ({r.stopped}) after {r.turns} turn(s); continue from the files as they are."
-    return RunResult(r.text, code, str(flow.home / "runtime-sessions"), name)
+    return RunResult(r.text, code, _run_log(flow, phase, model, name, str(workspace), tid, prompt, events, r), name)
+
+
+def _run_log(flow, phase, model, name, workspace, tid, prompt, events, r):
+    """The per-run log artifact; '' when it cannot be written (a full disk must not fail a task)."""
+    try:
+        log = paths.LOGS / f"{tid}-{phase.replace(':', '-')}-{int(time.time())}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        lines = [f"flow: {flow.name}", f"phase: {phase}", f"model: {model or flow.model}",
+                 f"session: {name}", f"workspace: {workspace}", "", "PROMPT:", prompt, ""]
+        lines += [f"tool {detail}" for kind, detail in events if kind == "tool"]
+        lines += ["", "REPORT:", r.text, ""]
+        if r.stopped:
+            lines.append(f"stopped={r.stopped}")
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(log)
+    except OSError:
+        return ""
 
 
 PARKED = 125  # exit code of a run stopped by a park request

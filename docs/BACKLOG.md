@@ -35,19 +35,16 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
 - B12.5 web search: `ariadne/runtime/web.py` (`Search` - one `web_search` schema, DDGS behind an injectable transport,
   limit clamped 1..10, snippets flattened to 300 chars, every failure as text), `loop.run(web=...)`, and `runtime_run`
   passing it. 8 tests; suite **277 passed**.
+- B12.6a context trimming and the per-run log: past `context_tokens * trim_at` the loop keeps the system message and a
+  contiguous tail, repairs the boundary so no `tool` result outlives its call, records the omission in the system
+  message, and saves the trimmed history; `Answer.dropped` counts it. `runtime_run` writes
+  `.ariadne/logs/<tid>-<phase>-<epoch>.log` (header, prompt, tool calls, report, stop reason) and returns it in
+  `RunResult.log`; a full disk is swallowed. 4 tests; suite **281 passed**.
 
 **Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
 exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
 `docs/GAP-ANALYSIS.md`.
 
-- **B12.6a context and observability.** Two things a long run needs and the loop lacks: trimming (the message list
-  grows unbounded; past a token budget, keep the system message and a contiguous tail, drop whole turns from the
-  front, never leave a `tool` message without the assistant call it answers, and say in the system message how many
-  turns were dropped) and a per-run log artifact like `hermes_run` writes (prompt, tool calls, final report, under
-  `.ariadne/logs/`).
-  *Done when:* a session driven past the budget still answers, the dropped-turn note is present, no orphan `tool`
-  message exists, and a run leaves a log file naming every tool call.
-  ~120 lines + tests.
 - **B12.6b todo, park, KV and jobs.** A `todo` tool for the execute toolset, the park hooks (`StepBoundary` +
   `park.requested()` -> exit 125 and resume the same session), KV registration around a run, and the jobs wake-up loop
   (`JOB SUBMITTED` -> unload -> run -> resume the same session).

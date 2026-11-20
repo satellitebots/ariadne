@@ -42,7 +42,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
 
-Suite: **127 tests at the start, 277 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 281 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -266,6 +266,16 @@ tmp skill tree (list, view, unknown name, cross-flow lookup, loop dispatch, work
 schema, DDGS behind an injectable transport, the limit clamped to 1..10, snippets flattened to 300 chars, and every
 failure (rate limit, dead network) returned as text. `loop.run(web=...)` merges it and routes the name; `runtime_run`
 passes a `Search`, which holds no server and needs no close. 8 tests, all network-free. Suite: **277 passed**.
+
+**B12.6a - context trimming and the per-run log - DONE.** A long run used to grow its message list without bound. Now,
+before every model call, a list estimated over `context_tokens * trim_at` is cut to the system message plus a
+contiguous tail taken from the end (`_trim_messages`), and the boundary is repaired so a `tool` result never outlives
+the assistant call it answers and a call is never kept without its results; the system message says how many messages
+were omitted (the note is replaced, never duplicated), and the trimmed history is what the session saves. `Answer.dropped`
+counts the loss. `runtime_run` also writes the artifact the old path wrote: `.ariadne/logs/<tid>-<phase>-<epoch>.log`
+with the flow/phase/model/session/workspace header, the prompt, each tool call, the report and the stop reason; an
+unwritable log is swallowed so a full disk cannot fail a task. 4 tests (trim under budget, no trim under it, resume
+order, the log file). Suite: **281 passed**.
 
 **Queued (B12.5-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
 flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted

@@ -8,6 +8,7 @@ Model-free to test: `transport` scripts the model, so a test drives tool calls, 
 GPU.
 """
 import json
+import re
 import time
 from dataclasses import dataclass
 
@@ -42,6 +43,7 @@ class Answer:
     turns: int = 0
     stopped: str = ""          # "" answered, "max_turns", "budget", "empty"
     session: str = ""
+    dropped: int = 0           # messages trimmed out of the context in this run
 
 
 def read_only(phase: str) -> bool:
@@ -60,8 +62,70 @@ def _last_assistant(messages) -> str:
     return ""
 
 
+def _size(messages):
+    """Rough token count: content + tool calls + a per-message envelope, over four."""
+    return sum(len(str(m.get("content") or "")) + len(json.dumps(m.get("tool_calls") or "")) + 40
+               for m in messages) // 4
+
+
+def _valid_start(rest, cut) -> bool:
+    """Is rest[cut] a lawful first message of a list: not an orphaned tool result, and not a call whose results
+    were all cut away?"""
+    if cut >= len(rest):
+        return True
+    m = rest[cut]
+    if m.get("role") == "tool":
+        return False
+    if m.get("role") == "assistant" and (m.get("tool_calls") or []):
+        ids = {c.get("id") for c in m["tool_calls"] if isinstance(c, dict) and c.get("id")}
+        return any(t.get("role") == "tool" and t.get("tool_call_id") in ids for t in rest[cut + 1:])
+    return True
+
+
+def _trim_messages(messages, context_tokens, trim_at):
+    """Fit `messages` in the window: keep the system message and a contiguous tail of the rest, taken from the
+    end, that fits roughly half the window. Returns (kept, dropped).
+
+    The tail's start is repaired - an orphaned tool result, or a call with no result left in the slice, is
+    dropped - so every kept `tool` message still follows the assistant whose `tool_calls` it answers, and the
+    result never holds fewer than the system message plus the last two messages.
+    """
+    if _size(messages) <= context_tokens * trim_at:
+        return messages, 0
+    system, rest = messages[0], messages[1:]
+    target = context_tokens * 0.5
+    cut, used = len(rest), 0
+    while cut > 0 and used + _size([rest[cut - 1]]) <= target:
+        cut -= 1
+        used += _size([rest[cut]])
+    cut = min(cut, max(0, len(rest) - 2))          # never fewer than the system + the last two
+    while cut < len(rest) and not _valid_start(rest, cut):
+        cut += 1
+    kept = [system] + rest[cut:]
+    if len(kept) < 3:                               # the repair ate under the floor: re-keep from the last two
+        cut2 = max(0, len(rest) - 2)
+        while cut2 > 0 and not _valid_start(rest, cut2):
+            cut2 -= 1
+        kept = [system] + rest[cut2:]
+    return kept, len(messages) - len(kept)
+
+
+OMIT_RE = re.compile(r"\n+\[Earlier turns omitted to stay inside the context window:[^\]]*\]")
+
+
+def _omitted_note(n):
+    return (f"\n\n[Earlier turns omitted to stay inside the context window: {n} messages, including tool "
+            "results. The workspace holds the work so far; re-read a file if you need its content.]")
+
+
+def _mark_omitted(content, n):
+    """The system message says what was dropped: append the note, or replace one already there."""
+    return OMIT_RE.sub("", content or "").rstrip() + _omitted_note(n)
+
+
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
-        transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None, web=None):
+        transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None, web=None,
+        context_tokens=65536, trim_at=0.75):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
@@ -71,6 +135,11 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     join the schemas, and calls to them read the flow's shared skills. `web` is the flow's `runtime.web.Search`:
     `web_search` joins the schemas (in every phase - the plan is where it is needed most), and a call by that name
     is handed to it before the native tools.
+
+    `context_tokens`/`trim_at`: before every model call, a message list estimated above `context_tokens * trim_at`
+    is trimmed to the system message plus a recent tail, the system message says how much was omitted, and the
+    trimmed list is what the session saves (the next run resumes what fits). `Answer.dropped` counts the messages
+    removed this run.
     """
     if not (model or "").strip():
         raise RunError("a run needs an explicitly chosen model")
@@ -88,6 +157,10 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
             session_mod.save(home, session, messages)
             return answer
         answer.turns += 1
+        messages, dropped = _trim_messages(messages, context_tokens, trim_at)
+        if dropped:
+            answer.dropped += dropped
+            messages[0] = {**messages[0], "content": _mark_omitted(messages[0].get("content") or "", dropped)}
         left = max(30, int(budget - (clock() - started))) if budget else 600
         reply = model_mod.chat(messages, model=model, tools=schemas, transport=transport, base_url=base_url,
                                timeout=min(600, left))
