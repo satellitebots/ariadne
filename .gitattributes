@@ -1,0 +1,17 @@
+# One line-ending policy for the whole repo, so "consistent files" stops being a warning.
+# Text files normalize to LF in the index; a working copy follows core.autocrlf on checkout.
+* text=auto
+*.py   text eol=lf
+*.md   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.sh   text eol=lf
+*.mmd  text eol=lf
+.gitattributes text eol=lf
