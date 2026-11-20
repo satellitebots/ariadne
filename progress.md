@@ -30,16 +30,19 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B3 | Route inference through the active model server | done `0d08556` |
 | B4 | `worker.py`: one session per task | done `3679767` |
 | B5 | `store.py` extraction | done `c3c4cec` |
-| B6 | MCP servers `data`, `office`, `ci`, `rag` | done (4 commits) |
-| B7 | `diagram`: draw.io export | in progress |
-| B8 | Content flow: reference-based generation | queued |
-| B9 | `ariadne/server` + `ariadne/ui` | queued |
-| B10 | Our own chat | queued |
-| B11 | Schedules from sessions | queued |
-| B12 | Runtime fork strip | queued |
-| B13 | Install and doctor for the new dependency set | queued |
-| B14 | Retire `ariadne_gate` | queued |
-| B15 | Wiki rewrite | queued |
+| B6 | MCP servers `data`, `office`, `ci`, `rag` | done `e2d657f` `d65956e` `3221d29` `6156d19` |
+| B7 | `diagram`: draw.io export | done `87b4d66` |
+| B8 | Content flow: reference-based generation | done `cc8c1c9` |
+| B9 | `ariadne/server` + `ariadne/ui` | done `0e70f97` |
+| B10 | Our own chat | done `0d8facd` |
+| B11 | Schedules from sessions | done `5ec4891` |
+| B12 | Runtime fork strip | **not started** (see below) |
+| B13 | Install and doctor for the new dependency set | done `18502c0` |
+| B14 | Retire `ariadne_gate` | done `84de034` |
+| B15 | Wiki rewrite | **not started** (see below) |
+
+Suite: **127 tests at the start, 234 now** (the four gate tests went with the deleted plugin). Every commit above was
+made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
 VRAM pressure, retrieval-quality gates for B6d. Those stay deferred here too; everything below is verified model-free.
@@ -216,3 +219,32 @@ content get `office`. Named gaps: parquet needs pyarrow; no provider has been dr
 GitLab; no embedding model has been loaded (the stub stands in). All three are on the deferred list.
 
 ### B7 — `diagram`: draw.io / diagrams.net export
+
+## What remains, and why it was not started
+
+### B12 — Runtime fork strip (not started)
+
+Vendor the pinned Hermes into `ariadne/runtime/`, then delete one subsystem per commit - desktop app, messaging,
+connectors/sign-in, cloud providers, model catalog fetch, telemetry, update checks, computer-use - with the suite green
+after each. That is a multi-hour, high-risk item: the submodule is a full application, the deletion list touches the
+agent loop's own imports, and a half-vendored tree is worse than a pinned submodule (it would leave `upstream/` and
+`ariadne/runtime/` both present and divergent, with the "one subsystem per commit" rule already broken). It was not
+started rather than half-done. The preconditions are in place: `upstream/` is clean at the pin (`git -C upstream
+status --short` empty), the fork's own modules are separated (`store.py`, `worker.py`, `service.py`), and
+`docs/FORK.md` is the log the item asks to extend.
+
+### B15 — Wiki rewrite (not started)
+
+Six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap), then
+delete `Desktop.md`, then publish with `tools/publish_wiki.py`. The rewrite is ~600 lines of documentation that has to
+agree with twelve commits' worth of change; it is a unit of work on its own, and publishing pushes to
+`satellitebots/ariadne.wiki.git`, which needs the person's network and credentials. `python tools/publish_wiki.py
+--dry-run` is the local check available before that push.
+
+## Notes for whoever picks this up
+
+- The console is the fastest way to see the state: `python -m ariadne ui`, then `http://127.0.0.1:8787`.
+- Model-free verification is the whole loop: `pytest -q`, `python -m ariadne flows`, `inbox`, `doctor`, `schedules`,
+  `local-only`. Nothing above was proved by loading a model.
+- The deferred list in `docs/BACKLOG.md` (a first end-to-end flow run, watchdog thresholds under load, a live CI
+  provider, a live embedding model, the LAN smoke test) is still the honest boundary of what is proven.
