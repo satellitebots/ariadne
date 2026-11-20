@@ -18,9 +18,6 @@ computer-use. Log every removal in `docs/FORK.md`.
 Drop Node (it was only for the Electron build); `doctor` reports Python, Ollama or the active server, git, uv, GPU,
 and the tools the approved flows name.
 
-### B14 - Retire `ariadne_gate`
-Once B10 exists, the chat has no doing-tools to refuse. Delete the plugin and its tests; keep the rule in docs.
-
 ### B15 - Wiki rewrite
 The six stale pages (Flows-and-Skills, Models-and-Resources, Concepts, Architecture, Decisions, Status-and-Roadmap),
 then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
@@ -33,6 +30,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- `plugins/ariadne_gate` retired: the chat has no doing-tools to refuse - this commit
 - Schedules: cron rows in the store, inherited per session, swept by the worker - this commit
 - Our own chat: a session-bound conversation with no doing-tools by construction - this commit
 - `ariadne/server` + `ariadne/ui`: FastAPI, SSE, the static sessions console - this commit

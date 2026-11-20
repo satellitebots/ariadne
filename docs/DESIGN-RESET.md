@@ -166,8 +166,9 @@ deleted rather than re-enabled.
 ## Messaging is a conversation, not a door
 
 A messaging conversation is a **session**, exactly like a chat: it may talk and it may submit a task, and the task
-continues that session. It gets no tools and no separate home; it runs in the commander home, so the `ariadne_gate`
-policy applies unchanged. A messaging integration that provisions its own tool-enabled home breaks the flow and is
+continues that session. It gets no tools and no separate home. `ariadne_gate` was the interim hook for this; it is
+retired (B14) - the chat home is launched with only the task verbs, skills, clarify and read-only search, so there is
+no doing-tool to refuse. A messaging integration that provisions its own tool-enabled home breaks the flow and is
 not supported.
 
 ## Scheduled jobs are scheduled durable tasks

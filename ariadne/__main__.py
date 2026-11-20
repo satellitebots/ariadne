@@ -61,14 +61,13 @@ def _profile():
     pkg = home / "plugins" / "ariadne"
     if pkg.exists():
         shutil.rmtree(pkg)
-    # The gate: this home may submit tasks, not do the work. A refused tool call is enforcement; a skill is advice.
+    # The gate is retired (docs/FRONTEND.md): the chat home is launched with only the task verbs, so there is no
+    # doing-tool to refuse. An older Ariadne may have left the plugin in this home - remove it, do not enable it.
     gate = home / "plugins" / "ariadne_gate"
     if gate.exists():
         shutil.rmtree(gate)
-    shutil.copytree(paths.PLUGINS_DIR / "ariadne_gate", gate,
-                    ignore=shutil.ignore_patterns("__pycache__", "tests"))
     plugins = cfg.setdefault("plugins", {})
-    plugins["enabled"] = sorted((set(plugins.get("enabled") or []) | {"ariadne_gate"}) - {"ariadne"})
+    plugins["enabled"] = sorted((set(plugins.get("enabled") or []) | set()) - {"ariadne", "ariadne_gate"})
     from . import local_only
     bad = local_only.violations(cfg)
     if bad:

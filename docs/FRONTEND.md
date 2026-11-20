@@ -19,7 +19,8 @@ the parts of Hermes that are genuinely valuable and decouple from the rest.
 - `desktop/plugin/**` (the Hermes plugin page and its HTTP routes), `ariadne desktop`, the branding overlay, the
   nav-hiding prefs, and the stub-render harness that existed only to test a plugin.
 - `plugins/ariadne_gate`: our chat is ours, so it simply is not given doing-tools. A hook that refuses tools after
-  the model chose them was a patch for a container we no longer use.
+  the model chose them was a patch for a container we no longer use. **Deleted** (B14); `_profile` and the chat home
+  remove any copy an older Ariadne left behind.
 - `plugins/offline_guard`: it blocks all egress, which contradicts "a local model may use the internet".
 
 ## Architecture

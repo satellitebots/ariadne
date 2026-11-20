@@ -40,7 +40,7 @@ def test_the_chat_has_no_doing_tools_by_construction(env):
     home = chat.compile_home()
     cfg = (home / "config.yaml").read_text(encoding="utf-8")
     assert "ariadne.tasks_mcp" in cfg and "base_url: http://127.0.0.1:8090/v1" in cfg
-    assert "ariadne_gate" in cfg                     # the backstop is in the home, not the mechanism
+    assert "ariadne_gate" not in cfg                  # the hook is retired: the toolset is the mechanism
 
 
 def test_a_turn_carries_the_session_the_rule_and_the_person_words(env):
