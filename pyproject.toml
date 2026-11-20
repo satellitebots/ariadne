@@ -15,5 +15,9 @@ ariadne = "ariadne.__main__:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+testpaths = ["ariadne/tests"]          # Hermes's own suite is not ours
+norecursedirs = ["vendor", ".venv", "models", ".ariadne", "overlay"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["ariadne"]

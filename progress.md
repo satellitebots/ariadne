@@ -41,7 +41,8 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
-| B17 | Hermes is the worker backend (correction) | done (suite after the rebuild) |
+| B17 | Hermes is the worker backend (correction) | done `4598aec` |
+| B18 | Overlay: own only what we must | done (295 passed) |
 
 Suite: **127 tests at the start, 281 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
@@ -350,6 +351,25 @@ whose integration points belong to the orchestrator. The chat runs on the own ru
 **Verified.** Two tests pin the decision (default runner is `hermes_run`; `ARIADNE_RUNTIME=own` selects the runtime).
 `hermes.exe --version` reports v0.23.2 at the pin and `import run_agent` resolves; the full suite is **289 passed**. A plain `pip install hermes-agent` from git is impossible at this pin
 (pillow/browser-harness conflict), which is why the checkout + lockfile is the supported form.
+
+### B18 — The overlay
+
+**What it is.** `vendor/hermes` stays a pristine submodule; Ariadne overlays it. `overlay.install()` puts repo root,
+then `vendor/hermes`, then site-packages on `sys.path`; `overlay.extend(pkg)` prepends `overlay/<pkg>` to that package's
+`__path__`, so a module we own wins and every other module still comes from the submodule. `overlay.yaml` is the ledger
+(module, why, test) and `overlay.check()` fails the suite when an entry has no file, reason or test. `tools/sync_hermes.py`
+does the update: fetch, checkout, stage the pointer, rebuild the venv from the submodule's lockfile.
+
+**Why this shape.** Subtree would have dragged 163k lines into our history and made every diff noisy; a root merge
+would have broken Hermes's absolute imports. The overlay owns only what must differ and keeps a pin bump to one
+`git add vendor/hermes`.
+
+**Verified.** 6 overlay tests (idempotent order, an overlaid module winning while the rest stays upstream, `apply()`,
+a package without an overlay untouched, the three ledger failures, the real ledger consistent). Suite: **295 passed**.
+
+**Deliberately empty.** No real override yet; nothing needs to differ at code level. The runtime gut is config
+(toolsets, plugins, telemetry, catalog, no gateway/desktop/bots), so the ledger starts empty and the first override
+will arrive with its test.
 
 ### B15 — Wiki rewrite (not started)
 

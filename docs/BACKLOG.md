@@ -132,3 +132,23 @@ pointing at the deleted tree). Restored:
 What stays replaced, because the hook belongs to the orchestrator: the desktop app (our SPA), the chat (our runtime
 with `native_tools=False`), and the MCP hosting surface (our servers). Everything else is Hermes's.
 
+### B18 - The overlay: own only what we must, and keep the submodule updatable
+
+**Done.** `vendor/hermes` stays a pristine submodule; Ariadne is an overlay on it.
+
+- `ariadne/overlay.py`: `install()` fixes the import order (repo root, `vendor/hermes`, site-packages); `extend()`
+  prepends `overlay/<package>` to a package's `__path__` so our module wins per file; `apply()` does both; `check()`
+  validates `overlay.yaml` (every declared module has a file, a reason and a test). `ariadne/bootstrap.py::start()`
+  is the one call every entry point makes before it can import Hermes.
+- `overlay.yaml`: the ledger. Empty is normal - the runtime gut is configuration, not code.
+- `tools/sync_hermes.py`: fetch, checkout a tag/commit, stage the pointer, `uv sync --project vendor/hermes --frozen`.
+  Then `pytest -q`; `test_hermes_contract.py` names any CLI flag, config key or hook that moved.
+- `pyproject.toml`: `testpaths = ["ariadne/tests"]`, `norecursedirs` excludes `vendor` and `overlay`, so Hermes's own
+  suite is never collected.
+- Tests: 6 in `test_overlay.py` (order idempotent, an overlaid module wins while the rest comes from upstream,
+  `apply()`, a package with no overlay untouched, the ledger's three failure modes, the real ledger consistent).
+  Suite: **295 passed**.
+
+No real override exists yet, deliberately: nothing needs to differ from Hermes at code level. The first one gets added
+with its manifest entry and its test.
+

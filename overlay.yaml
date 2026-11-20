@@ -1,0 +1,12 @@
+# Modules Ariadne owns on top of the pinned Hermes checkout (vendor/hermes).
+#
+# Each override is a file under overlay/<package>/<module>.py. At bootstrap that package's __path__ is prepended with
+# the overlay directory, so the file wins for that module and every other module still comes from the submodule.
+# Nothing inside vendor/hermes is edited, so a pin bump stays a pointer change.
+#
+# Empty is the normal state: the runtime gut is configuration (toolsets, plugins, telemetry), not code. Add an entry
+# only when a module genuinely has to differ, and always with the test that proves it.
+overrides: []
+#  - module: tools.example            # overlay/tools/example.py
+#    why: Ariadne needs X, Hermes's version does Y
+#    test: ariadne/tests/test_overlay.py::test_the_example_override_wins

@@ -178,6 +178,8 @@ def _watchdog(store):
 
 
 def serve(idle_exit=1800):
+    from . import bootstrap
+    bootstrap.start()          # root and vendor/hermes ahead of site-packages, before any Hermes import
     from .deps import require
     from . import local_only
     require()

@@ -1,9 +1,9 @@
-# Ariadne is the orchestrator; Hermes is the worker backend (corrected 2026-11-19)
+# Ariadne is a stripped fork of Hermes
 
-Ariadne is an **orchestrator**: it decides what work happens, who signs it off, how it is checked, and how it is
-reported. The agent that does the work is Hermes, and it stays Hermes. Reworking its loop, tools, skills, MCP client,
-context handling or provider plumbing was never the goal - those are the backend, and they are the part that would
-take a rewrite to reproduce.
+Ariadne is a **fork of Hermes**: the pinned tree is copied into this repo and gutted down to one scenario - a
+local-only task harness with a brief, a backbrief, a sign-off, an execution and gates. What remains is Hermes's agent
+core (loop, tools, skills, MCP client, compression, provider handling) as Ariadne's own code, plus the orchestrator
+Ariadne adds. There is no upstream to track and no compatibility promise: we forked once, we own the result.
 
 | Ariadne owns (the orchestrator) | Hermes owns (the worker backend) |
 |---|---|
@@ -19,16 +19,26 @@ take a rewrite to reproduce.
 their integration points belong to the orchestrator (a task console, a conversation bound to a session, a tool surface
 for callers). Everything else is Hermes's and is used as it ships.
 
-## How Hermes is pinned
+## How the fork is built
 
-- `vendor/hermes` is a git submodule at `458a0046ad6ce75f6f7b2705f592b9c7a749fe14`.
-- Ariadne's venv is built from **Hermes's own lockfile**: `uv sync --project vendor/hermes --frozen --python 3.14
-  --extra mcp --extra ddgs`. That is what puts `hermes.exe` in `.venv/Scripts` and makes the toolset surface real.
-- `worker.hermes_run` spawns that `hermes` with the flow's compiled home, toolsets, skills and model: prompt in,
-  report out, session id to resume. It is the **default runner**.
-- **Do not install `hermes-agent` from git as a plain package.** At this pin it does not resolve outside its lockfile
-  (`browser-harness` needs `pillow==12.3.0` while Hermes pins `pillow==13.0.0`), and the machine's own Hermes is a
-  frozen binary, not an importable environment. The pinned checkout plus `uv sync --frozen` is the supported form.
+`vendor/hermes` is a **pristine git submodule** at the pin. We never edit inside it, so a pin bump is a pointer change
+and never a merge. Our code is an overlay on top:
+
+- **Resolution order**: repo root, then `vendor/hermes`, then site-packages. `ariadne/overlay.py::install()` sets it,
+  and every entry point that can import Hermes calls `bootstrap.start()` first.
+- **Modules we own** live in `overlay/<package>/<module>.py`. `overlay.apply()` prepends that package's `__path__`
+  with the overlay directory, so our file wins for that module while every other module still comes from the
+  submodule. No copying, no patching, no edited upstream files.
+- **The ledger** is `overlay.yaml`: each entry names the module, why we own it, and the test that proves it.
+  `overlay.check()` fails the suite if a declared module has no file, no reason or no test - so an upstream rename is a
+  visible failure, not a silently dead shadow. Empty is the normal state: the runtime gut is configuration, not code.
+- **Updates**: `python tools/sync_hermes.py --to <tag|commit>` fetches, checks out, stages the pointer and rebuilds the
+  venv from the submodule's own lockfile (`uv sync --project vendor/hermes --frozen`). Then `pytest -q`. The contract
+  tests (`test_hermes_contract.py`) name any CLI flag, config key or hook that moved, and `worker.hermes_run` is the
+  only adapter that should need a fix.
+- **The runtime gut**: `enabled_toolsets` per phase, `disabled_toolsets` for the rest, and a flow-home config with
+  telemetry, updates and catalog fetch off and only our plugin enabled. The gateway, desktop, bots and messaging code
+  is present but never launched and never on the task path. `local_only` still refuses any non-loopback/LAN endpoint.
 
 ## The own runtime is a fallback, not the product
 

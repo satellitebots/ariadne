@@ -96,6 +96,8 @@ def _quick_task(text: str) -> int:
 
 
 def main(argv=None):
+    from .bootstrap import start as _start_overlay
+    _start_overlay()
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("-h", "--help", "help"):
         print(__doc__)
