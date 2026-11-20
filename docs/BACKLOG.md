@@ -234,3 +234,14 @@ its own plan, gates and report, sharing the session's memory, workspace and Herm
 - "New task in this session" from the console (the CLI already does it with `--session`).
 - A session-level chat that survives tasks: the conversation continues across tasks, and submitting from it does not
   end it.
+
+
+### Step 3 (GPU handoff pin) - covered, no new code
+`test_the_orchestrator_model_is_unloaded_before_execution` (test_discrepancies.py) and the two `_sleep` branches in
+test_settings.py pin it: the planner unloads after sign-off and at finish, and resident mode is the only opt-out.
+
+### Step 5 (queue truthfulness) - done
+Eight backlog rows in the store were stale against the docs (B7, B6d, B8 plus the queued B9-B13). Reconciled to
+`cancelled` with "superseded - implemented directly by commit"; the inbox now shows one honest `needs you` (the RAG
+case study) and the rest under RECENT. The inbox mislabel is fixed: queued+approved tasks are `QUEUED / RUNNING`,
+never `RUNNING` alone (present.py and console.py agreed; two tests updated).

@@ -84,7 +84,7 @@ def text(t, next_action=""):
 
 def inbox_text(state):
     out = [f"worker: {'running' if state['worker'] else 'not running'}"]
-    for key, title in (("waiting", "NEEDS YOU"), ("running", "RUNNING"), ("stale", "STOPPED, NO WORKER"),
+    for key, title in (("waiting", "NEEDS YOU"), ("running", "QUEUED / RUNNING"), ("stale", "STOPPED, NO WORKER"),
                        ("recent", "RECENT")):
         rows = state.get(key) or []
         out += ["", f"{title} ({len(rows)})"]

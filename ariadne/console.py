@@ -133,7 +133,7 @@ def inbox(store=None) -> str:
                        f"{(t.get('text') or '').splitlines()[0][:70]}")
         out.append("  the work so far is in the workspace; ariadne ok <id> continues it")
     if running:
-        out.append(f"\nRUNNING ({len(running)})")
+        out.append(f"\nQUEUED / RUNNING ({len(running)})")
         for t in running:
             out.append(f"  {t['id']}  {label(t):<15} {t.get('flow') or '-':<8} {age(t.get('updated')):>4}  "
                        f"{(t.get('text') or '').splitlines()[0][:70]}")

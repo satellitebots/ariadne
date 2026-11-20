@@ -125,7 +125,7 @@ def test_inbox_says_what_needs_you(env):
     st.update(queued, status="approved")
     text = console.inbox(st)
     assert "NEEDS YOU (1)" in text and waiting in text
-    assert "RUNNING (1)" in text and queued in text
+    assert "QUEUED / RUNNING (1)" in text and queued in text
 
 
 def test_inbox_calls_out_a_task_with_no_worker_behind_it(env):
@@ -135,7 +135,7 @@ def test_inbox_calls_out_a_task_with_no_worker_behind_it(env):
     st.update(tid, status="executing")
     text = console.inbox(st)
     assert "STOPPED, NO WORKER (1)" in text and tid in text
-    assert "RUNNING" not in text
+    assert "QUEUED / RUNNING" not in text
 
 
 def test_an_orphaned_task_is_adopted_then_can_be_approved(env):
