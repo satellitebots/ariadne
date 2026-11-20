@@ -72,3 +72,9 @@ ci:       # Jenkins / GitHub Actions / GitLab: trigger, status, logs (ariadne/ci
   args: ["-m", "ariadne.ci_mcp"]
   env: {PYTHONPATH: "{root}"}
   timeout: 120
+rag:      # ingest, chunk, embed, search and a retrieval gate that is a number (ariadne/rag_mcp.py)
+          # the embedding call goes to the active model server; the index is one sqlite file in the workspace
+  command: "{python}"
+  args: ["-m", "ariadne.rag_mcp"]
+  env: {PYTHONPATH: "{root}"}
+  timeout: 900

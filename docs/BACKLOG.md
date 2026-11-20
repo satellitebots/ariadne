@@ -9,16 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B6 - MCP servers: `data`, `office`, `ci`, `rag`
-Declare each in `flows/mcp_servers.yaml` as it is built; names are already approved in `flows/tools.yaml`.
-- B6a `data`: csv/parquet/sqlite profile, query, transform. **Done** - `ariadne/data_mcp.py`; parquet needs pyarrow
-  and says so.
-- B6b `office`: docx and xlsx read/write. **Done** - `ariadne/office_mcp.py`, a docx/xlsx is a zip of XML.
-- B6c `ci`: Jenkins, GitHub Actions, GitLab - trigger, status, logs. **Done** - `ariadne/ci_mcp.py`;
-  pipelines live in `.ariadne/ci.yaml`, tokens in environment variables.
-- B6d `rag`: ingest, chunk, embed, vector store, retrieval eval with a numeric gate.
-*Model-free except embedding calls in B6d.*
-
 ### B7 - `diagram`: draw.io / diagrams.net export
 Mermaid stays primary; add an open-source Visio-class path (import/export `.drawio`, SVG/PNG render) for design p80.
 
@@ -64,6 +54,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- The four approved MCP servers: `data`, `office`, `ci`, `rag` - this commit
 - The store in `store.py`; every surface calls `service`, none call the store - this commit
 - One session per task: `ariadne/worker.py`, the plan's `models.chain`, resume on a failed gate - `3679767`
 - Inference follows the active server (`serving.endpoint()`; llm, KV cache, image, jobs, flow homes) - `0d08556`

@@ -25,13 +25,13 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 
 | # | Item | State |
 |---|---|---|
-| B1 | `timed_out` and the task wall-clock | in progress |
-| B2 | Wire `watchdog.py` into `serve` (built, unwired) | queued |
-| B3 | Route inference through the active model server | queued |
-| B4 | `worker.py`: one session per task | queued |
-| B5 | `store.py` extraction | queued |
-| B6 | MCP servers `data`, `office`, `ci`, `rag` | queued |
-| B7 | `diagram`: draw.io export | queued |
+| B1 | `timed_out` and the task wall-clock | done `c334e8e` |
+| B2 | Wire `watchdog.py` into `serve` | done `41784f9` |
+| B3 | Route inference through the active model server | done `0d08556` |
+| B4 | `worker.py`: one session per task | done `3679767` |
+| B5 | `store.py` extraction | done `c3c4cec` |
+| B6 | MCP servers `data`, `office`, `ci`, `rag` | done (4 commits) |
+| B7 | `diagram`: draw.io export | in progress |
 | B8 | Content flow: reference-based generation | queued |
 | B9 | `ariadne/server` + `ariadne/ui` | queued |
 | B10 | Our own chat | queued |
@@ -202,4 +202,17 @@ Registered in `flows/mcp_servers.yaml`; enabled for `coding` (p80 CI). Tests: `a
 passed. Full suite **186 passed in 92 s**. Named gap: none of the three has been driven against a live server - that
 needs the person's URL and token, and is on the deferred list with the GPU work.
 
-**B6d `rag`** — (below)
+**B6d `rag` — DONE.** `ariadne/rag_mcp.py`: ingest (text files or folders, paragraph-first chunking with overlap,
+re-ingest replaces a file's chunks), embed (the one model call: the active server's `/embeddings`, batched, idempotent),
+search (cosine over float32 vectors in sqlite), and `rag_eval` - recall@k and MRR against labelled questions with a
+`min_recall` threshold and a pass/fail. That is the gate `docs/COVERAGE.md` demands ("a RAG gate is a number,
+`recall@5 >= 0.8`, not 'it runs'"). Embeddings are the only live dependency; the tests drive a loopback stub with a
+four-word vocabulary, so the vectors, cosine, ranking and recall are real and only the model is fake.
+Tests: `ariadne/tests/test_rag_mcp.py` -> 8 passed. Full suite **194 passed in 97 s**.
+
+**B6 complete.** Four servers, four dependencies-free modules (`data`, `office`, `ci`, `rag`), registered in
+`flows/mcp_servers.yaml` and enabled where coverage says: coding gets `data`, `ci`, `rag`; design, investigation and
+content get `office`. Named gaps: parquet needs pyarrow; no provider has been driven against a live Jenkins/GitHub/
+GitLab; no embedding model has been loaded (the stub stands in). All three are on the deferred list.
+
+### B7 — `diagram`: draw.io / diagrams.net export

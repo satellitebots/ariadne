@@ -73,10 +73,10 @@ One model at a time, and **callback rather than waiting**.
 
 | Gap | Where it lands |
 |---|---|
-| `ci`, `data`, `office`, `rag` MCP servers | names approved in `flows/tools.yaml`; declare them in `flows/mcp_servers.yaml` as they are built |
 | draw.io / diagrams.net export | `diagram` server |
 | reference ingest for content | `content` flow: a source pack step plus citations in the report |
 
-Built since this list was written: the task wall-clock and `timed_out` (B1), and the watchdog wired into the worker
-(B2: `_watchdog` in `orchestrator.serve`; unload via llama-swap `/unload`, kill via `serve.stop`, flag = every
-`planning`/`executing` task goes `needs_attention` with the readings). Threshold tuning still waits for a real load.
+Built since this list was written: the task wall-clock and `timed_out` (B1), the watchdog wired into the worker (B2),
+and the four MCP servers named above - `data` (csv/sqlite/parquet as SQL), `office` (docx/xlsx from Markdown and
+rows), `ci` (Jenkins, GitHub Actions, GitLab) and `rag` (ingest, embed, search, `recall@k` as the gate). Threshold
+tuning and the live-provider checks still wait for a real load or real credentials.
