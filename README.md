@@ -29,7 +29,7 @@ uv run --no-project --python 3.14 python -m ariadne install --system   # venv fr
 python -m ariadne doctor                # what is missing (changes nothing)
 python -m ariadne models index          # what this machine can run, by tier
 python -m ariadne up                    # model server + MCP endpoint
-python -m ariadne ui                    # the console at http://127.0.0.1:8787
+python -m ariadne ui                    # the console at http://127.0.0.1:8917
 python -m ariadne submit "Add a --verbose flag" --flow coding --model qwen3.6-35b-a3b \
     --workspace C:\path\to\repo --gate "run: pytest -q" --watch
 ```
@@ -62,7 +62,7 @@ Out of wall-clock or out of turns is not failure: the work stays and the gates d
 ### Console
 
 ```sh
-python -m ariadne ui        # http://127.0.0.1:8787, loopback by default
+python -m ariadne ui        # http://127.0.0.1:8917, loopback by default
 ```
 
 Sessions as the only navigation; the backbrief as a document; only the verbs legal for a task's status; live activity

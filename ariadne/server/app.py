@@ -1,6 +1,6 @@
 """Ariadne's own server: the verbs from `service.py`, the views from `present.py`, SSE, and the static UI.
 
-    python -m ariadne ui            # http://127.0.0.1:8787  (ARIADNE_BIND for a LAN interface)
+    python -m ariadne ui            # http://127.0.0.1:8917  (ARIADNE_BIND for a LAN interface)
 
 Nothing here owns a rule or formats a task. Routes call `service`; the document comes from `present.view()`; the page
 reads it and renders. That is what keeps the terminal, MCP and the browser showing the same task (docs/FRONTEND.md).
@@ -21,7 +21,7 @@ from .. import local_only, paths, present, service
 from ..errors import TaskError
 
 UI = Path(__file__).resolve().parent.parent / "ui"
-DEFAULT_PORT = 8787
+DEFAULT_PORT = paths.PORT_UI
 VERSION = "1.0"
 
 

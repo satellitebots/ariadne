@@ -66,7 +66,7 @@ def _kill_strays():
 
 def stop():
     """Stop the model server we started. A LAN box or a local Ollama is not ours to stop."""
-    from . import serving
+    from . import paths, serving
     try:
         srv = serving.active()
     except serving.ServingError:
@@ -89,12 +89,13 @@ def stop():
     return 0
 
 
-def start(listen="127.0.0.1:8090", wait=60):
+def start(listen=None, wait=60):
     """Start our llama-server when it is the active server; an Ollama or a LAN box only has to answer.
 
     The choice comes from `serving.active()` (docs/MODELS.md): there is no point starting a local binary when the
     person pointed Ariadne at a GPU box, and pretending to "start" it would hide that it is down.
     """
+    listen = listen or f"127.0.0.1:{paths.PORT_MODELS}"
     from . import serving
     try:
         srv = serving.active()

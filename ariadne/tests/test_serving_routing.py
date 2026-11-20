@@ -108,7 +108,7 @@ def test_a_remote_server_with_no_url_says_so(env, monkeypatch):
 
 
 def test_the_default_matches_where_our_server_listens(env):
-    assert serving.DEFAULT["url"].endswith(":8090")           # serve.start listens on 8090; the registry agrees
+    assert serving.DEFAULT["url"].endswith(f":{__import__('ariadne.paths', fromlist=['PORT_MODELS']).PORT_MODELS}")
 
 
 # ---------- the callers follow it ----------

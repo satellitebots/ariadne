@@ -1,6 +1,6 @@
 ﻿"""Host Ariadne for other clients: the ariadne-tasks MCP server over streamable HTTP, behind a bearer token.
 
-    python -m ariadne.host serve [--host 127.0.0.1] [--port 8765]   # MCP endpoint http://<host>:<port>/mcp
+    python -m ariadne.host serve [--host 127.0.0.1] [--port 8911]   # MCP endpoint http://<host>:<port>/mcp
     python -m ariadne.host connect [--host <name or IP clients use>] # print client configs with the token
     python -m ariadne.host token [--rotate]                          # show (or replace) the token
 
@@ -20,7 +20,7 @@ import sys
 from . import paths
 
 TOKEN_FILE = paths.STATE / "token"
-DEFAULT_PORT = 8791
+DEFAULT_PORT = paths.PORT_MCP
 
 
 def get_token(rotate=False):

@@ -19,7 +19,7 @@ from . import local_only, paths, yamlio
 KINDS = ("llama-server", "ollama", "remote")
 SERVERS_FILE = paths.ROOT / "serving" / "servers.yaml"
 LOCAL_FILE = paths.STATE / "servers.local.yaml"
-DEFAULT = {"kind": "llama-server", "url": "http://127.0.0.1:8090", "name": "this machine"}
+DEFAULT = {"kind": "llama-server", "url": f"http://127.0.0.1:{paths.PORT_MODELS}", "name": "this machine"}
 OLLAMA_URL = "http://127.0.0.1:11434"
 
 

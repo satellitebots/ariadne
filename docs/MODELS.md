@@ -115,3 +115,17 @@ ariadne models use <name>      make a model the default for new tasks
 
 `ARIADNE_LLM_URL` remains an escape hatch for a one-off endpoint; it is checked by the same lock, so it cannot
 become a cloud provider.
+
+
+## llama-swap on another machine
+
+llama-swap is just an OpenAI-compatible endpoint, so the model server does not have to be local. Point Ariadne at it
+once:
+
+```sh
+python -m ariadne server remote http://gpu-box.lan:8912
+python -m ariadne up          # does not start anything locally; it only checks that the box answers
+```
+
+`local_only` accepts loopback, RFC1918 and the allowlist, so a LAN box is allowed and a public URL is refused. The
+console, worker and jobs all resolve inference through `serving.endpoint()`, so nothing else needs the address.

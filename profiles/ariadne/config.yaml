@@ -4,7 +4,7 @@
 model:
   default: "qwen3.5-9b"
   provider: "custom"
-  base_url: "http://127.0.0.1:8090/v1"
+  base_url: "http://127.0.0.1:8912/v1"
   context_length: 65536
 model_catalog:
   enabled: false

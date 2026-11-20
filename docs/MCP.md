@@ -21,7 +21,7 @@ token spend.
 }
 ```
 
-**HTTP** - `ariadne up` starts the models and the endpoint at `http://<host>:8791/mcp` with a bearer token
+**HTTP** - `ariadne up` starts the models and the endpoint at `http://<host>:8911/mcp` with a bearer token
 (`ariadne token`). Use this when several clients share one worker, or when the models live on another machine in
 the same network.
 

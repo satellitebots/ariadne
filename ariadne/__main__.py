@@ -12,7 +12,7 @@
   stop                       stop the background worker and models on purpose (also S in the watch window); they
                              run outside any terminal or session, so nothing else takes them down
   resources [max|shared|light]   how much of the machine the models may take (applied between tasks)
-  up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
+  up [--lan]                 start the models and the MCP endpoint (http://<host>:8911/mcp, bearer token)
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
   submit "text" --flow F --model M   give a task from the terminal (also: --file, --gate, --workspace, --session);
@@ -42,8 +42,45 @@ Every command except doctor and install first checks that the dependencies are t
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from . import deps, paths
+
+
+def _project_venv():
+    """The venv `install` builds; None before it exists."""
+    exe = Path("Scripts/python.exe") if os.name == "nt" else Path("bin/python")
+    p = paths.ROOT / ".venv" / exe
+    return p if p.exists() else None
+
+
+def _ensure_project_interpreter(argv):
+    """A system-python `ariadne` shim must not run the app: mcp, fastapi and uvicorn live in the project venv.
+    Re-exec once, before anything imports them, and set ARIADNE_REEXEC so this cannot loop."""
+    if os.environ.get("ARIADNE_REEXEC") or not argv or argv[0] == "install":
+        return
+    venv = _project_venv()
+    if venv is None:
+        return
+    try:
+        if Path(sys.executable).resolve() == venv.resolve():
+            return
+        os.environ["ARIADNE_REEXEC"] = "1"
+        os.execv(str(venv), [str(venv), "-m", "ariadne", *argv])
+    except OSError:
+        pass
+
+
+def _runtime_ready():
+    """`up` and `serve` need the runtime deps before they start models; failing after llama-swap is up is worse."""
+    try:
+        import mcp  # noqa: F401
+        import uvicorn  # noqa: F401
+        return True
+    except ModuleNotFoundError:
+        print("this Python has no `mcp`/`uvicorn` - it is not the project venv.\n"
+              "Run `python -m ariadne install`, or .venv/Scripts/python.exe -m ariadne up.")
+        return False
 
 
 def _profile():
@@ -103,6 +140,7 @@ def main(argv=None):
     if argv and argv[0] in ("-h", "--help", "help"):
         print(__doc__)
         return 0
+    _ensure_project_interpreter(argv)
     if not argv:
         # `ariadne` with nothing else is the inbox: what needs me, what is running, what finished.
         from . import console
@@ -214,6 +252,8 @@ def main(argv=None):
         from . import serve
         return serve.stop() if "--stop" in rest else serve.start()
     if cmd == "up":
+        if not _runtime_ready():
+            return 2
         from . import host, serve
         serve.start()
         return host.main(["serve", "--host", "0.0.0.0" if "--lan" in rest else "127.0.0.1"])

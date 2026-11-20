@@ -27,7 +27,7 @@ python -m ariadne install --system      # system tools, once
 python -m ariadne doctor                # what is missing (changes nothing)
 python -m ariadne models index          # what this machine can run, by tier
 python -m ariadne up                    # model server + MCP endpoint
-python -m ariadne ui                    # the console at http://127.0.0.1:8787
+python -m ariadne ui                    # the console at http://127.0.0.1:8917
 python -m ariadne "fix the failing date test"   # one gesture
 ```
 

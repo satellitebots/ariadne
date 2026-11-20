@@ -72,7 +72,7 @@ def unload_models(base=None):
             from . import serving
             base = serving.base()
         except Exception:
-            base = "http://127.0.0.1:8090"
+            base = f"http://127.0.0.1:{paths.PORT_MODELS}"
     try:
         urllib.request.urlopen(base.rstrip("/") + "/unload", timeout=60).read()
         return True
