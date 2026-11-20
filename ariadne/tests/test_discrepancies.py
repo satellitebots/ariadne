@@ -1,4 +1,4 @@
-"""Tests for the discrepancies fixed in work_discrepancies.md (no models, no Hermes, no GPU)."""
+"""Tests for the control-plane discrepancies fixed across the design passes (no models, no Hermes, no GPU)."""
 import io
 import json
 import subprocess
