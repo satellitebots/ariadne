@@ -9,10 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B5 - `store.py` extraction
-Move the sqlite store out of the 1,482-line `orchestrator.py`; `service.py` becomes the only caller. Mechanical,
-proved by the existing suite. *Model-free.*
-
 ### B6 - MCP servers: `data`, `office`, `ci`, `rag`
 Declare each in `flows/mcp_servers.yaml` as it is built; names are already approved in `flows/tools.yaml`.
 - B6a `data`: csv/parquet/sqlite profile, query, transform.
@@ -66,7 +62,8 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
-- One session per task: `ariadne/worker.py`, the plan's `models.chain`, resume on a failed gate - this commit
+- The store in `store.py`; every surface calls `service`, none call the store - this commit
+- One session per task: `ariadne/worker.py`, the plan's `models.chain`, resume on a failed gate - `3679767`
 - Inference follows the active server (`serving.endpoint()`; llm, KV cache, image, jobs, flow homes) - `0d08556`
 - Watchdog wired into the worker (`_watchdog` in `orchestrator.serve`, real unload/kill/flag callbacks,
   act-once escalation) - `41784f9`

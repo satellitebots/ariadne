@@ -52,8 +52,8 @@ def need_login(site: str, why: str) -> str:
     note = browser.login_note(site, why)
     park.request(by=note)
     if task:
-        from .orchestrator import Store
-        Store().event(task, "login", note)
+        from . import service
+        service.event(task, "login", note)
     return ("Paused for the person to sign in. Reply 'LOGIN NEEDED: " + site + "' and stop. When you are resumed, "
             "check in the browser that you are signed in before going on; if not, call need_login again.")
 

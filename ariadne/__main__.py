@@ -15,7 +15,9 @@
   up [--lan]                 start the models and the MCP endpoint (http://<host>:8791/mcp, bearer token)
   down                       stop them
   connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
-  task ...                   give a task from the terminal: submit / wait / approve / revise / cancel / list / get
+  submit "text" --flow F --model M   give a task from the terminal (also: --file, --gate, --workspace, --session);
+                             then follow it live
+  task ...                   the same verbs: submit / wait / approve / revise / cancel / list / get
   inbox                      what needs you, what is running, what finished (no model, works while the GPU is busy)
   show [ID]                  a task as a person reads it: gates, backbrief, report, next action
   follow [ID]                print a task's activity live, then its card when it needs you or finishes
@@ -81,12 +83,12 @@ def _profile():
 
 def _quick_task(text: str) -> int:
     """One gesture: a brief from this folder, followed live, in this folder's session."""
-    from . import console
-    from .orchestrator import Store, _default_session, _default_workspace, ensure_worker
+    from . import console, service
+    from .orchestrator import _default_session, _default_workspace, ensure_worker
     workspace = _default_workspace()
     session = _default_session(workspace)
-    store = Store()
-    tid = store.submit(text, "cli", workspace, "", session, [])
+    store = service.store()
+    tid = service.submit_unrouted(text, source="cli", workspace=workspace, session=session, store=store)
     ensure_worker()
     print(f"{tid}  session {session}  {workspace}")
     return console.follow(store, tid)
@@ -109,7 +111,7 @@ def main(argv=None):
             return 0
     known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
              "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
-             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog"}
+             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit"}
     # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
     # argument; an unquoted multi-word brief works too.
     if argv and argv[0] not in known and not argv[0].startswith("-") and (len(argv) > 1 or " " in argv[0]):
@@ -198,9 +200,9 @@ def main(argv=None):
     if cmd in ("connect", "token"):
         from . import host
         return host.main([cmd, *rest])
-    if cmd == "task":
+    if cmd in ("task", "submit"):
         from . import orchestrator
-        return orchestrator.main(rest)
+        return orchestrator.main([*rest] if cmd == "task" else ["submit", *rest])
     if cmd == "desktop":
         print("Ariadne Desktop (the rebranded Hermes app) is retired: Ariadne serves its own UI - docs/FRONTEND.md.")
         print("Today the doors are the terminal and MCP; `ariadne ui` is the replacement and is not built yet.")

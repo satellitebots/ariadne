@@ -25,9 +25,7 @@ from . import flows as flowlib
 from . import jobs, llm, park, paths, protocol, render
 from .errors import TaskError
 from .memory import Memory, format_hits
-
-def gates_text(gates):
-    return "\n".join(f"G{i}. [{g['type']}] {g['text']}" for i, g in enumerate(gates, 1))
+from .store import Store, gates_text
 
 # ---------- running Hermes ----------
 

@@ -80,15 +80,18 @@ more than freezing four verbs and one document would have. The screen is a view;
 
 ```
 ariadne/
-  store.py      tasks, events, sessions (sqlite)                 # extracted from orchestrator
+  store.py      tasks, events, sessions (sqlite)                 # built (B5)
   flows.py      flow data + closed sets                          # keep
   models.py     catalog, policy, install                         # keep
   protocol.py   the task document + the verbs, no I/O            # NEW - frozen centre
   service.py    submit/approve/revise/gates/cancel/status        # NEW - the only rulebook
-  worker.py     one Hermes session per task, gates at the edge   # NEW - slims orchestrator
-  render.py     plan JSON -> the backbrief document              # NEW - the only formatter
+  worker.py     one Hermes session per task, gates at the edge   # built (B4)
+  render.py     plan JSON -> the backbrief document               # NEW - the only formatter
   surfaces/     cli, mcp, desktop api                            # adapters, no rules
 ```
+
+`orchestrator.py` is now the worker process and the `task` CLI; `console.py` is the terminal adapter. The store is
+reached only from `service.py` (and by `worker.py`, which records progress while a task runs).
 
 **The task document** (what every surface reads and writes):
 

@@ -147,6 +147,31 @@ run model-free. Not proved: a live run against a real model (deferred with the G
 **Also fixed here:** `park.resume()` retried instead of raising `WinError 32` when another thread is reading the flag
 file. It surfaced as a flaky `test_browser` failure once the timing shifted; the fix is in the product, not the test.
 
-### B5 — `store.py` extraction
+### B5 — `store.py` extraction — DONE
+
+**What changed.**
+- `ariadne/store.py` (301 lines) now holds `Store`, the schema, `FINAL`/`WAITING`, the gate parser and
+  `gates_text`. `orchestrator.py` is down to **353** lines: the worker process, the serve loop, the `task` CLI.
+  Together with B4 that is 1,482 -> 353 + 1,007 + 301 across three modules with one job each.
+- `service.py` is the only caller for surfaces: it gained `task/tasks/wait/feedback/event/open_feedback/
+  resolve_feedback/adopt` and every verb takes an optional `store=`, so a surface carries a handle it never uses
+  itself. `console.py`, `tasks_mcp.py`, `park.status` and `jobs_mcp` now call service for every read and write;
+  `ariadne task …` does too. The only code that touches store methods is `service.py` and `worker.py` (the engine
+  recording progress).
+- The one gesture (`ariadne "fix the date test"`) is now `service.submit_unrouted`: the single door that does not
+  name a flow, spelled out as such. `ariadne task submit` (and the documented `ariadne submit`) requires `--flow`
+  and `--model`, the same rule every other door enforces - and `ariadne submit` now actually dispatches instead of
+  being swallowed by the one-gesture path (a pre-existing bug: the README documented a command that did not exist).
+
+**Verified.** New `pytest ariadne/tests/test_layering.py` -> 6 passed (no surface module even imports `Store`; the
+worker keeps its store; the CLI refuses a task with no flow or no model and exits 2). Full suite -> **161 passed in
+89 s**. `ariadne inbox`, `flows` and `local-only` run model-free; `ariadne submit "fix it"` answers "name the flow"
+rather than creating a task.
+
+**Not fixed here (named, not hidden):** `Store.approve` still calls `model_summary`/`apply_model_overrides` from
+`worker.py` through a lazy import. The sign-off rule belongs in `service.py` eventually; moving it now would change
+sign-off behaviour in the same commit that moves files, which B5 was told not to do.
+
+### B6 — MCP servers: `data`, `office`, `ci`, `rag`
 
 (see below)

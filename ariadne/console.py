@@ -13,7 +13,9 @@ import sys
 import textwrap
 import time
 
-from .orchestrator import FINAL, WAITING, Store, TaskError, ensure_worker, worker_running
+from . import service
+from .errors import TaskError
+from .orchestrator import FINAL, WAITING, ensure_worker, worker_running
 
 LABEL = {"new": "queued", "awaiting_gates": "needs gates", "planning": "planning",
          "awaiting_signoff": "backbrief ready", "approved": "approved, queued", "executing": "executing",
@@ -75,14 +77,7 @@ def _orphaned(t) -> bool:
 
 def adopt(store, tid: str):
     """Hand an orphaned task back to the person before acting on it, so ok/fix work on a crashed run."""
-    t = store.get(tid, events=False)
-    if _orphaned(t):
-        store.update(tid, status="needs_attention",
-                     result="No worker was behind this task (crash, kill or reboot). The work so far is in the "
-                            "workspace. Approve to continue it, or revise it.")
-        store.event(tid, "recover", "adopted by the person (no worker behind it)")
-        t = store.get(tid, events=False)
-    return t
+    return service.adopt(tid, store=store)
 
 
 def render_task(t: dict, events: bool = True) -> str:
@@ -115,9 +110,9 @@ def render_task(t: dict, events: bool = True) -> str:
 
 def inbox(store=None) -> str:
     """What needs the person, what is running (or only looks like it), and what finished recently."""
-    store = store or Store()
+    store = store or service.store()
     alive = worker_running()
-    rows = [store.get(r["id"], events=False) for r in store.list(40)]
+    rows = [service.task(r["id"], events=False, store=store) for r in service.tasks(40, store=store)]
     waiting = [t for t in rows if t["status"] in WAITING]
     moving = [t for t in rows if t["status"] in ("new", "approved", "planning", "executing")]
     stale = [t for t in moving if t["status"] in ("planning", "executing") and not alive]
@@ -160,23 +155,23 @@ def resolve(store, tid: str = "") -> str:
     tid = (tid or "").strip()
     if tid:
         try:
-            store.get(tid, events=False)
+            service.task(tid, events=False, store=store)
             return tid
         except TaskError:
             pass
-        matches = [r["id"] for r in store.list(50) if r["id"].startswith(tid)]
+        matches = [r["id"] for r in service.tasks(50, store=store) if r["id"].startswith(tid)]
         if len(matches) == 1:
             return matches[0]
         if not matches:
             raise TaskError(f"no task {tid}")
         raise TaskError("that id matches several: " + ", ".join(matches))
-    waiting = [r for r in store.list(50) if r["status"] in WAITING]
+    waiting = [r for r in service.tasks(50, store=store) if r["status"] in WAITING]
     if len(waiting) == 1:
         return waiting[0]["id"]
     if len(waiting) > 1:
         raise TaskError("several tasks need you; name one:\n  "
                         + "\n  ".join(f"{r['id']}  {label(r)}  {(r['text'] or '')[:60]}" for r in waiting))
-    recent = store.list(1)
+    recent = service.tasks(1, store=store)
     if not recent:
         raise TaskError("no tasks yet")
     return recent[0]["id"]
@@ -296,7 +291,7 @@ def _change_model(store, t, ask, out) -> bool:
         return False
     name = choices[int(answer) - 1] if answer.isdigit() and choices and 1 <= int(answer) <= len(choices) else answer
     try:
-        store.approve(t["id"], {which: name})
+        service.approve(t["id"], {which: name}, store=store)
     except TaskError as e:
         print(f"  {e}", file=out)
         return False
@@ -314,7 +309,7 @@ def signoff(store, t, ask=None, out=None) -> str:
         choice = (ask("[a]pprove  [m]odels  [r]evise  [c]ancel  [d]etach > ") or "").strip().lower()
         choice = choice[:1] if choice else ""
         if choice == "a":
-            store.approve(tid)
+            service.approve(tid, store=store)
             ensure_worker()
             print("  approved; executing", file=out)
             return "approved"
@@ -327,12 +322,12 @@ def signoff(store, t, ask=None, out=None) -> str:
             feedback = (ask("what should change? > ") or "").strip()
             if not feedback:
                 continue
-            store.revise(tid, feedback)
+            service.revise(tid, feedback, store=store)
             ensure_worker()
             print("  sent back to planning; a new backbrief follows", file=out)
             return "revised"
         if choice == "c":
-            store.cancel(tid)
+            service.cancel(tid, store=store)
             print("  cancelled", file=out)
             return "cancelled"
         if choice in ("d", "", "q"):
@@ -353,12 +348,12 @@ def follow(store, tid: str, timeout: float = 1800, poll: float = 1.0, stream=Non
     if interactive is None:
         interactive = sys.stdin.isatty()
     started, seen = time.time(), 0
-    t = store.get(tid)
+    t = service.task(tid, store=store)
     print(header(t), file=out)
     last_status = t["status"]
     try:
         while True:
-            t = store.get(tid)
+            t = service.task(tid, store=store)
             for line in t.get("events", [])[seen:]:
                 print(paint(line), file=out)
             seen = len(t.get("events", []))
@@ -378,7 +373,7 @@ def follow(store, tid: str, timeout: float = 1800, poll: float = 1.0, stream=Non
                         break
                     gates.append(line)
                 if gates:
-                    store.set_gates(tid, gates)
+                    service.set_gates(tid, gates, store=store)
                     ensure_worker()
                     print(f"  {len(gates)} gate(s) set; planning", file=out)
                     continue
@@ -427,21 +422,21 @@ def main(argv=None) -> int:
     rest = [a for a in rest if a != "--follow"]
     follow_after = "--follow" in argv
     try:
-        store = Store()
+        store = service.store()
         if cmd == "inbox":
             print(inbox(store))
             return 0
         if cmd == "show":
-            print(render_task(store.get(resolve(store, rest[0] if rest else ""))))
+            print(render_task(service.task(resolve(store, rest[0] if rest else ""), store=store)))
             return 0
         if cmd == "follow":
             return follow(store, resolve(store, rest[0] if rest else ""))
         if cmd == "ok":
             tid = resolve(store, rest[0] if rest else "")
             adopt(store, tid)
-            store.approve(tid, _models(rest[1:]) or None)
+            service.approve(tid, _models(rest[1:]) or None, store=store)
             ensure_worker()
-            after = store.get(tid, events=False)["status"]
+            after = service.task(tid, events=False, store=store)["status"]
             if after == "new":
                 print(f"{tid}: approved. The plan did not fit, so it is planning again; a new backbrief follows.")
             else:
@@ -453,13 +448,13 @@ def main(argv=None) -> int:
             if not text:
                 raise TaskError('say what to change: ariadne fix <id> "use pytest, not unittest"')
             adopt(store, tid)
-            store.revise(tid, text)
+            service.revise(tid, text, store=store)
             ensure_worker()
             print(f"{tid}: sent back to planning with your feedback.")
             return follow(store, tid) if follow_after else 0
         if cmd == "no":
             tid = resolve(store, rest[0] if rest else "")
-            store.cancel(tid)
+            service.cancel(tid, store=store)
             print(f"{tid}: cancelled.")
             return 0
         if cmd == "gates":
@@ -467,7 +462,7 @@ def main(argv=None) -> int:
             gates = [a for a in rest[1:] if not a.startswith("--")]
             if not gates:
                 raise TaskError('list the gates: ariadne gates <id> "run: pytest -q" "README documents it"')
-            store.set_gates(tid, gates)
+            service.set_gates(tid, gates, store=store)
             ensure_worker()
             print(f"{tid}: gates set; planning starts.")
             return follow(store, tid) if follow_after else 0

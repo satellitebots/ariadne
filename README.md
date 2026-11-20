@@ -20,7 +20,8 @@ git clone --recursive https://github.com/satellitebots/ariadne && cd ariadne
 uv run --no-project --python 3.14 python -m ariadne install --system
 .venv\Scripts\activate                      # Windows; Linux/macOS: source .venv/bin/activate
 python -m ariadne up                        # local models + MCP endpoint
-python -m ariadne task submit "Add a --verbose flag" --workspace C:\path\to\repo --gate "run: pytest -q" --watch
+python -m ariadne submit "Add a --verbose flag" --flow coding --model qwen3.6-35b-a3b \
+    --workspace C:\path\to\repo --gate "run: pytest -q" --watch
 ```
 
 Requirements: Windows, Linux or macOS (Apple Silicon); an NVIDIA GPU with 8 GB+ (or Apple Silicon); 32 GB RAM
@@ -39,7 +40,8 @@ Python env and pinned binaries (sha256-verified). Models download the first time
 2. **Backbrief** - the worker reads the workspace (read-only) and answers with mission, steps, the model for each
    step, and which step makes each gate pass.
 3. **Sign-off** - approve (optionally changing a step's model), revise with feedback, or cancel.
-4. **Execute** - step by step, each step on its model; checkpoints between phases keep contexts small.
+4. **Execute** - one session carries the approved plan; a step that needs a different agent model starts the
+   next session with a carry-forward note. The model is unloaded after sign-off and reloaded for the work.
 5. **QA** - command gates run, review gates are judged by a separate reviewer run. Failing gates go back to the
    worker with the reasons, up to 10 rounds; it stops early when two rounds in a row make no progress.
 6. **Report** - what changed, how it was verified.
@@ -50,8 +52,8 @@ Python env and pinned binaries (sha256-verified). Models download the first time
 
 ```sh
 python -m ariadne "fix the failing date test"          # one gesture: this folder, this session, watched live
-python -m ariadne submit --file brief.md              # brief with a "Gates:" section; follows it live
-python -m ariadne submit "Diagram the auth flow" --flow design --gate "diagrams render" --session auth
+python -m ariadne submit --file brief.md --flow design --model gemma-4-12b   # a "Gates:" section works too
+python -m ariadne submit "Diagram the auth flow" --flow design --model gemma-4-12b --gate "diagrams render"
 python -m ariadne inbox                               # what needs you, what is running, what finished
 python -m ariadne show <id>                           # the backbrief as a person reads it
 python -m ariadne ok <id>                             # approve; --model 2=gemma-4-12b changes a step

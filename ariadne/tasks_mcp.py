@@ -7,7 +7,8 @@ import json
 
 from mcp.server.mcpserver import MCPServer
 
-from .orchestrator import FINAL, WAITING, Store, TaskError, ensure_worker
+from .errors import TaskError
+from .orchestrator import FINAL, WAITING, ensure_worker
 
 server = MCPServer(
     "ariadne-tasks",
@@ -15,17 +16,13 @@ server = MCPServer(
                   "the worker plans it read-only and returns a backbrief, the person who gave the task signs "
                   "off (approve / revise / cancel), then it executes and reports. Use wait_task to get the "
                   "backbrief and the final report; show the backbrief to the person verbatim and let them decide."))
-_store = None
+from . import present, service
 
 
 def store():
-    global _store
-    if _store is None:
-        _store = Store()
-    return _store
-
-
-from . import present, service
+    """The store this process uses. `service` owns it; this is the handle passed back into service calls, so a
+    test can rebind either this function or `service._store` and both work."""
+    return service.store()
 
 # The cosmetic layer is `present.py`; nothing here formats a task on its own, so MCP, the chat, the terminal and
 # the desktop cannot drift apart.
@@ -87,7 +84,7 @@ def submit_task(text: str, flow: str, model: str, gates: list[str] | None = None
                              session=session, gates=gates)
         ensure_worker()
         # Every task tool returns the same card, so the caller can show the brief (or the gates question) at once.
-        return _view(store().get(tid))
+        return _view(service.task(tid, store=store()))
     return _guard(go)
 
 
@@ -115,14 +112,14 @@ def wait_task(id: str, timeout_seconds: int = 50) -> str:
     Returns the task. If it is still working, call again."""
     def go():
         ensure_worker()
-        return _view(store().wait(id, timeout=max(1, min(int(timeout_seconds), 280))))
+        return _view(service.wait(id, timeout=max(1, min(int(timeout_seconds), 280)), store=store()))
     return _guard(go)
 
 
 @server.tool()
 def get_task(id: str) -> str:
     """Current state of a task, with its backbrief, result and event log."""
-    return _guard(lambda: _view(store().get(id)))
+    return _guard(lambda: _view(service.task(id, store=store())))
 
 
 @server.tool()
@@ -131,7 +128,7 @@ def get_status() -> str:
     waiting on the person. Use it when they ask "what's happening?" or before deciding to wait on something."""
     from . import park
     return (present.inbox_text(service.inbox()) + "\n\n```json\n"
-            + json.dumps(park.status(store()), indent=2, default=str) + "\n```")
+            + json.dumps(park.status(store=store()), indent=2, default=str) + "\n```")
 
 
 @server.tool()
@@ -139,9 +136,9 @@ def approve_task(id: str, models: str = "") -> str:
     """Sign-off: the person approved the backbrief, which locks its model plan. The worker fetches any model that is
     not installed, then executes. models: optional changes first, e.g. "2=gemma-4-12b,3=sd-turbo" or "all=qwen3.5-9b"."""
     def go():
-        store().approve(id, models or None)
+        service.approve(id, models or None, store=store())
         ensure_worker()
-        return _view(store().get(id))
+        return _view(service.task(id, store=store()))
     return _guard(go)
 
 
@@ -149,9 +146,9 @@ def approve_task(id: str, models: str = "") -> str:
 def revise_task(id: str, feedback: str) -> str:
     """Sign-off: the person wants changes. The worker re-plans with this feedback and sends a new backbrief."""
     def go():
-        store().revise(id, feedback)
+        service.revise(id, feedback, store=store())
         ensure_worker()
-        return _view(store().get(id))
+        return _view(service.task(id, store=store()))
     return _guard(go)
 
 
@@ -159,9 +156,9 @@ def revise_task(id: str, feedback: str) -> str:
 def set_gates(id: str, gates: list[str]) -> str:
     """Set the check gates of a task that is waiting for them (awaiting_gates), or replace them before execution."""
     def go():
-        store().set_gates(id, gates)
+        service.set_gates(id, gates, store=store())
         ensure_worker()
-        return _view(store().get(id))
+        return _view(service.task(id, store=store()))
     return _guard(go)
 
 
@@ -170,8 +167,7 @@ def feedback_task(id: str, feedback: str) -> str:
     """Feedback on a task's plan, work or report, at any time (also after it is done): the person's words plus your
     own review. It stays open until folded into a shared skill with save_skill."""
     def go():
-        store().feedback(id, feedback)
-        return json.dumps({"id": id, "next": "recorded; fold it into the flow's skills with save_skill"})
+        return json.dumps(service.feedback(id, feedback, store=store()))
     return _guard(go)
 
 
@@ -180,7 +176,8 @@ def list_skills(flow: str = "") -> str:
     """The shared skills every run of a flow loads (skills/<flow>/<name>/SKILL.md in the repo), and the feedback
     not yet folded into any skill."""
     from . import skills
-    return json.dumps({"skills": skills.list_skills(flow or None), "open_feedback": store().open_feedback()}, indent=2)
+    return json.dumps({"skills": skills.list_skills(flow or None),
+                       "open_feedback": service.open_feedback(store=store())}, indent=2)
 
 
 @server.tool()
@@ -206,7 +203,7 @@ def save_skill(flow: str, name: str, content: str, note: str = "", resolves: lis
     except skills.SkillError as e:
         return json.dumps({"error": str(e)})
     if resolves:
-        store().resolve_feedback(resolves)
+        service.resolve_feedback(resolves, store=store())
     return json.dumps({"saved": f"{flow}/{name}", "report": report})
 
 
@@ -214,8 +211,8 @@ def save_skill(flow: str, name: str, content: str, note: str = "", resolves: lis
 def cancel_task(id: str) -> str:
     """Sign-off: the person cancelled the task."""
     def go():
-        store().cancel(id)
-        return _view(store().get(id))
+        service.cancel(id, store=store())
+        return _view(service.task(id, store=store()))
     return _guard(go)
 
 
@@ -223,13 +220,13 @@ def cancel_task(id: str) -> str:
 def list_sessions(limit: int = 10) -> str:
     """Ariadne sessions (workstreams): name, tasks given in it, current segment, and the start of its last handoff
     brief. Pass a name as submit_task(session=...) to continue it."""
-    return json.dumps(store().sessions(max(1, min(int(limit), 50))), indent=2, default=str)
+    return json.dumps(service.sessions(max(1, min(int(limit), 50)), store=store()), indent=2, default=str)
 
 
 @server.tool()
 def list_tasks(limit: int = 10) -> str:
     """Recent tasks and their status."""
-    return json.dumps(store().list(max(1, min(int(limit), 50))), indent=2, default=str)
+    return json.dumps(service.tasks(max(1, min(int(limit), 50)), store=store()), indent=2, default=str)
 
 
 def main():
