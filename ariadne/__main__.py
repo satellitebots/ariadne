@@ -31,7 +31,8 @@
   watch [--open|--always|--never]   live activity: tasks, MCP calls, worker, models, Hermes tool and model calls
                              (--open: in its own window; --always: every run opens it; --never: only on --watch)
   --watch                    with any command: open the activity window too
-  desktop                        retired: Ariadne serves its own UI (docs/FRONTEND.md)
+  ui [--port N] [--bind HOST]    Ariadne's own console in a browser (loopback by default; ARIADNE_BIND for the LAN)
+  desktop                        retired: `ariadne ui` is the console (docs/FRONTEND.md)
   serve | profile | flows | token     lower-level pieces
 
 Every command except doctor and install first checks that the dependencies are there.
@@ -111,7 +112,8 @@ def main(argv=None):
             return 0
     known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
              "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
-             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit"}
+             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit",
+             "ui"}
     # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
     # argument; an unquoted multi-word brief works too.
     if argv and argv[0] not in known and not argv[0].startswith("-") and (len(argv) > 1 or " " in argv[0]):
@@ -178,6 +180,11 @@ def main(argv=None):
         # Where inference happens: our llama-server, a local Ollama, or an endpoint on the LAN. Model-free.
         from . import serving
         return serving.main(rest)
+    if cmd == "ui":
+        # Our own console: it reads and signs off without a model, so it runs before the dependency gate. The bind is
+        # checked first (loopback or the LAN, never the internet).
+        from . import server
+        return server.main(rest)
     if cmd == "models":
         from . import models
         return models.main(rest)
@@ -204,8 +211,8 @@ def main(argv=None):
         from . import orchestrator
         return orchestrator.main([*rest] if cmd == "task" else ["submit", *rest])
     if cmd == "desktop":
-        print("Ariadne Desktop (the rebranded Hermes app) is retired: Ariadne serves its own UI - docs/FRONTEND.md.")
-        print("Today the doors are the terminal and MCP; `ariadne ui` is the replacement and is not built yet.")
+        print("Ariadne Desktop (the rebranded Hermes app) is retired: Ariadne serves its own console - docs/FRONTEND.md.")
+        print("Run it with:  python -m ariadne ui")
         return 1
     if cmd == "sessions":
         from . import orchestrator

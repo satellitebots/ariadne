@@ -9,11 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B9 - `ariadne/server` + `ariadne/ui`
-FastAPI on loopback (or `ARIADNE_BIND` for the LAN): the verbs from `service.py`, the views from `present.py`, SSE
-for live activity. Static ES-module SPA, no bundler, no Node. Sessions-first console: Needs-you strip, sessions,
-timeline + backbrief, decision panel. *Model-free.*
-
 ### B10 - Our own chat
 Session-bound conversation whose tools are the service verbs plus read-only lookups. No files, terminal, code or
 browser - it cannot do the work by construction.
@@ -47,6 +42,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- `ariadne/server` + `ariadne/ui`: FastAPI, SSE, the static sessions console - this commit
 - Content: the reference pack, the citation gate and a fact-check pass - this commit
 - draw.io / diagrams.net in the diagram server: export, import, local SVG - this commit
 - The four approved MCP servers: `data`, `office`, `ci`, `rag` - this commit

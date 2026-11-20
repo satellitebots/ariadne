@@ -56,8 +56,15 @@ One console, no navigation beyond sessions:
 
 ## Migration
 
-1. `ariadne/server/` - move the plugin's routes onto `service`/`present`; verbs and views only.
-2. `ariadne/ui/` - sessions list, task detail, the decision panel. Reads `present.view()`; no parsing anywhere.
+1. ~~`ariadne/server/` - move the plugin's routes onto `service`/`present`; verbs and views only.~~ **Built**: every
+   verb is a route, errors are the rulebook's own sentence (400), SSE at `/api/events?since=<ts>`, bind checked by
+   `local_only` (loopback or LAN, never the internet).
+2. ~~`ariadne/ui/` - sessions list, task detail, the decision panel. Reads `present.view()`; no parsing anywhere.~~
+   **Built**: one static ES module and a stylesheet, no bundler, no Node. Sessions are the only navigation, the
+   needs-you strip is the funnel, the centre renders the document from `view()` (never parses prose), and the right
+   column offers only the verbs the task legalises. Nothing is auto-selected: the pane stays empty until a row is
+   clicked. `+ Session` reveals the submit form with empty flow/model selects and the button disabled until both are
+   chosen.
 3. Chat v1 - session-bound conversation, service verbs, no doing-tools.
 4. Retire `desktop/`, the gate, the branding overlay; delete the nav-hiding code.
 5. `worker.py` - one Hermes session per task, gates at the edge, resume on failure. Do this before the first real

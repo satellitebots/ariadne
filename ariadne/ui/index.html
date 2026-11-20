@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ariadne</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Ariadne</div>
+  <div id="worker" class="pill">worker: ?</div>
+  <div id="needs" class="needs" aria-label="needs you"></div>
+</header>
+
+<main class="grid">
+  <aside class="col sessions">
+    <div class="colhead">
+      <h2>Sessions</h2>
+      <button id="toggle-new" class="btn small">+ Session</button>
+    </div>
+
+    <form id="new-task" class="newtask" hidden>
+      <label>Brief
+        <textarea id="nt-text" rows="3" placeholder="what should be true when it is done?"></textarea>
+      </label>
+      <label>Flow
+        <select id="nt-flow"><option value="">choose a flow…</option></select>
+      </label>
+      <label>Agent model
+        <select id="nt-model"><option value="">choose a model…</option></select>
+      </label>
+      <label>Workspace
+        <input id="nt-workspace" placeholder="C:\path\to\repo">
+      </label>
+      <label>Session
+        <input id="nt-session" placeholder="default: the workspace folder name">
+      </label>
+      <label>Check gates, one per line
+        <textarea id="nt-gates" rows="2" placeholder="run: pytest -q"></textarea>
+      </label>
+      <button id="nt-submit" class="btn" disabled>Give the task</button>
+      <p class="muted small">The flow and the model are yours to choose: nothing is picked for you.</p>
+    </form>
+
+    <ul id="session-list" class="list"></ul>
+    <p id="sessions-empty" class="muted small">No sessions yet. Give a task with + Session.</p>
+  </aside>
+
+  <section class="col center">
+    <div class="colhead">
+      <h2 id="session-title">Choose a session, or start one</h2>
+      <span id="session-meta" class="muted small"></span>
+    </div>
+    <ol id="timeline" class="timeline"></ol>
+    <article id="task" class="task">
+      <p class="muted">Nothing is opened for you. Click a session, then a task in its timeline.</p>
+    </article>
+  </section>
+
+  <aside class="col decide">
+    <div class="colhead"><h2>Decide</h2></div>
+    <div id="actions" class="actions"><p class="muted small">The verbs legal for the selected task appear here.</p></div>
+    <div id="gate-editor" class="editor" hidden>
+      <label>Check gates, one per line
+        <textarea id="gates-text" rows="3"></textarea>
+      </label>
+      <button id="save-gates" class="btn">Save gates</button>
+    </div>
+    <div id="reply-editor" class="editor" hidden>
+      <label id="reply-label">Feedback
+        <textarea id="reply-text" rows="3"></textarea>
+      </label>
+      <button id="send-reply" class="btn">Send</button>
+    </div>
+    <p id="fetch-note" class="muted small"></p>
+    <p id="error" class="error" hidden></p>
+  </aside>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -123,6 +123,11 @@ def event(tid, kind, detail="", store=None):
     _db(store).event(tid, kind, detail)
 
 
+def events_since(since=0.0, limit=200, store=None):
+    """Task events after `since`, oldest first: the live feed the UI streams."""
+    return _db(store).events_since(since, limit)
+
+
 def open_feedback(store=None):
     return _db(store).open_feedback()
 

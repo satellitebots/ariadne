@@ -177,6 +177,13 @@ class Store:
                 "(SELECT count(*) FROM tasks t WHERE t.session=s.name) AS tasks FROM sessions s "
                 "ORDER BY s.updated DESC LIMIT ?", (int(limit),))]
 
+    def events_since(self, since=0.0, limit=200):
+        """Task events newer than `since` (a timestamp), oldest first: what SSE streams and the UI appends."""
+        with self._conn() as c:
+            return [dict(r) for r in c.execute(
+                "SELECT task_id, ts, kind, detail FROM events WHERE ts > ? ORDER BY ts LIMIT ?",
+                (float(since or 0), int(limit)))]
+
     def get(self, tid, events=True):
         with self._conn() as c:
             r = c.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
