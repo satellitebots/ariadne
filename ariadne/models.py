@@ -18,6 +18,7 @@ PINS = paths.STATE / "model-pins.json"
 DEFAULT_ARGS = "-fa on -ctk q8_0 -ctv q8_0 --jinja -ngl 99"          # agents also get -c <context.window>
 GENERATE_ARGS = "-c 16384 -fa on --jinja -ngl 99"
 CONTEXT = {"window": 65536, "compress_at": 30000}
+OVERHEAD_GB = 1.5            # KV cache at 64K + CUDA context + buffers; the index uses the same figure
 RESOURCES = "shared"
 KINDS = ("agent", "generate", "image", "embed")
 
@@ -95,9 +96,10 @@ class Catalog:
         return self.budget
 
     def fits(self, m):
-        """Whether the active resource profile lets this model run (light caps model size)."""
+        """Whether the active resource profile lets this model run: its weights plus the fixed overhead that every
+        run pays (KV cache at the catalog window, CUDA context, buffers). The model index reports the same rule."""
         b = self.active_budget()
-        return not b["max_model_gb"] or m.size_gb <= b["max_model_gb"]
+        return not b["max_model_gb"] or m.size_gb + OVERHEAD_GB <= b["max_model_gb"]
 
     def get(self, name):
         if name not in self.models:
@@ -292,12 +294,15 @@ def missing(names, catalog=None):
 
 
 def main(argv):
-    """python -m ariadne models [list | install NAME...]"""
+    """python -m ariadne models [list | index | install NAME...]"""
     cat = load()
     if not argv or argv[0] == "list":
         print("defaults: " + ", ".join(f"{r}={n}" for r, n in cat.defaults.items()))
         print("\n".join(m.line() for m in cat.models.values()))
         return 0
+    if argv[0] == "index":
+        from . import modelindex
+        return modelindex.main(argv[1:])
     if argv[0] == "install" and argv[1:]:
         names = list(dict.fromkeys(cat.defaults.values())) if argv[1:] == ["--defaults"] else argv[1:]
         for n in names:

@@ -122,6 +122,16 @@ def detect_at_boot(profile=None, log=print):
     except OSError:
         pass
     log("limits: " + describe(b).replace("\n", "\n        "))
+    try:
+        # The shortlist, from the same measurement: the catalog the planner may pick from is what this can run.
+        from . import modelindex
+        rows = modelindex.shortlist(models.load(), modelindex.scan(vram=b["vram_gb"], ram=b["ram_gb"]))
+        fast = sum(1 for v in rows if v.tier == "gpu")
+        run = sum(1 for v in rows if v.tier != "no")
+        log(f"models: {run} of {len(rows)} in the catalog can run here ({fast} fit in VRAM); "
+            f"`ariadne models index` for the list")
+    except Exception as e:
+        log(f"models: could not index the catalog ({e})")
     return b
 
 

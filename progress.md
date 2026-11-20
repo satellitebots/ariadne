@@ -40,6 +40,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B13 | Install and doctor for the new dependency set | done `18502c0` |
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
+| B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
 
 Suite: **127 tests at the start, 259 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
@@ -264,6 +265,30 @@ tmp skill tree (list, view, unknown name, cross-flow lookup, loop dispatch, work
 **Queued (B12.5-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
 flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted
 capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
+
+### B16 — Model index: what this machine can run
+
+**What was missing.** The catalog (`serving/models.yaml`) carried a size for every model, but nothing turned the
+machine into a verdict: `Catalog.fits()` compared size against one budget number, `deps.gpu()` only asked whether
+`nvidia-smi` existed, and no surface said which models this box can actually run or why.
+
+**What changed.**
+- `ariadne/modelindex.py`: `scan()` (GPU/VRAM, RAM, CPU, cores, backend, free disk; every probe injectable),
+  `capacity()` (the VRAM tier and the profile's total), `verdict()` (`gpu` / `hybrid` / `no`, arithmetic in the
+  reason), `available()`, `report()`, and `pulse()` - Hugging Face's most downloaded models per task, estimated at
+  q4 from the reported parameter count, filtered by the same rule and cached for a day.
+- `models.OVERHEAD_GB = 1.5` (KV at 64K + CUDA context + buffers) and `Catalog.fits()` now uses it, so the planner's
+  menu and the index apply one rule.
+- `resources.detect_at_boot()` logs `models: N of M can run here (K fit in VRAM)` at every startup; `ariadne models
+  index [--json] [--pulse ...] [--refresh]` prints it on demand.
+
+**Verified.** `pytest ariadne/tests/test_modelindex.py ariadne/tests/test_models.py` -> 23 passed. Live run on this
+machine: `device: RTX 3070 Laptop, 8 GB VRAM, 31.9 GB RAM`, 4 models `gpu` (qwen3.5-9b at 7.1 GB just fits), 6
+`hybrid` (qwen3.8-27b 19.2 GB, qwen3.6-35b-a3b 23.9 GB), none `no`; the pulse returned 10 real models within the
+machine's budget. Startup line confirms `10 of 10 can run here (4 fit in VRAM)`.
+
+**Deliberately not done:** pulse hits are never added to the catalog. The catalog is a closed set; admitting a
+suggestion is the person's decision.
 
 ### B15 — Wiki rewrite (not started)
 

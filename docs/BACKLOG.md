@@ -91,3 +91,21 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 - Backend congregation: `service.py`, `present.py`, `protocol.py`, `render.py`; MCP lockdown - `f7b6353`
 - Local-only provider lock (`ariadne/local_only.py`) - `f7b6353`
 - Frontend pivot: desktop plugin retired - `f7b6353`, `ef04a14`
+
+### B16 - Model index: device scan and a hardware-bounded shortlist
+
+**Done.** `ariadne/modelindex.py`: `scan()` measures GPU/VRAM, RAM, CPU, disk and backend (every probe injectable);
+`capacity()` turns the device into "fits in VRAM" and "the most a model may take under the active profile";
+`verdict()` gives every catalog model `gpu` / `hybrid` / `no` with the arithmetic in the reason, using one shared
+1.5 GB reservation for KV + context + buffers (`models.OVERHEAD_GB`, also used by `Catalog.fits`, so the planner's
+menu and the index agree). `report()` prints the device and every tier; `pulse()` asks Hugging Face for the most
+downloaded models of a task (`text-generation`, `text-to-image`, `feature-extraction`), estimates a q4 size from the
+reported parameter count, filters through the same rule, and caches for a day with `--refresh`. At startup
+`resources.detect_at_boot` logs `models: N of M can run here (K fit in VRAM)`.
+
+CLI: `ariadne models index [--json] [--pulse agent|image|embed] [--refresh]`. Tests: 10 in `test_modelindex.py`
+(tiers, overhead, MoE reason, CPU-only, report, pulse filter/sort/limit/cache/refresh, network failure, and catalog
+agreement), no network except one manual live check of the pulse. Suite: **pending the B12.5 run**.
+
+**Not done, deliberately:** pulse hits are not added to the catalog; admitting a model is a person's decision and the
+catalog is a closed set.

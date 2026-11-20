@@ -9,6 +9,8 @@ remember a port. Everything lives in this repo: the catalog in `serving/models.y
 
 - `ariadne/models.py`: the catalog (`Catalog`, `Model`), `plan_fetch()`, `install()`, `missing()`, and the pin file —
   a Hugging Face LFS sha256 is recorded on first fetch and verified on every fetch after.
+- `ariadne/modelindex.py`: the device scan and the shortlist — what this machine can run, with the arithmetic in
+  every verdict (see "The model index" below).
 - `serving/bin`: our own `llama-server` and `stable-diffusion.cpp`, fetched by `deps.py` with a sha256 check, so a
   machine with nothing installed still gets a working runtime from the repo.
 - `serving/llama-swap.yaml` + `llama_server_exclusive.py`: one model on the GPU at a time.
@@ -67,10 +69,31 @@ server: present → load it; absent but fetchable → fetch it (already authoris
 `needs_attention` naming the gap. Only one model holds the GPU at a time, and the planner's model is unloaded after
 sign-off.
 
+## The model index: what this machine can run
+
+At every startup (`ariadne serve`) and on demand (`ariadne models index`), Ariadne measures the device — GPU and
+VRAM, RAM, CPU, free disk — into two capacities: what fits inside VRAM (the fast tier), and the most a model may take
+under the active resource profile. Every catalog model then gets one verdict from one fixed rule:
+
+- `gpu`: weights + 1.5 GB (KV cache at the 64K window, CUDA context, buffers) fits in 90% of VRAM. Fast.
+- `hybrid`: it fits inside the profile's total (VRAM plus the share of RAM the profile allows), so part of the
+  weights run on the CPU. MoE models say so, because only their active parameters are computed.
+- `no`: it does not fit, and the reason prints the two numbers.
+
+The planner's menu (`Catalog.pickable`) uses the same rule, so the catalog and the index cannot disagree about what is
+offerable. The 1.5 GB reservation is deliberately the same for every model: that is what makes the verdict
+deterministic and testable, and it is a claim about fitting, not about tokens per second.
+
+`--pulse agent|image|embed` is the non-deterministic half and is opt-in. It asks Hugging Face for the most downloaded
+models of that task, estimates a 4-bit size from the parameter count the API reports, filters them through the same
+arithmetic, and caches the answer for a day (`--refresh` polls again). Pulse results are **suggestions**: the catalog
+is a closed set and admitting a model stays a person's decision.
+
 ## CLI
 
 ```
 ariadne models                 the catalog: what each model is for, size, where it lives, installed?
+ariadne models index [--json] [--pulse agent|image|embed] [--refresh]   what this machine can run, and suggestions
 ariadne models setup           the onboarding conversation above
 ariadne models server          show / change the active server (local llama-server, local ollama, remote URL)
 ariadne models install <name>  fetch and verify weights
