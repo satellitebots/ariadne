@@ -29,15 +29,14 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
   `input_schema`, read-only filtering by the flow's `plan_tools`), `flows.mcp_server_config()` (the registry expansion
   `compile_flow` already used, without writing a home), `loop.run(mcp=...)`, and `runtime_run` opening/closing the pool
   and naming a server that will not attach. 5 tests against the real `data` server over stdio; suite **252 passed**.
+- B12.4 skills as runtime tools: `ariadne/runtime/skills.py` (`Box` - `skills_list` and `skill_view` over
+  `flows.shared_skill_dirs`, descriptions from frontmatter, 8000-char body cap, an unknown name lists what exists),
+  `loop.run(skills=...)`, and `runtime_run` passing the box. 7 tests; suite **259 passed**.
 
 **Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
 exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
 `docs/GAP-ANALYSIS.md`.
 
-- **B12.4 skills as tools.** `skills_list` and `skill_view` over `ariadne.skills`, so the bodies of the 7 flow skills
-  are readable in a run and not just their names in the plan prompt.
-  *Done when:* the plan drill reads `fix-and-verify` and the backbrief quotes it.
-  ~50 lines + test.
 - **B12.5 web search.** `web_search` over `ddgs` (installed); `web_fetch` already exists in `web_mcp` and arrives with
   B12.3. Without this a runtime plan cannot research, which is half of what the plan prompts ask for.
   *Done when:* a run searches, gets results, and fetches one of them.

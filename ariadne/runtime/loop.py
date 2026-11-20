@@ -61,13 +61,14 @@ def _last_assistant(messages) -> str:
 
 
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
-        transport=None, base_url=None, clock=time.time, on_event=None, mcp=None):
+        transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
     records tool calls in the task's event log without the loop knowing what a store is. `mcp` is the flow's
     `runtime.mcp.Pool`: its tools join the schemas, and `mcp__`-named calls are handed to it, filtered the same way
-    the loop filters its own tools by phase.
+    the loop filters its own tools by phase. `skills` is the flow's `runtime.skills.Box`: `skills_list`/`skill_view`
+    join the schemas, and calls to them read the flow's shared skills.
     """
     if not (model or "").strip():
         raise RunError("a run needs an explicitly chosen model")
@@ -75,7 +76,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     messages.append({"role": "user", "content": prompt})
     started, answer = clock(), Answer(session=session)
     read = read_only(phase)
-    schemas = tools_mod.offered(phase) + (mcp.offered(read) if mcp else [])
+    schemas = (tools_mod.offered(phase)
+               + (mcp.offered(read) if mcp else [])
+               + (skills.offered() if skills else []))
     while answer.turns < max(1, int(max_turns)):
         if clock() - started > budget:
             answer.stopped, answer.text = "budget", _last_assistant(messages)
@@ -89,7 +92,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
         for call in reply["tool_calls"]:
             if on_event:
                 on_event("tool", f"{call['name']} {json.dumps(call['arguments'], ensure_ascii=False)[:200]}")
-            if call["name"].startswith("mcp__") and mcp is not None:
+            if skills is not None and call["name"] in ("skills_list", "skill_view"):
+                result = skills.call(call["name"], call["arguments"])
+            elif call["name"].startswith("mcp__") and mcp is not None:
                 result = mcp.call(call["name"], call["arguments"], read_only=read)
             else:
                 result = tools_mod.call(call["name"], call["arguments"], workspace, phase)
