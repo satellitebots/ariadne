@@ -33,10 +33,11 @@ store, the decision protocol, flow data, model policy, and the gate runner. Anyt
 fork of the pin - `agent/` alone is 468 modules and 162,839 lines, and "delete one subsystem per commit" has no
 bottom. So the loop, the tool registry and the session list are now Ariadne's own, in `ariadne/runtime/`: one
 OpenAI-compatible call, eight tools with a workspace jail, a resumable message list, and a 96-line loop. That is
-smaller than the glue the fork needed, it is model-free testable, and it is the reason a task can now run with
-`hermes` absent (`tests/test_runtime_drill.py`). At B12.7 the default runner became the runtime, the Hermes adapter and
-the submodule were deleted, and `docs/FORK.md` now describes an independent product rather than a fork. The rest of
-this document stands.
+smaller than the glue the fork needed, it is model-free testable, and it is the reason a task can run with `hermes`
+absent (`tests/test_runtime_drill.py`). B12.7 then went too far and made it the default; B17 corrected that: Hermes is
+the worker backend again, pinned at `vendor/hermes` with the venv built from its lockfile, and `ariadne/runtime/` is
+the opt-in fallback (`ARIADNE_RUNTIME=own`). Ariadne orchestrates; Hermes does the agent work. The rest of this
+document stands.
 
 ## What we built, honestly
 

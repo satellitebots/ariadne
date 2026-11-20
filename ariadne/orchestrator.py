@@ -21,7 +21,8 @@ from . import flows as flowlib
 from . import jobs, llm, park, paths
 # The worker is a lower layer (it does not import this module at load time). These names stay importable from here
 # because every surface and test has always reached for them through `ariadne.orchestrator`.
-from .worker import (Worker, RunResult, gates_text, PARKED, TURNS, runtime_run,   # noqa: F401
+from .worker import (Worker, RunResult, gates_text, PARKED, TURNS, runtime_run, hermes_run,   # noqa: F401
+                     stop_gateway, _turn_end_reason, _clean_output,
                      parse_model_plan, apply_model_overrides, model_summary,
                      needed_models, needed_servers, missing_servers, model_block, chain_for,
                      RESUME_PROMPT, JOBS_RULE, jobs_rule, skills_block, step_scope, _install_system_tools,
@@ -95,7 +96,7 @@ WORKER_PID = paths.STATE / "worker.pid"
 
 
 def stop_all(reason="stopped by you"):
-    """Stop Ariadne's background work on purpose: the worker and the model server.
+    """Stop Ariadne's background work on purpose: the worker, the Hermes gateways it started, and the model server.
     A task that was running goes back to the person (needs_attention) with its work kept in the workspace."""
     from . import park, procs
     from . import serve as model_server
@@ -103,8 +104,13 @@ def stop_all(reason="stopped by you"):
         pid = json.loads(WORKER_PID.read_text())["pid"]
     except (OSError, ValueError, KeyError):
         pid = 0
-    procs.kill_tree(pid)  # the worker and the run it was waiting on
+    procs.kill_tree(pid)  # the worker and the Hermes run it was waiting on
     WORKER_PID.unlink(missing_ok=True)
+    for home in paths.HOMES.glob("*") if paths.HOMES.exists() else []:
+        try:
+            stop_gateway(home)
+        except Exception:
+            pass
     model_server.stop()
     park.resume()
     st = Store()
@@ -191,8 +197,9 @@ def serve(idle_exit=1800):
         detect_at_boot(log=lambda s: print(s, flush=True))  # GPU/RAM limits for this machine, logged at every start
     except Exception as e:
         print(f"limits: could not measure this machine ({e})", flush=True)
-    for name, home in flowlib.prepare_homes().items():
+    for name, home in flowlib.compile_all().items():
         print(f"  flow {name} -> {home}", flush=True)
+        stop_gateway(home)  # a gateway left from an earlier worker still has the old config; the next run restarts it
     w, last, stamp, restart = Worker(), time.time(), _code_stamp(), False
     _reconcile(w.store)
     stop_dog = _watchdog(w.store)
@@ -296,7 +303,7 @@ def main(argv=None):
     if args.cmd == "serve":
         return serve()
     if args.cmd == "flows":
-        for name, home in flowlib.prepare_homes().items():
+        for name, home in flowlib.compile_all().items():
             print(f"{name}: {home}")
         return 0
     from . import service

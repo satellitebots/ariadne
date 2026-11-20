@@ -294,3 +294,19 @@ def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkey
     activity.log("test", "new day")
     assert sorted(f.name for f in env.glob("activity-*.log"))[0] == "activity-2026-11-16.log"
     assert len(list(env.glob("activity-*.log"))) == 2
+
+
+def test_the_worker_defaults_to_the_hermes_backend(env):
+    """The workers' loop, tools and skills are Hermes's; our own runtime is the opt-in fallback."""
+    from ariadne import worker as workerlib
+    w = workerlib.Worker(store=workerlib.Store(env / "default.db", require_gates=False),
+                         installer=lambda name, cat, log=print: None, on_installed=lambda: None)
+    assert w.runner is workerlib.hermes_run
+
+
+def test_our_own_runtime_is_opt_in(env, monkeypatch):
+    from ariadne import worker as workerlib
+    monkeypatch.setenv("ARIADNE_RUNTIME", "own")
+    w = workerlib.Worker(store=workerlib.Store(env / "own.db", require_gates=False),
+                         installer=lambda name, cat, log=print: None, on_installed=lambda: None)
+    assert w.runner is workerlib.runtime_run

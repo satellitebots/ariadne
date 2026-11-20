@@ -15,6 +15,7 @@ LOGS = STATE / "logs"
 TASKS_DB = STATE / "tasks.db"
 MEMORY_DB = STATE / "memory.db"              # the durable shared memory
 BIN = ROOT / "serving" / "bin"               # pinned binaries (serving/bin.lock)
+UPSTREAM = ROOT / "vendor" / "hermes"          # Hermes at the pin: the workers' backend (a submodule)
 MODELS = ROOT / "models"                     # catalog model weights (serving/models.yaml)
 LLM_BASE_URL = os.environ.get("ARIADNE_LLM_URL", "http://127.0.0.1:8090/v1")
 

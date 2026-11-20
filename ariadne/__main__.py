@@ -141,12 +141,12 @@ def main(argv=None):
     if cmd == "doctor":
         return deps.doctor()
     if cmd == "install":
-        return deps.install(system="--system" in rest, slack="--slack" in rest, models="--models" in rest)
+        return deps.install(system="--system" in rest, models="--models" in rest)
     if cmd == "profile":
         return _profile() or 0
     if cmd == "flows":
-        from .flows import prepare_homes
-        for name, home in prepare_homes().items():
+        from .flows import compile_all
+        for name, home in compile_all().items():
             print(f"{name}: {home}")
         return 0
     if cmd == "watch":

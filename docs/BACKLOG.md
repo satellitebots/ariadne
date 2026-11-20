@@ -112,3 +112,23 @@ agreement), no network except one manual live check of the pulse. Suite: **pendi
 
 **Not done, deliberately:** pulse hits are not added to the catalog; admitting a model is a person's decision and the
 catalog is a closed set.
+
+### B17 - Hermes is the worker backend (correction to B12.7)
+
+**Done.** The intent was always that Ariadne orchestrates and Hermes does the agent work; B12.7 deleted Hermes and
+defaulted to the own runtime, which contradicted that and broke the venv's `hermes` install (an editable install
+pointing at the deleted tree). Restored:
+
+- `vendor/hermes` is a git submodule at `458a0046ad6ce75f6f7b2705f592b9c7a749fe14`; the venv is built from its own
+  lockfile (`uv sync --project vendor/hermes --frozen --python 3.14 --extra mcp --extra ddgs`), so `hermes.exe` is in
+  `.venv/Scripts` again. A plain `pip install hermes-agent` from git does **not** work at this pin (pillow conflict).
+- `worker.hermes_run` and its helpers are back, `flows.compile_flow`/`BASE_CONFIG`/`install_shared_skills`/
+  `compile_all` are back, and `hermes_run` is the **default runner**. `ARIADNE_RUNTIME=own` selects
+  `runtime_run`, which stays as the fallback and as the model-free path the drill uses.
+- `deps.submodule_pin`, the doctor submodule check, `paths.UPSTREAM`, and `test_hermes_contract.py` are back.
+- Two tests pin the decision: the worker's default runner is `hermes_run`, and `ARIADNE_RUNTIME=own` selects the
+  runtime. Suite: **289 passed**, with `hermes.exe` resolving to the pinned checkout.
+
+What stays replaced, because the hook belongs to the orchestrator: the desktop app (our SPA), the chat (our runtime
+with `native_tools=False`), and the MCP hosting surface (our servers). Everything else is Hermes's.
+

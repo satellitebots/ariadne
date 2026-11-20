@@ -41,6 +41,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
+| B17 | Hermes is the worker backend (correction) | done (suite after the rebuild) |
 
 Suite: **127 tests at the start, 281 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
@@ -329,6 +330,26 @@ machine's budget. Startup line confirms `10 of 10 can run here (4 fit in VRAM)`.
 
 **Deliberately not done:** pulse hits are never added to the catalog. The catalog is a closed set; admitting a
 suggestion is the person's decision.
+
+### B17 — Hermes is the worker backend (correction to B12.7)
+
+**What went wrong.** B12.7 read "implement the server if it is cheaper" as permission to replace the agent backend.
+The intent was the opposite: Ariadne orchestrates, Hermes does the agent work, and only the surfaces with the wrong
+hook (desktop app, chat, MCP hosting) are ours. The flip also broke the venv's `hermes` install, which had been an
+editable install pointing at the deleted tree.
+
+**What changed.** `vendor/hermes` is a submodule at `458a0046…`; the venv is rebuilt from its lockfile
+(`uv sync --project vendor/hermes --frozen --extra mcp --extra ddgs`). `hermes_run` and its helpers,
+`flows.compile_flow`/`BASE_CONFIG`/`install_shared_skills`/`compile_all`, `deps.submodule_pin`, the doctor submodule
+check, `paths.UPSTREAM` and `test_hermes_contract.py` are restored, and `hermes_run` is the default runner again.
+`ARIADNE_RUNTIME=own` selects `runtime_run`, which stays as the fallback and the model-free test path.
+
+**Not restored, deliberately:** the desktop app, the chat and the MCP hosting surface stay ours — those are the parts
+whose integration points belong to the orchestrator. The chat runs on the own runtime with `native_tools=False`.
+
+**Verified.** Two tests pin the decision (default runner is `hermes_run`; `ARIADNE_RUNTIME=own` selects the runtime).
+`hermes.exe --version` reports v0.23.2 at the pin and `import run_agent` resolves; the full suite is **289 passed**. A plain `pip install hermes-agent` from git is impossible at this pin
+(pillow/browser-harness conflict), which is why the checkout + lockfile is the supported form.
 
 ### B15 — Wiki rewrite (not started)
 

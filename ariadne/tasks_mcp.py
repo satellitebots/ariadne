@@ -1,7 +1,7 @@
 """MCP server: give Ariadne a task and see it through brief, backbrief, sign-off, execute (stdio).
 Run: python -m ariadne.tasks_mcp
 
-Used by Claude and other MCP clients directly, and by the Hermes gateway (Slack, CLI, Desktop, VS Code chat)
+Used by Claude and other MCP clients directly, and by Ariadne's own doors (the SPA, the terminal, the chat)
 through the ariadne-tasks skill. Calling any tool makes sure the single worker process is running."""
 import json
 
