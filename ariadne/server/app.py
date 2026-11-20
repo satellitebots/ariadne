@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from .. import local_only, paths, present, service
 from ..errors import TaskError
 
-UI = Path(__file__).resolve().parent.parent / "ui"
+UI = Path(__file__).resolve().parent.parent / "ui" / "dist"
 DEFAULT_PORT = paths.PORT_UI
 VERSION = "1.0"
 

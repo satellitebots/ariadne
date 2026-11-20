@@ -3,6 +3,7 @@
 Headless: a TestClient against a temporary store. No server process, no model, no browser.
 """
 import json
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -128,15 +129,16 @@ def test_events_since_streams_frames_with_a_cursor(client):
 
 # ---------- the page ----------
 
-def test_the_console_is_static_files_with_no_bundler(client):
+def test_the_console_serves_a_built_static_bundle(client):
     c, _ = client
     page = c.get("/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
-    assert "/static/app.js" in page.text and 'type="module"' in page.text
-    js = c.get("/static/app.js")
-    assert js.status_code == 200 and "EventSource" in js.text and "api/tasks" in js.text
-    assert c.get("/static/style.css").status_code == 200
-    assert "webpack" not in js.text.lower() and "require(" not in js.text
+    assert 'id="root"' in page.text and 'type="module"' in page.text
+    m = re.search(r'src="(/static/assets/[^"]+\.js)"', page.text)
+    assert m, page.text
+    js = c.get(m.group(1))
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]
+    assert "EventSource" in js.text and "/api/" in js.text
 
 
 def test_the_console_has_no_capabilities_screen_to_sign_in_from(client):

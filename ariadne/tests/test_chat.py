@@ -4,6 +4,7 @@ The construction is the toolset list (no files, terminal, code or browser), so t
 with a fake runner: no model, no Hermes process.
 """
 import json
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -110,9 +111,11 @@ def test_the_console_posts_one_turn_and_reports_a_refusal_as_400(env):
     assert c.post("/api/chat", json={"message": "  "}).status_code == 400
 
 
-def test_the_page_has_the_chat_and_says_what_it_cannot_do(env):
+def test_the_page_wires_the_chat_mode(env):
     c = TestClient(server_app.create_app(store=env))
-    page = c.get("/").text
-    assert 'id="chat-form"' in page and "it cannot do one" in page
-    js = c.get("/static/app.js").text
-    assert "/api/chat" in js and "chat-form" in js
+    page = c.get("/")
+    assert 'id="root"' in page.text and 'type="module"' in page.text
+    m = re.search(r'src="(/static/assets/[^"]+\.js)"', page.text)
+    assert m, page.text
+    js = c.get(m.group(1)).text
+    assert "/api/chat" in js
