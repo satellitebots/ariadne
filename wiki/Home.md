@@ -16,8 +16,8 @@ are present in the tree but never started.
 2. One task store, one worker, one model on the GPU at a time.
 3. Closed sets: approved flows, approved models, approved tools. Unknown is refused.
 4. Local-only inference (loopback, LAN, or an allowlisted gateway; no keys). Tools may use the internet.
-5. Three doors, one stream: our console, the terminal, and MCP. Sessions are the unit of work; schedules are created
-   from a session.
+5. Three doors, one stream: our console, the terminal, and MCP. A session is the host; a task is the drill;
+   schedules are created from a session.
 6. Durable memory and skills that change the *next plan*, not just the next run.
 
 ## Quick start
