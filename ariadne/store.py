@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS events(task_id TEXT, ts REAL, kind TEXT, detail TEXT)
 CREATE TABLE IF NOT EXISTS schedules(
   name TEXT PRIMARY KEY, cron TEXT, brief TEXT, flow TEXT, model TEXT, workspace TEXT, gates TEXT DEFAULT '[]',
   enabled INTEGER DEFAULT 1, created REAL, last_run REAL DEFAULT 0, last_task TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS steers(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, task TEXT, created REAL, text TEXT, consumed INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
   segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', summary TEXT DEFAULT '',
@@ -117,7 +119,8 @@ class Store:
     def submit(self, text, source="cli", workspace="", flow="", session="", gates=None, model=""):
         """session: a Hermes session to continue (the caller's conversation); default: one session per task.
         gates: the check gates (strings; `run: cmd` for commands) - else taken from the brief's Gates/Checks/Done when
-        section. Without gates the task waits (awaiting_gates) and asks for them: nothing starts without them."""
+        section. Without either, the task starts anyway: the planner proposes 1-3 gates in the backbrief, and the
+        person approves them with the plan. Nothing waits for a person to invent gates."""
         text = (text or "").strip()
         if not text:
             raise TaskError("the task text is empty")
@@ -126,14 +129,14 @@ class Store:
         session = (session or "").strip() or tid
         self.session(session, source)
         g = [gate(x) if isinstance(x, str) else x for x in (gates or [])] or parse_gates(text)
-        status = "new" if g or not getattr(self, "require_gates", True) else "awaiting_gates"
+        status = "new"          # gates may be proposed by the planner; a task never blocks on them
         with self._conn() as c:
             c.execute("INSERT INTO tasks(id, created, updated, source, text, workspace, flow, status, session, gates, "
                       "result, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                       (tid, now, now, source, text, workspace or "", flow or "", status, session, json.dumps(g),
                        "" if g else GATES_QUESTION, model or ""))
         self.event(tid, "brief", f"from {source}: {text[:300]}")
-        self.event(tid, "gates", gates_text(g) if g else "none given: asked the person for them")
+        self.event(tid, "gates", gates_text(g) if g else "none given: the planner proposes them in the backbrief")
         return tid
 
     def set_gates(self, tid, gates):
@@ -264,6 +267,38 @@ class Store:
         self.event(tid, "feedback", text)
         with self._conn() as c:
             c.execute("UPDATE tasks SET learn=1 WHERE id=?", (tid,))
+
+    def steer(self, tid, text):
+        """A note for a task that is planning or executing. Delivered at its next step boundary."""
+        text = (text or "").strip()
+        if not text:
+            raise TaskError("the steering note is empty")
+        t = self.get(tid, events=False)
+        if t["status"] in FINAL:
+            raise TaskError(f"task {tid} is '{t['status']}'; there is nothing left to steer")
+        with self._conn() as c:
+            c.execute("INSERT INTO steers(task, created, text, consumed) VALUES(?,?,?,0)",
+                      (tid, time.time(), text))
+        self.event(tid, "steer", text)
+
+    def take_steers(self, tid):
+        """The steering notes not yet delivered, marked delivered in the same write."""
+        with self._conn() as c:
+            rows = c.execute("SELECT id, text FROM steers WHERE task=? AND consumed=0 ORDER BY id",
+                             (tid,)).fetchall()
+            if rows:
+                c.execute("UPDATE steers SET consumed=1 WHERE id IN (%s)" % ",".join("?" * len(rows)),
+                          [r["id"] for r in rows])
+        return [r["text"] for r in rows]
+
+    def latest_workspace(self, session):
+        """The workspace a session's last task used, so a new task in that session can omit it."""
+        if not session:
+            return ""
+        with self._conn() as c:
+            r = c.execute("SELECT workspace FROM tasks WHERE session=? AND workspace<>'' "
+                          "ORDER BY created DESC LIMIT 1", (session,)).fetchone()
+        return r["workspace"] if r else ""
 
     def open_feedback(self):
         """Feedback not yet folded into a skill: [{task, flow, text, feedback}]."""

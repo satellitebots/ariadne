@@ -2,7 +2,7 @@
 
 ## Proven
 
-- The full suite: **295 tests**, model-free, in about three minutes.
+- The full suite: **301 tests**, model-free, in about three minutes.
 - The drill: brief -> plan -> sign-off -> execute -> gates, proven against a scripted model with `HERMES_EXE` pointed
   at a path that does not exist (the fallback runtime path).
 - The worker on Hermes: `hermes.exe` at the pin reports v0.23.2 and `import run_agent` resolves; the default runner is

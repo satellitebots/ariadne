@@ -156,7 +156,7 @@ def test_failing_gates_iterate_and_stop_when_no_progress(env):
     assert "GATES FAILED" in execs[-1][2]                   # each iteration was told what failed
     # a failed gate resumes the same session; nothing is compressed away between attempts (B4)
     assert [c[1] for c in run.calls if c[1].startswith("checkpoint")] == ["checkpoint:plan"]
-    assert w.flows["coding"].max_iterations == 10
+    assert w.flows["coding"].max_iterations == 5
 
 
 def test_a_timed_out_run_goes_to_the_gates_not_to_failed(env):
@@ -191,18 +191,32 @@ def test_shared_skills_are_validated_committed_and_loaded(env, monkeypatch, tmp_
     assert fl.shared_skills == ["py-style"]
 
 
-def test_no_task_starts_without_gates(env):
+def test_a_task_without_gates_starts_and_the_planner_proposes_them(env):
+    """Gates are not a precondition any more: the plan carries them and sign-off approves them with it."""
     st = orch.Store(env / "t.db")
     tid = st.submit("make it better", "test", str(env))
-    t = st.get(tid)
-    assert t["status"] == "awaiting_gates" and "check gates" in t["result"] and st.claim_next() is None
-    st.revise(tid, "- run: pytest -q\n- README explains every command")   # the answer to the question
+    assert st.get(tid)["status"] == "new"                 # nothing waits for a person to invent gates
+    st.set_gates(tid, "- run: pytest -q\n- README explains every command")
     t = st.get(tid)
     assert t["status"] == "new" and json.loads(t["gates"]) == [
         {"type": "run", "text": "pytest -q"}, {"type": "review", "text": "README explains every command"}]
     brief = "Build it.\n\nDone when:\n- `pytest -q` passes\n- every command is documented\n\nNotes: none"
     assert [g["type"] for g in orch.parse_gates(brief)] == ["run", "review"]
     assert st.get(st.submit(brief, "test"))["status"] == "new"
+
+
+def test_the_planner_proposes_gates_when_the_task_has_none(env):
+    plan = ('```json\n{"mission": "find it", "steps": [{"n": 1, "text": "read the code"}], '
+            '"gates": ["the report names the failing test and the file"], "risks": [], "questions": []}\n```')
+    run = FakeRunner(plan=plan)
+    w = make_worker(env, run)
+    tid = w.store.submit("investigate the date bug", "test", str(env), flow="coding",
+                         model="qwen3.6-35b-a3b")
+    assert w.run_once()                                  # plan
+    t = w.store.get(tid)
+    assert t["status"] == "awaiting_signoff"
+    gates = json.loads(t["gates"])
+    assert gates and "failing test" in gates[0]["text"]  # the plan's proposal became the task's gates
 
 
 def test_review_gates_are_checked_by_a_reviewer_and_drive_iterations(env):

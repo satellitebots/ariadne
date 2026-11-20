@@ -152,3 +152,38 @@ with `native_tools=False`), and the MCP hosting surface (our servers). Everythin
 No real override exists yet, deliberately: nothing needs to differ from Hermes at code level. The first one gets added
 with its manifest entry and its test.
 
+
+
+## B19 - Gates are proposed, never demanded (done)
+
+A task without gates used to sit in `awaiting_gates` until a person invented them; an investigation brief rarely has
+them, so the request looked rejected. Now `Store.submit` always returns `new`: the plan prompt asks for 1-3 check gates
+when none were given, `plan()` adopts them onto the task, and sign-off approves gates and plan together. `set_gates`
+still works for a person who wants their own. Covered by `test_a_task_without_gates_starts_and_the_planner_proposes_them`
+and `test_the_planner_proposes_gates_when_the_task_has_none`.
+
+## B20 - Four retries, not ten rounds (done)
+
+`Flow.max_iterations` is 5 = one run plus at most four retries. The no-progress rule still stops earlier. The next
+slice is a judge: before a retry, ask the worker model whether another attempt is worth it and what must change.
+
+## B21 - Steering, optional workspace, chat intake (partly done)
+
+- `store.steer` / `take_steers`, `service.steer`, `ariadne steer ID "..."`, `steer_task` over MCP. The worker prepends
+  the notes to the next execute prompt ("STEERING from the person") and marks them delivered. Delivery is at the next
+  step boundary; a note sent mid-link waits for that boundary.
+- Workspace is optional: a new task in a session reuses where that session last worked; a new session starts in the
+  current folder.
+- Chat gathers the details (flow, model, workspace if the person gives one, 1-3 gates, proposing gates itself) and then
+  hands off; the chat is the intake surface and the worker runs while it sleeps.
+- Still open: a steer box in the console for a running task, and `steer` on the chat's task card.
+
+## B22 - Sessions are durable workstreams
+
+A session is the unit a person lives in; tasks are things that happen inside it. One session -> many tasks, each with
+its own plan, gates and report, sharing the session's memory, workspace and Hermes segment. Still open:
+
+- `ariadne sessions show NAME`: the session's tasks, their statuses and the latest handoff, in one view.
+- "New task in this session" from the console (the CLI already does it with `--session`).
+- A session-level chat that survives tasks: the conversation continues across tasks, and submitting from it does not
+  end it.

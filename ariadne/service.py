@@ -64,8 +64,14 @@ def submit(text, *, source, workspace="", flow="", model="", session="", gates=N
         raise TaskError(str(e))
     if chosen.kind != "agent":
         raise TaskError(f"{model} is a {chosen.kind} model; a task needs an agent model")
+    db = _db(store)
+    workspace = (workspace or "").strip()
     session = (session or "").strip() or (Path(workspace).name if workspace else "")
-    return _db(store).submit(text, source, workspace or "", flow, session, gates, model=model)
+    if not workspace:
+        # The workspace is optional: a new task in a session reuses where that session has been working, and a
+        # brand-new session starts in the folder the person is in.
+        workspace = db.latest_workspace(session) or str(Path.cwd())
+    return db.submit(text, source, workspace, flow, session, gates, model=model)
 
 
 def submit_unrouted(text, *, source="cli", workspace="", session="", gates=None, store=None):
@@ -111,6 +117,11 @@ def set_gates(tid, gates, store=None):
 def cancel(tid, store=None):
     _db(store).cancel(tid)
     return _db(store).get(tid)
+
+
+def steer(tid, text, store=None):
+    """Give a planning/executing task guidance; the worker delivers it at its next step boundary."""
+    return _db(store).steer(tid, text)
 
 
 def feedback(tid, text, store=None):

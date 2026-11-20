@@ -76,9 +76,10 @@ def submit_task(text: str, flow: str, model: str, gates: list[str] | None = None
     approved flows and agent models; an unnamed or unapproved one is refused, because a task that enters here must
     be one the desktop would accept. workspace: the folder it applies to. session: your conversation id, to continue
     one worker conversation across tasks; default: the workspace folder's name.
-    gates: REQUIRED in practice - how we will know it is done, end to end: commands that must pass ("run: pytest -q")
-    and outcomes a reviewer checks ("DESIGN.md names one vector store and why"). Ask the person if they did not say;
-    without gates the task waits in awaiting_gates. Returns the task card; then call wait_task."""
+    gates: how we will know it is done, end to end - commands that must pass ("run: pytest -q") and outcomes a
+    reviewer checks. If the person did not say, propose 1-3 yourself and pass them. workspace: optional; without it
+    the task continues where the session last worked, or in the current folder. Returns the task card; then
+    call wait_task."""
     def go():
         tid = service.submit(text, source=source or "mcp", workspace=workspace, flow=flow, model=model,
                              session=session, gates=gates)
@@ -159,6 +160,16 @@ def set_gates(id: str, gates: list[str]) -> str:
         service.set_gates(id, gates, store=store())
         ensure_worker()
         return _view(service.task(id, store=store()))
+    return _guard(go)
+
+
+@server.tool()
+def steer_task(task_id: str, text: str) -> str:
+    """Guide a task that is planning or executing (a changed requirement, a constraint, a correction). The worker
+    delivers it at its next step boundary; it wins over the plan where they conflict."""
+    def go():
+        service.steer(task_id, text, store=store())
+        return json.dumps({"queued": task_id})
     return _guard(go)
 
 

@@ -386,3 +386,11 @@ agree with twelve commits' worth of change; it is a unit of work on its own, and
   `local-only`. Nothing above was proved by loading a model.
 - The deferred list in `docs/BACKLOG.md` (a first end-to-end flow run, watchdog thresholds under load, a live CI
   provider, a live embedding model, the LAN smoke test) is still the honest boundary of what is proven.
+
+## Workflow fixes (post-0.1.0)
+
+- B19 gates proposed by the planner; submit no longer waits in awaiting_gates. 2 tests.
+- B20 max_iterations 5 (1 run + 4 retries).
+- B21 steering (store/service/CLI/MCP -> next execute prompt), optional workspace with session memory, chat intake
+  collects flow/model/workspace/gates and hands off.
+- Suite: 301 passed.

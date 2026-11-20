@@ -25,6 +25,7 @@
   fix [ID] "feedback"        send it back to planning with what to change
   no [ID]                    cancel it
   gates ID GATE...           answer "what are the check gates?"
+  steer ID "message"          guide a planning/executing task; delivered at its next step boundary
   chat [--session NAME]      the conversation bound to a session (submits tasks; it cannot do the work); tasks you give it join this
                              chat's session, or NAME to continue a named one
   sessions                   Ariadne sessions: tasks, segments, last handoff brief
@@ -115,6 +116,7 @@ def main(argv=None):
     known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
              "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
              "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit",
+             "steer",
              "ui", "schedules"}
     # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
     # argument; an unquoted multi-word brief works too.
@@ -192,6 +194,14 @@ def main(argv=None):
         return models.main(rest)
     # The model-free control surface: reading state and signing off must work while the models are down or the
     # GPU is busy, so these run before the dependency gate and never call a model.
+    if cmd == "steer":
+        from . import service
+        if len(rest) < 2:
+            print('steer ID "what should change"')
+            return 2
+        service.steer(rest[0], " ".join(rest[1:]))
+        print("queued; the worker delivers it at the next step boundary")
+        return 0
     if cmd in ("inbox", "show", "follow", "ok", "fix", "no", "gates"):
         from . import console
         return console.main([cmd, *rest])

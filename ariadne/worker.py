@@ -25,7 +25,7 @@ from . import flows as flowlib
 from . import jobs, llm, park, paths, protocol, render
 from .errors import TaskError
 from .memory import Memory, format_hits
-from .store import Store, gates_text
+from .store import Store, gate, gates_text
 
 # ---------- running Hermes ----------
 
@@ -667,7 +667,11 @@ class Worker:
         feedback = f"\nFEEDBACK ON THE LAST PLAN (address it):\n{t['feedback']}\n" if t["feedback"] else ""
         default_model = (t.get("model") or "").strip() or flow.step_model
         prompt = PLAN_PROMPT.format(flow=name, source=t["source"], text=t["text"], workspace=ws,
-                                    gates=gates_text(json.loads(t.get("gates") or "[]")) or "(none)",
+                                    gates=gates_text(json.loads(t.get("gates") or "[]")) or
+                                    "none given. Propose 1-3 check gates in the plan's `gates` field - how we will "
+                                    "know the task is done. Prefer `run: <command>` for code, and an outcome a "
+                                    "reviewer can verify for investigation or writing (what the answer must name, "
+                                    "what the report must cite).",
                                     feedback=feedback, memory=format_hits(hits),
                                     flow_brief=flow.brief or "(this flow has no FLOW.md)",
                                     skills_block=skills_block(name),
@@ -681,6 +685,13 @@ class Worker:
             return
         try:
             plan = protocol.parse(r.text, default_model)
+            if not json.loads(t.get("gates") or "[]") and plan.get("gates"):
+                proposed = [gate(g) for g in plan["gates"] if str(g).strip()]
+                if proposed:
+                    self.store.update(t["id"], gates=json.dumps(proposed))
+                    self.store.event(t["id"], "gates", "proposed by the planner (approved with the plan):\n"
+                                     + gates_text(proposed))
+                    t = {**t, "gates": json.dumps(proposed)}
             mp = {"steps": plan["steps"], "agent": default_model, "notes": []}
             mp["chain"] = chain_for(mp, self.catalog)
             document = render.backbrief(plan)
@@ -989,6 +1000,11 @@ class Worker:
                                         plan=t["plan"], extra=step_scope(steps, chain_len, self.catalog))
         else:
             prompt = RETRY_PROMPT.format(failures="\n".join(failures))
+        notes = self.store.take_steers(t["id"])
+        if notes:
+            prompt = ("STEERING from the person (follow it; where it conflicts with the plan, the person wins):\n- "
+                      + "\n- ".join(notes) + "\n\n" + prompt)
+            self.store.event(t["id"], "steer", f"{len(notes)} note(s) delivered at the step boundary")
         r = self.run(flow, "execute", prompt, ws, t, link["agent"],
                      "step-" + "-".join(str(s["n"]) for s in steps) if steps else "steps-all")
         out_of = ("time" if r.exit_code == 124 else "turns" if r.exit_code == TURNS or (

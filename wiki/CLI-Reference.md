@@ -8,7 +8,7 @@
 | `"a brief"` | one gesture: this folder, this session, followed live |
 | `submit "text" --flow F --model M` | give a task (also `--file`, `--gate`, `--workspace`, `--session`) |
 | `inbox` / `show [ID]` / `follow [ID]` | state, one card, live activity |
-| `ok [ID]` / `fix [ID] "feedback"` / `no [ID]` / `gates ID ...` | sign off, revise, cancel, answer the gates |
+| `ok [ID]` / `fix [ID] "feedback"` / `no [ID]` / `gates ID ...` / `steer ID "message"` | sign off, revise, cancel, set gates, guide a running task |
 | `task ...` | the same verbs: submit / wait / approve / revise / cancel / list / get |
 | `sessions` | sessions: tasks, segments, last handoff |
 | `schedules ...` | standing briefs (create / on / off / rm) |

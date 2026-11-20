@@ -59,7 +59,7 @@ class Flow:
     requires: list = field(default_factory=list)   # system tools the flow's MCP servers need (deps.SYSTEM_TOOLS, chrome)
     real_logins: bool = True          # browser: use the person's real Chrome profile (logins) unless a flow turns it off
     blocklist: list = field(default_factory=list)   # network: hosts this flow may not reach (everything else allowed)
-    max_iterations: int = 10      # execute -> QA rounds at most; stops earlier when it stops making progress
+    max_iterations: int = 5       # 1 run + at most 4 retries; the worker may stop earlier
     max_turns: dict = field(default_factory=lambda: {"plan": 20, "execute": 40, "review:plan": 15})
     run_budget: dict = field(default_factory=lambda: {"plan": 900, "execute": 1800})
     task_budget: int = 0          # the task's wall clock, in seconds of worker time (0 = no task-level limit)
