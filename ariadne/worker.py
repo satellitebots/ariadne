@@ -129,6 +129,17 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     `web_search` rides along too (the plan prompt already assumes it): DDGS behind an injectable transport, and
     nothing to close.
 
+    Before the run it writes the same markers `hermes_run` writes, into `flow.home`: `ariadne_phase` ("plan" for the
+    read-only side phases, else the phase), `ariadne_task` and `ariadne_workspace`. The markers are the contract with
+    the flow's MCP servers: `jobs_mcp` reads `ariadne_task` and `ariadne_workspace` from `ARIADNE_FLOW_HOME`, so
+    without them `submit_job` would record a job with no task. KV needs no code here: `Worker.run` restores and saves
+    the cache around any runner, this one included.
+
+    A park request stops a non-side run at the next step boundary (a finished turn, after its tool calls), the same
+    as `hermes_run`: the run comes back `PARKED` (125), and `Worker.run` then holds the model for the person and
+    resumes the same session with RESUME_PROMPT. Side runs (checkpoint/learn/review) never park - a checkpoint is the
+    pause, not something to be interrupted by one.
+
     After a normal return the run leaves one log artifact under `paths.LOGS` (`<tid>-<phase>-<epoch>.log`): header
     (flow, phase, model, session, workspace), the prompt, one line per tool call, the report and the stop reason.
     `RunResult.log` is that path. A full disk must not fail a task: if the write cannot happen, the result is
@@ -138,6 +149,12 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     from .runtime import mcp as mcp_mod
     from .runtime import skills as skills_mod
     from .runtime import web as web_mod
+    home = Path(flow.home)
+    home.mkdir(parents=True, exist_ok=True)
+    side = phase.startswith(("checkpoint", "learn", "review"))   # read-only side runs, as in hermes_run
+    (home / "ariadne_phase").write_text("plan" if side else phase, encoding="utf-8")
+    (home / "ariadne_task").write_text(tid, encoding="utf-8")            # read by the jobs MCP server
+    (home / "ariadne_workspace").write_text(str(workspace), encoding="utf-8")
     name = session or f"{tid}-{phase.replace(':', '-')}"
     pool = None
     cfg = flowlib.mcp_server_config(flow)
@@ -151,11 +168,14 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
                         session=name, max_turns=flow.max_turns.get(phase, 40),
                         budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))),
                         mcp=pool, skills=box, web=search,
+                        checkpoint=None if side else park.requested,   # park at a step boundary; side runs never park
                         on_event=lambda kind, detail: events.append((kind, detail)))
     finally:
         if pool is not None:
             pool.close()
-    code = 124 if r.stopped in ("budget", "max_turns") else (0 if r.stopped == "" else 1)
+    code = (124 if r.stopped in ("budget", "max_turns")
+            else PARKED if r.stopped == "parked"
+            else (0 if r.stopped == "" else 1))
     if pool is not None and pool.errors:
         r.text = f"MCP servers unavailable: {len(pool.errors)} (see runtime log)\n" + r.text
     if not r.text.strip():

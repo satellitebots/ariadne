@@ -42,7 +42,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
 
-Suite: **127 tests at the start, 281 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 289 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -277,7 +277,15 @@ with the flow/phase/model/session/workspace header, the prompt, each tool call, 
 unwritable log is swallowed so a full disk cannot fail a task. 4 tests (trim under budget, no trim under it, resume
 order, the log file). Suite: **281 passed**.
 
-**Queued (B12.5-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
+**B12.6b - todo, park and the MCP markers - DONE.** Three gaps between the runtime and `hermes_run` closed:
+`todo_write` (a `- [ ]` checklist at `<workspace>/.ariadne/todo.md`, refused in read-only phases like every write);
+the park boundary (`loop.run(checkpoint=...)` is asked after each finished turn, never on the first, and stops with
+`stopped="parked"`, which `runtime_run` maps to exit 125 so `Worker.run` holds and resumes the same session; side
+phases never park); and the markers `jobs_mcp` reads (`ariadne_task`, `ariadne_workspace`, `ariadne_phase`, written
+into the flow home before the pool starts). KV needed no runtime code - `Worker.run` already restores and saves around
+any runner, which is now stated in the docstring. 8 tests. Suite: **289 passed**.
+
+**Queued (B12.7-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
 flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted
 capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
 

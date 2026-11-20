@@ -41,7 +41,7 @@ class RunError(RuntimeError):
 class Answer:
     text: str = ""
     turns: int = 0
-    stopped: str = ""          # "" answered, "max_turns", "budget", "empty"
+    stopped: str = ""          # "" answered, "max_turns", "budget", "empty", "parked"
     session: str = ""
     dropped: int = 0           # messages trimmed out of the context in this run
 
@@ -125,7 +125,7 @@ def _mark_omitted(content, n):
 
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
         transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None, web=None,
-        context_tokens=65536, trim_at=0.75):
+        context_tokens=65536, trim_at=0.75, checkpoint=None):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
@@ -140,6 +140,11 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     is trimmed to the system message plus a recent tail, the system message says how much was omitted, and the
     trimmed list is what the session saves (the next run resumes what fits). `Answer.dropped` counts the messages
     removed this run.
+
+    `checkpoint`: an optional callable, asked at the top of every loop iteration after the first turn. When it
+    returns true the run has finished a full turn (model call and its tool calls, the session saved) and stops at
+    that step boundary with `stopped == "parked"`; the caller (the worker) then holds the model for the person and
+    resumes the same session. It is never asked on the first turn - the worker checks before starting a run.
     """
     if not (model or "").strip():
         raise RunError("a run needs an explicitly chosen model")
@@ -152,6 +157,12 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
                + (skills.offered() if skills else [])
                + (web.offered() if web else []))
     while answer.turns < max(1, int(max_turns)):
+        if answer.turns and checkpoint and checkpoint():
+            # A park request mid-run: the in-flight turn (model call and tool calls) has finished and the session
+            # is saved, so stop at this step boundary; the worker holds and resumes the same session.
+            answer.stopped, answer.text = "parked", _last_assistant(messages)
+            session_mod.save(home, session, messages)
+            return answer
         if clock() - started > budget:
             answer.stopped, answer.text = "budget", _last_assistant(messages)
             session_mod.save(home, session, messages)

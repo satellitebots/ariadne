@@ -40,17 +40,16 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
   message, and saves the trimmed history; `Answer.dropped` counts it. `runtime_run` writes
   `.ariadne/logs/<tid>-<phase>-<epoch>.log` (header, prompt, tool calls, report, stop reason) and returns it in
   `RunResult.log`; a full disk is swallowed. 4 tests; suite **281 passed**.
+- B12.6b todo, park and the MCP markers: `todo_write` (a checklist at `<workspace>/.ariadne/todo.md`, execute phases
+  only), the park boundary (`loop.run(checkpoint=...)` stops a finished turn with `stopped="parked"`;
+  `runtime_run` maps it to `PARKED` = 125, side phases never park), and the three markers `hermes_run` used to write
+  (`ariadne_phase`, `ariadne_task`, `ariadne_workspace`) so `jobs_mcp` records a job against the right task. KV needed
+  no code: `Worker.run` restores and saves around any runner. 8 tests; suite **289 passed**.
 
 **Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
 exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
 `docs/GAP-ANALYSIS.md`.
 
-- **B12.6b todo, park, KV and jobs.** A `todo` tool for the execute toolset, the park hooks (`StepBoundary` +
-  `park.requested()` -> exit 125 and resume the same session), KV registration around a run, and the jobs wake-up loop
-  (`JOB SUBMITTED` -> unload -> run -> resume the same session).
-  *Done when:* a task pauses and resumes on the runtime, a submitted job runs with the model unloaded, and the plan
-  can write a checklist the execute phase reads.
-  ~180 lines + tests.
 - **B12.7 flip the default and delete Hermes.** Make the runtime the default, delete `hermes_run`, `_clean_output`,
   `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway` (~134 lines, 36 references) and the `upstream/`
   submodule; update `docs/FORK.md` and `docs/DESIGN-RESET.md`.

@@ -111,8 +111,19 @@ def terminal(ws, command, timeout=180):
     return _cut(f"exit {p.returncode}\n{out or '(no output)'}")
 
 
+def todo_write(ws, items, note=""):
+    items = [str(i).strip() for i in (items or []) if str(i).strip()]
+    if not items:
+        raise ToolError("give at least one item")
+    p = Path(ws) / ".ariadne" / "todo.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lines = ([f"> {str(note).strip()}"] if str(note or "").strip() else []) + [f"- [ ] {i}" for i in items]
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return f"wrote {len(items)} item(s) to .ariadne/todo.md"
+
+
 TOOLS = {"read_file": read_file, "write_file": write_file, "patch_file": patch_file, "search_files": search_files,
-         "list_dir": list_dir, "terminal": terminal}
+         "list_dir": list_dir, "terminal": terminal, "todo_write": todo_write}
 
 SCHEMAS = [
     {"type": "function", "function": {
@@ -142,6 +153,13 @@ SCHEMAS = [
         "name": "terminal", "description": "Run a shell command in the workspace and return its exit code and output.",
         "parameters": {"type": "object", "properties": {"command": {"type": "string"}, "timeout": {"type": "integer"}},
                        "required": ["command"]}}},
+    {"type": "function", "function": {
+        "name": "todo_write", "description": "Write the task's open work as a checklist to .ariadne/todo.md, so a "
+                                             "later run (or the person) can see what is still to do.",
+        "parameters": {"type": "object", "properties": {
+            "items": {"type": "array", "items": {"type": "string"}, "description": "the open items, one each"},
+            "note": {"type": "string", "description": "one line of context above the list (optional)"}},
+            "required": ["items"]}}},
 ]
 
 SCHEMA_BY_NAME = {s["function"]["name"]: s for s in SCHEMAS}
