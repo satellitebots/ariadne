@@ -9,10 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B8 - Content flow: reference-based generation
-A source-pack step (fetch or ingest references), claims carrying citations, a fact-check pass, and the source list as
-part of the report. House style saved as a skill so the next run starts with it.
-
 ### B9 - `ariadne/server` + `ariadne/ui`
 FastAPI on loopback (or `ARIADNE_BIND` for the LAN): the verbs from `service.py`, the views from `present.py`, SSE
 for live activity. Static ES-module SPA, no bundler, no Node. Sessions-first console: Needs-you strip, sessions,
@@ -51,6 +47,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- Content: the reference pack, the citation gate and a fact-check pass - this commit
 - draw.io / diagrams.net in the diagram server: export, import, local SVG - this commit
 - The four approved MCP servers: `data`, `office`, `ci`, `rag` - this commit
 - The store in `store.py`; every surface calls `service`, none call the store - this commit

@@ -73,7 +73,11 @@ One model at a time, and **callback rather than waiting**.
 
 | Gap | Where it lands |
 |---|---|
-| reference ingest for content | `content` flow: a source pack step plus citations in the report |
+
+The content flow carries reference-based generation now: a source pack (`sources/SOURCES.md` plus the fetched text),
+markers on borrowed claims, a fact-check pass that records its verdict per source, and `python -m ariadne.citations`
+as a check that fails on a marker with no entry (and, strict, on an entry nobody cites). The house style is a skill,
+so the next run starts with it.
 
 The diagram server also carries the open-source Visio-class path now: `drawio_export` writes a .drawio that
 diagrams.net edits, `drawio_read` imports one, and `drawio_svg` renders it locally without Chrome or Node. PNG for
