@@ -32,21 +32,28 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
 - B12.4 skills as runtime tools: `ariadne/runtime/skills.py` (`Box` - `skills_list` and `skill_view` over
   `flows.shared_skill_dirs`, descriptions from frontmatter, 8000-char body cap, an unknown name lists what exists),
   `loop.run(skills=...)`, and `runtime_run` passing the box. 7 tests; suite **259 passed**.
+- B12.5 web search: `ariadne/runtime/web.py` (`Search` - one `web_search` schema, DDGS behind an injectable transport,
+  limit clamped 1..10, snippets flattened to 300 chars, every failure as text), `loop.run(web=...)`, and `runtime_run`
+  passing it. 8 tests; suite **277 passed**.
 
 **Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
 exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
 `docs/GAP-ANALYSIS.md`.
 
-- **B12.5 web search.** `web_search` over `ddgs` (installed); `web_fetch` already exists in `web_mcp` and arrives with
-  B12.3. Without this a runtime plan cannot research, which is half of what the plan prompts ask for.
-  *Done when:* a run searches, gets results, and fetches one of them.
-  ~40 lines + test.
-- **B12.6 parity hooks.** Park (`StepBoundary` + `park.requested()`), KV registration, the jobs wake-up loop
-  (`JOB SUBMITTED` -> unload -> run -> resume the same session), a per-run `.log` artifact like `hermes_run` writes, a
-  `todo` tool, and context trimming (the message list grows unbounded today).
-  *Done when:* a task pauses and resumes on the runtime, a submitted job runs with the model unloaded, and a
-  long run stays inside the context window.
-  ~270 lines + tests.
+- **B12.6a context and observability.** Two things a long run needs and the loop lacks: trimming (the message list
+  grows unbounded; past a token budget, keep the system message and a contiguous tail, drop whole turns from the
+  front, never leave a `tool` message without the assistant call it answers, and say in the system message how many
+  turns were dropped) and a per-run log artifact like `hermes_run` writes (prompt, tool calls, final report, under
+  `.ariadne/logs/`).
+  *Done when:* a session driven past the budget still answers, the dropped-turn note is present, no orphan `tool`
+  message exists, and a run leaves a log file naming every tool call.
+  ~120 lines + tests.
+- **B12.6b todo, park, KV and jobs.** A `todo` tool for the execute toolset, the park hooks (`StepBoundary` +
+  `park.requested()` -> exit 125 and resume the same session), KV registration around a run, and the jobs wake-up loop
+  (`JOB SUBMITTED` -> unload -> run -> resume the same session).
+  *Done when:* a task pauses and resumes on the runtime, a submitted job runs with the model unloaded, and the plan
+  can write a checklist the execute phase reads.
+  ~180 lines + tests.
 - **B12.7 flip the default and delete Hermes.** Make the runtime the default, delete `hermes_run`, `_clean_output`,
   `_kill_tree`, `_turn_end_reason`, `_latest_session`, `stop_gateway` (~134 lines, 36 references) and the `upstream/`
   submodule; update `docs/FORK.md` and `docs/DESIGN-RESET.md`.

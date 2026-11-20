@@ -42,7 +42,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B15 | Wiki rewrite | **not started** (see below) |
 | B16 | Model index: device scan + shortlist | done (targeted tests; suite after B12.5) |
 
-Suite: **127 tests at the start, 259 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 277 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -261,6 +261,11 @@ plan-phase refusal, a bad command that errors without hanging, the worker wiring
 plan prompt already carried the index; this is what lets a run follow a skill instead of only knowing it exists.
 `loop.run(skills=...)` merges the two schemas and routes the names; `runtime_run` builds the box. 7 tests with a
 tmp skill tree (list, view, unknown name, cross-flow lookup, loop dispatch, worker wiring). Suite: **259 passed**.
+
+**B12.5 - web search - DONE.** `ariadne/runtime/web.py` adds the tool the plan prompts already named: one `web_search`
+schema, DDGS behind an injectable transport, the limit clamped to 1..10, snippets flattened to 300 chars, and every
+failure (rate limit, dead network) returned as text. `loop.run(web=...)` merges it and routes the name; `runtime_run`
+passes a `Search`, which holds no server and needs no close. 8 tests, all network-free. Suite: **277 passed**.
 
 **Queued (B12.5-B12.8).** `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
 flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted

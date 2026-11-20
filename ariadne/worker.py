@@ -126,21 +126,25 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
     the worker already treats as "not failure, keep what was written, let the gates decide". The flow's MCP servers
     ride along as `mcp__` tools; a server that will not start is said so in the report, not hidden. The flow's shared
     skills ride along as `skills_list`/`skill_view`, so a run can read a skill body, not just its plan-prompt line.
+    `web_search` rides along too (the plan prompt already assumes it): DDGS behind an injectable transport, and
+    nothing to close.
     """
     from . import runtime
     from .runtime import mcp as mcp_mod
     from .runtime import skills as skills_mod
+    from .runtime import web as web_mod
     name = session or f"{tid}-{phase.replace(':', '-')}"
     pool = None
     cfg = flowlib.mcp_server_config(flow)
     if cfg:
         pool = mcp_mod.Pool(cfg, plan_allowed=flow.plan_tools)
     box = skills_mod.Box(flow)
+    search = web_mod.Search()    # web_search in every run; it holds no server, so there is nothing to close
     try:
         r = runtime.run(prompt, home=flow.home, workspace=workspace, phase=phase, model=model or flow.model,
                         session=name, max_turns=flow.max_turns.get(phase, 40),
                         budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))),
-                        mcp=pool, skills=box)
+                        mcp=pool, skills=box, web=search)
     finally:
         if pool is not None:
             pool.close()
