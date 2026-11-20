@@ -50,10 +50,10 @@ def busy(store=None):
     if not orchestrator.worker_running():
         return False
     db = _db(store)
-    for r in db.list(200):
-        if db.get(r["id"], events=False)["status"] in ("planning", "executing"):
-            return True
-    return False
+    cur = db.current()
+    if not cur:
+        return False  # a listening orchestrator holds nothing: orphaned executing rows do not count
+    return db.get(cur["task"], events=False)["status"] in ("planning", "executing")
 
 
 def _gate(store=None):

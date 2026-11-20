@@ -927,6 +927,7 @@ class Worker:
             return
         if freed:
             self.store.event(t["id"], "vram", f"orchestrator model unloaded ({why}); it waits for the task")
+        self.store._mark(False)
 
     def execute(self, t):
         flow = self.flows.get(t["flow"])

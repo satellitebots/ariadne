@@ -112,6 +112,27 @@ class Store:
         finally:
             c.close()
 
+    def _mark(self, on, payload=None):
+        """The task THIS worker live-holds, beside the store it belongs to. Orphans do not live here."""
+        import json as _json
+        path = self.db_path + ".current.json"
+        if on:
+            self.db_path and None
+            (Path(path)).write_text(_json.dumps(payload), encoding="utf-8")
+        else:
+            try:
+                (Path(path)).unlink()
+            except OSError:
+                pass
+
+    def current(self):
+        """The live claim for this store, or None: the occupancy truth the busy gate uses."""
+        import json as _json
+        try:
+            return _json.loads((Path(self.db_path + ".current.json")).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
     def event(self, tid, kind, detail=""):
         with self._conn() as c:
             c.execute("INSERT INTO events VALUES (?,?,?,?)", (tid, time.time(), kind, str(detail)[:4000]))
@@ -387,6 +408,7 @@ class Store:
             to = "planning" if r["status"] == "new" else "executing"
             now = time.time() if now is None else now
             c.execute("UPDATE tasks SET status=?, updated=?, run_started=? WHERE id=?", (to, now, now, r["id"]))
+            self._mark(True, {"task": r["id"], "ts": now, "pid": __import__("os").getpid()})
             c.execute("COMMIT")
         return self.get(r["id"], events=False)
 

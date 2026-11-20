@@ -97,7 +97,19 @@ def create_app(store=None, chat_runner=None):
 
     @app.get("/api/health")
     def health():
-        return {"ok": True, "version": VERSION, "worker": service.inbox(store=db())["worker"]}
+        from .. import park
+        alive = service.inbox(store=db())["worker"]
+        return {"ok": True, "version": VERSION,
+                "orchestrator": alive,            # listening: process up
+                "occupied": service.busy(store=db()),  # a task actually holds it
+                "parked": park.requested() is not None}
+
+    @app.post("/api/park")
+    def park_now():
+        from .. import park
+        if not service.busy(store=db()):
+            raise HTTPException(status_code=400, detail="nothing is running to stop")
+        return park.request(by="ui")
 
     @app.get("/api/choices")
     def choices():

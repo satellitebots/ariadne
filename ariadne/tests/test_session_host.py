@@ -49,8 +49,8 @@ def test_the_busy_gate_refuses_while_a_worker_runs(tmp_path, db, monkeypatch):
     import ariadne.orchestrator as orch
     monkeypatch.setenv("ARIADNE_CONFIG", str(tmp_path / "config.yaml"))
     settings.set("orchestrator_resident", False)
-    tid = db.submit("long task", "t", "C:/x", "coding", "proj", model="qwen3.6-35b-a3b")
-    db.update(tid, status="executing")
+    db.submit("long task", "t", "C:/x", "coding", "proj", model="qwen3.6-35b-a3b")
+    db.claim_next()  # the worker's own claim: this is what makes the machine occupied
     monkeypatch.setattr(orch, "worker_running", lambda: True)
     with pytest.raises(TaskError, match="hardware occupied"):
         service.submit("another", source="t", flow="coding", model="qwen3.6-35b-a3b",
@@ -64,17 +64,19 @@ def test_resident_mode_lifts_the_gate(tmp_path, db, monkeypatch):
     import ariadne.orchestrator as orch
     monkeypatch.setenv("ARIADNE_CONFIG", str(tmp_path / "config.yaml"))
     settings.set("orchestrator_resident", True)
-    tid = db.submit("long task", "t", "C:/x", "coding", "proj", model="qwen3.6-35b-a3b")
-    db.update(tid, status="executing")
+    db.submit("long task", "t", "C:/x", "coding", "proj", model="qwen3.6-35b-a3b")
+    db.claim_next()
     monkeypatch.setattr(orch, "worker_running", lambda: True)
     service.submit("another", source="t", flow="coding", model="qwen3.6-35b-a3b",
                    session="proj", workspace="C:/x", store=db)
     assert len(service.sessions_show("proj", store=db)["tasks"]) == 2
 
 
-def test_no_worker_no_gate(db):
+def test_no_worker_no_gate(db, monkeypatch):
+    import ariadne.orchestrator as orch
+    monkeypatch.setattr(orch, "worker_running", lambda: False)  # pin it: a live orchestrator must not leak in
     tid = db.submit("long task", "t", "C:/x", "coding", "proj", model="qwen3.6-35b-a3b")
-    db.update(tid, status="executing")
-    # worker_running() is False by default in tests (no lock file): create freely
+    db.claim_next()
+    # No worker: create freely even though a row (and a claim marker) exists
     service.submit("another", source="t", flow="coding", model="qwen3.6-35b-a3b",
                    session="proj", workspace="C:/x", store=db)

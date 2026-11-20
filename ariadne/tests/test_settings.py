@@ -33,7 +33,7 @@ def test_resident_mode_keeps_the_model_loaded(tmp_path, monkeypatch):
     w = object.__new__(worker.Worker)
     events = []
     w.unload = lambda: (_ for _ in ()).throw(AssertionError("unload must not be called"))
-    w.store = type("S", (), {"event": lambda *a: events.append(a)})()
+    w.store = type("S", (), {"event": lambda *a: events.append(a), "_mark": lambda *a: None})()
     w._sleep({"id": "t1"}, "the plan is signed off")
     assert events and events[-1][-1].startswith("orchestrator stays loaded")
 
@@ -45,6 +45,6 @@ def test_default_sleep_unloads_the_model(tmp_path, monkeypatch):
     w = object.__new__(worker.Worker)
     unloaded = []
     w.unload = lambda: unloaded.append(1) or True
-    w.store = type("S", (), {"event": lambda *a: None})()
+    w.store = type("S", (), {"event": lambda *a: None, "_mark": lambda *a: None})()
     w._sleep({"id": "t1"}, "the plan is signed off")
     assert unloaded == [1]
