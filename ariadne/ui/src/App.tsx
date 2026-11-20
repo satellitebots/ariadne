@@ -40,8 +40,8 @@ export default function App() {
     try {
       const box = await api.inbox();
       setInbox(box);
-      const isBusy = box.worker && box.running.some((r) => r.status === "planning" || r.status === "executing");
-      setOccupied(isBusy);
+      const h = await api.health().catch(() => ({ occupied: false, orchestrator: box.worker }));
+      setOccupied(h.occupied);
     } catch (e) {
       fail(e);
     }
@@ -287,6 +287,15 @@ export default function App() {
     );
   }
 
+  const park = useCallback(async () => {
+    try {
+      await api.park();
+    } catch (e) {
+      fail(e);
+    }
+    loadInbox();
+  }, [fail, loadInbox]);
+
   return (
     <div className="app">
       <Header
@@ -295,15 +304,15 @@ export default function App() {
         inboxCount={inbox?.waiting.length ?? 0}
         worker={inbox?.worker ?? false}
         occupied={occupied}
+        onStop={park}
         onPaletteToggle={() => setPaletteOpen((o) => !o)}
       />
 
-      {busyMsg && (
+      {(occupied || busyMsg) && (
         <div className="occupied-strip" role="alert">
           <span className="occupied-icon">⚠</span>
-          <span>{busyMsg}</span>
-          {/* TODO: Add a Stop button when the backend exposes a parking/stop endpoint */}
-          <button className="btn btn-secondary" disabled title="Stop endpoint not yet available from backend">
+          <span>{busyMsg || "The machine is occupied by a running task."}</span>
+          <button className="btn btn-secondary" disabled={!occupied} onClick={park}>
             Stop
           </button>
         </div>

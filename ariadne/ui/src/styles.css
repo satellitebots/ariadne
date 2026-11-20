@@ -1215,4 +1215,5 @@ html, body, #root {
 
 .occupied-icon {
   font-size: 14px;
-}
+}.worker-pill.pill-occupied { color: #ffb454; border-color: #ffb454; }
+.worker-dot.dot-busy { background: #ffb454; }

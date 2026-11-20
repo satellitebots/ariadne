@@ -6,6 +6,7 @@ interface HeaderProps {
   inboxCount: number;
   worker: boolean;
   occupied: boolean;
+  onStop: () => void;
   onPaletteToggle: () => void;
 }
 
@@ -15,6 +16,7 @@ export default function Header({
   inboxCount,
   worker,
   occupied,
+  onStop,
   onPaletteToggle,
 }: HeaderProps) {
   return (
@@ -43,24 +45,22 @@ export default function Header({
 
       <div className="header-right">
         <span
-          className={"worker-pill" + (worker ? " worker-on" : " worker-off")}
-          title={occupied ? "hardware occupied" : worker ? "worker running" : "worker idle"}
+          className={"worker-pill" + (occupied ? " pill-occupied" : worker ? " worker-on" : " worker-off")}
+          title={occupied ? "hardware occupied" : worker ? "orchestrator listening" : "orchestrator idle"}
         >
-          <span className={"worker-dot" + (worker ? " dot-on" : " dot-off")} />
-          {occupied ? "occupied" : worker ? "working" : "idle"}
+          <span className={"worker-dot" + (occupied ? " dot-busy" : worker ? " dot-on" : " dot-off")} />
+          {occupied ? "occupied" : worker ? "listening" : "idle"}
         </span>
 
         <button className="kbd-hint" onClick={onPaletteToggle} title="Open command palette">
           ⌘K
         </button>
 
-        {/* TODO: Stop/park the worker. The rulebook exposes `service.busy`, but the HTTP
-            server does not currently expose a parking/stop endpoint, so this stays a
-            non-functional affordance until the backend adds one. Do not invent a route. */}
         <button
           className="btn btn-stop"
-          disabled
-          title="Stop is not exposed by the backend yet"
+          disabled={!occupied}
+          onClick={onStop}
+          title={occupied ? "Interrupt the running task and park it" : "Nothing is running"}
           aria-label="Stop"
         >
           Stop

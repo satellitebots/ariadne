@@ -67,6 +67,10 @@ export const api = {
       body: JSON.stringify({ feedback }),
     }),
 
+  health: () => request<{ ok: boolean; orchestrator: boolean; occupied: boolean; parked: boolean }>("/api/health"),
+
+  park: () => request<unknown>("/api/park", { method: "POST" }),
+
   chat: (message: string, session: string) =>
     request<{ reply: string; session: string }>("/api/chat", {
       method: "POST",
