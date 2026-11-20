@@ -46,6 +46,11 @@ class GatesIn(BaseModel):
     gates: list[str]
 
 
+class ChatIn(BaseModel):
+    message: str
+    session: str = ""
+
+
 def _call(fn, *a, **kw):
     """A rulebook refusal is a 400 with the same sentence the terminal and MCP show, never a traceback."""
     try:
@@ -83,8 +88,8 @@ def event_batch(since=0.0, store=None, limit=200):
     return text, cursor
 
 
-def create_app(store=None):
-    """The app, with an injectable store so a test needs no server and no real database."""
+def create_app(store=None, chat_runner=None):
+    """The app, with an injectable store and chat runner so a test needs no server, no model and no real database."""
     app = FastAPI(title="Ariadne", version=VERSION, docs_url=None, redoc_url=None, openapi_url=None)
 
     def db():
@@ -149,6 +154,16 @@ def create_app(store=None):
     @app.post("/api/tasks/{tid}/feedback")
     def feedback(tid: str, body: ReviseIn):
         return _call(service.feedback, tid, body.feedback, store=db())
+
+    @app.post("/api/chat")
+    def chat_turn(body: ChatIn):
+        """One turn of the session's conversation. It can submit tasks; it cannot do them (see docs/FRONTEND.md)."""
+        from .. import chat
+        try:
+            return {"reply": chat.ask(body.message, body.session, store=db(), runner=chat_runner),
+                    "session": body.session}
+        except (chat.ChatError, TaskError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     @app.get("/api/events")
     def events(since: float = 0.0):

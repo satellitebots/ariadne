@@ -65,7 +65,10 @@ One console, no navigation beyond sessions:
    column offers only the verbs the task legalises. Nothing is auto-selected: the pane stays empty until a row is
    clicked. `+ Session` reveals the submit form with empty flow/model selects and the button disabled until both are
    chosen.
-3. Chat v1 - session-bound conversation, service verbs, no doing-tools.
+3. ~~Chat v1 - session-bound conversation, service verbs, no doing-tools.~~ **Built** (`ariadne/chat.py`): the home
+   is launched with `-t mcp-ariadne_tasks,skills,clarify,search`, so it cannot read files, run a terminal, write code
+   or drive a browser - enforcement by construction, not by a hook. It comes from the console's chat panel
+   (`POST /api/chat`) and from `ariadne chat`; the gate stays in the home as a backstop until B14.
 4. Retire `desktop/`, the gate, the branding overlay; delete the nav-hiding code.
 5. `worker.py` - one Hermes session per task, gates at the edge, resume on failure. Do this before the first real
    GPU run so the run tests the target design.

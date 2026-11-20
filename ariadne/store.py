@@ -198,7 +198,7 @@ class Store:
     def list(self, limit=20):
         with self._conn() as c:
             return [dict(r) for r in c.execute(
-                "SELECT id, status, flow, source, substr(text,1,80) AS text, updated FROM tasks "
+                "SELECT id, status, flow, source, session, substr(text,1,80) AS text, updated FROM tasks "
                 "ORDER BY created DESC LIMIT ?", (int(limit),))]
 
     def update(self, tid, **fields):

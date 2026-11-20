@@ -9,10 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B10 - Our own chat
-Session-bound conversation whose tools are the service verbs plus read-only lookups. No files, terminal, code or
-browser - it cannot do the work by construction.
-
 ### B11 - Schedules from sessions
 `service.schedule_create(session, cron, overrides)`; a schedule inherits the session's flow, model, workspace and
 gates; the serve loop submits due occurrences with `source="schedule"` into the same session. Creating a schedule
@@ -42,6 +38,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- Our own chat: a session-bound conversation with no doing-tools by construction - this commit
 - `ariadne/server` + `ariadne/ui`: FastAPI, SSE, the static sessions console - this commit
 - Content: the reference pack, the citation gate and a fact-check pass - this commit
 - draw.io / diagrams.net in the diagram server: export, import, local SVG - this commit

@@ -56,6 +56,17 @@
     <article id="task" class="task">
       <p class="muted">Nothing is opened for you. Click a session, then a task in its timeline.</p>
     </article>
+
+    <details id="chat" class="chat">
+      <summary>Ask about this session <span class="muted small">- it can submit a task; it cannot do one</span></summary>
+      <div id="chat-log" class="chatlog"></div>
+      <form id="chat-form" class="chatrow">
+        <textarea id="chat-text" rows="2" placeholder="ask about this session, or describe the work…"></textarea>
+        <button id="chat-send" class="btn" type="submit">Send</button>
+      </form>
+      <p class="muted small">No files, no terminal, no browser: if it needs work done, it submits a task for you to
+        sign off.</p>
+    </details>
   </section>
 
   <aside class="col decide">

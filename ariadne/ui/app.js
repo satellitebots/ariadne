@@ -210,6 +210,12 @@ function renderTask(doc) {
   renderActions(doc, actions, gateEditor, reply);
 }
 
+function bubble(text, who) {
+  const log = $("#chat-log");
+  log.append(el("div", `bubble ${who}`, text));
+  log.scrollTop = log.scrollHeight;
+}
+
 function section(title, body) {
   const s = el("section");
   s.append(el("h4", "", title));
@@ -319,6 +325,26 @@ function wire() {
       await refresh(state.task.id);
     } catch (e) {
       fail(e);
+    }
+  });
+
+  $("#chat-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const box = $("#chat-text"), send = $("#chat-send");
+    const message = box.value.trim();
+    if (!message) return;
+    bubble(message, "you");
+    box.value = "";
+    send.disabled = true;
+    send.textContent = "Thinking…";
+    try {
+      const out = await api("/api/chat", { method: "POST", body: JSON.stringify({ message, session: state.session || "" }) });
+      bubble(out.reply, "it");
+    } catch (err) {
+      bubble(String(err.message || err), "it");
+    } finally {
+      send.disabled = false;
+      send.textContent = "Send";
     }
   });
 

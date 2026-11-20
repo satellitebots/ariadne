@@ -218,24 +218,10 @@ def main(argv=None):
         from . import orchestrator
         return orchestrator.main(["sessions"])
     if cmd == "chat":
-        # The chat is a Hermes session with the ariadne-tasks skill and the ariadne_tasks MCP server. Both live in
-        # the terminal's Hermes home, so write that home before launching: on a fresh clone it does not exist yet,
-        # and the model would then have no tools to call (the chat would look broken rather than empty).
-        _profile()
-        from . import llm
-        if not llm.is_up():
-            print("Ariadne's local models are not up, so this chat has nothing to answer with.\n"
-                  "  start them:  python -m ariadne up\n"
-                  "  then:        python -m ariadne chat\n"
-                  "  (no model needed to read or sign off: ariadne inbox / show / ok)")
-            return 1
-        env = dict(os.environ, HERMES_HOME=str(paths.GATEWAY_HOME))
-        extra = ["--pass-session-id"]  # the chat knows its own session id and hands it to submit_task
-        if "--session" in rest:
-            i = rest.index("--session")
-            name, rest = rest[i + 1], rest[:i] + rest[i + 2:]
-            extra += ["-c", name, "--create-if-missing"]
-        return subprocess.call([str(paths.HERMES_EXE), "chat", "-s", "ariadne-tasks", *extra, *rest], env=env)
+        # Our own chat: a Hermes session in the chat home, launched with only the task verbs, skills, clarify and
+        # read-only search - it can submit a task, not do one (ariadne/chat.py).
+        from . import chat
+        return chat.main(rest)
     print(f"unknown command '{cmd}'\n{__doc__}")
     return 2
 
