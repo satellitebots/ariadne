@@ -71,6 +71,12 @@ export const api = {
 
   park: () => request<unknown>("/api/park", { method: "POST" }),
 
+  createSession: (body: { name: string; flow?: string; model?: string; workspace?: string }) =>
+    request<Session>("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+
+  deleteSession: (name: string) =>
+    request<{ deleted: string }>(`/api/sessions/${encodeURIComponent(name)}`, { method: "DELETE" }),
+
   chat: (message: string, session: string) =>
     request<{ reply: string; session: string }>("/api/chat", {
       method: "POST",

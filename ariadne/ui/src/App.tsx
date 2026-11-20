@@ -321,8 +321,11 @@ export default function App() {
       <div className="body">
         <SessionRail
           sessions={sessions}
+          choices={choices}
           active={session}
           onSelect={openSession}
+          onCreate={async (body) => { await api.createSession(body); loadSessions(); }}
+          onDelete={async (name) => { await api.deleteSession(name); loadSessions(); }}
         />
 
         <main className="center">

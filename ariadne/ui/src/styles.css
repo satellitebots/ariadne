@@ -1217,3 +1217,12 @@ html, body, #root {
   font-size: 14px;
 }.worker-pill.pill-occupied { color: #ffb454; border-color: #ffb454; }
 .worker-dot.dot-busy { background: #ffb454; }
+
+.rail-add { font-size: 11px; color: var(--accent, #7cc7ff); background: none; border: none; cursor: pointer; padding: 2px 0; }
+.new-session { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
+.new-session input, .new-session select { padding: 4px 6px; font-size: 12px; }
+.new-session-actions { display: flex; gap: 6px; }
+.session-row-wrap { display: flex; align-items: center; justify-content: space-between; }
+.session-del { background: none; border: none; color: var(--muted-foreground, #888); cursor: pointer; font-size: 14px; }
+.session-del:hover { color: #ffb454; }
+.form-error { color: #ff8a80; font-size: 11px; margin: 4px 0 0; }
