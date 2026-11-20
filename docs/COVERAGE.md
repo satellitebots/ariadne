@@ -73,8 +73,12 @@ One model at a time, and **callback rather than waiting**.
 
 | Gap | Where it lands |
 |---|---|
-| draw.io / diagrams.net export | `diagram` server |
 | reference ingest for content | `content` flow: a source pack step plus citations in the report |
+
+The diagram server also carries the open-source Visio-class path now: `drawio_export` writes a .drawio that
+diagrams.net edits, `drawio_read` imports one, and `drawio_svg` renders it locally without Chrome or Node. PNG for
+draw.io stays with the Mermaid CLI (which rasterises Mermaid only); a .drawio is rendered to SVG here and to PNG
+there from the same source where it matters.
 
 Built since this list was written: the task wall-clock and `timed_out` (B1), the watchdog wired into the worker (B2),
 and the four MCP servers named above - `data` (csv/sqlite/parquet as SQL), `office` (docx/xlsx from Markdown and

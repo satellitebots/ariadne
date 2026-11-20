@@ -9,9 +9,6 @@ own doc updated in the same commit.
 
 ## Queue
 
-### B7 - `diagram`: draw.io / diagrams.net export
-Mermaid stays primary; add an open-source Visio-class path (import/export `.drawio`, SVG/PNG render) for design p80.
-
 ### B8 - Content flow: reference-based generation
 A source-pack step (fetch or ingest references), claims carrying citations, a fact-check pass, and the source list as
 part of the report. House style saved as a skill so the next run starts with it.
@@ -54,6 +51,7 @@ then delete `Desktop.md`, then publish with `tools/publish_wiki.py`.
 
 ## Done
 
+- draw.io / diagrams.net in the diagram server: export, import, local SVG - this commit
 - The four approved MCP servers: `data`, `office`, `ci`, `rag` - this commit
 - The store in `store.py`; every surface calls `service`, none call the store - this commit
 - One session per task: `ariadne/worker.py`, the plan's `models.chain`, resume on a failed gate - `3679767`
