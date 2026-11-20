@@ -270,6 +270,15 @@ export default function App() {
 
   const activeSessionData = session ? sessions.find((s) => s.name === session) ?? null : null;
 
+  const park = useCallback(async () => {
+    try {
+      await api.park();
+    } catch (e) {
+      fail(e);
+    }
+    loadInbox();
+  }, [fail, loadInbox]);
+
   if (loading) {
     return (
       <div className="app loading">
@@ -286,15 +295,6 @@ export default function App() {
       </div>
     );
   }
-
-  const park = useCallback(async () => {
-    try {
-      await api.park();
-    } catch (e) {
-      fail(e);
-    }
-    loadInbox();
-  }, [fail, loadInbox]);
 
   return (
     <div className="app">
