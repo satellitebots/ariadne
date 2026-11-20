@@ -228,6 +228,15 @@ def _server_config(entry, fl):
     return json.loads(json.dumps(_expand(entry)).replace("{home}", fl.home.as_posix()))  # {home}: this flow's home
 
 
+def mcp_server_config(fl, flows_dir=None):
+    """The flow's MCP servers as {server_name: config}, the shape the runtime's Pool takes: the same registry
+    lookup and expansion compile_flow applies when it writes the Hermes home, without writing anything."""
+    if not fl.mcp_servers:
+        return {}
+    registry = _mcp_registry(flows_dir or (fl.folder.parent if fl.folder else paths.FLOWS_DIR))
+    return {m: _server_config(registry[m], fl) for m in fl.mcp_servers}
+
+
 def compile_flow(fl, flows_dir=None):
     """Write the flow's Hermes home. Safe to re-run; returns the home path."""
     registry = _mcp_registry(flows_dir or fl.folder.parent)

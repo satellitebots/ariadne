@@ -24,18 +24,16 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
   runs a full brief -> plan -> sign-off -> execute -> gates against a scripted model, with `HERMES_EXE` pointed at a
   path that does not exist, and a tool call that writes a real file (`tests/test_runtime_drill.py`).
 - `ARIADNE_RUNTIME=own` switches a worker onto it; the default is still Hermes until B12.6.
+- B12.3 the flow's MCP servers as runtime tools: `ariadne/runtime/mcp.py` (`Pool` - one thread, one asyncio task owning
+  every `AsyncExitStack`, a queue bridge into the sync loop, `mcp__<server>__<tool>` namespacing, schemas from
+  `input_schema`, read-only filtering by the flow's `plan_tools`), `flows.mcp_server_config()` (the registry expansion
+  `compile_flow` already used, without writing a home), `loop.run(mcp=...)`, and `runtime_run` opening/closing the pool
+  and naming a server that will not attach. 5 tests against the real `data` server over stdio; suite **252 passed**.
 
 **Left, in order (each its own commit).** The rule that was missing the first time: an item is done only when a test
 exercises it with `HERMES_EXE` pointed at a path that does not exist. Sizes and the full argument are in
 `docs/GAP-ANALYSIS.md`.
 
-- **B12.3 MCP in the runtime.** Attach every server in `flows/mcp_servers.yaml` over stdio, namespaced
-  `mcp__<server>__<tool>`, filtered by the flow's `mcp_servers` list and by phase (read-only phases get the server's
-  read-only tools only). `mcp` and `httpx` are already installed. The four servers built in B6 are unreachable from
-  the runtime today; this is the item that makes them real.
-  *Done when:* a drill run calls `mcp__data__profile` on a real csv and `mcp__web__web_fetch` on a local URL, and the
-  plan phase is refused a write tool from a server.
-  ~150 lines + test.
 - **B12.4 skills as tools.** `skills_list` and `skill_view` over `ariadne.skills`, so the bodies of the 7 flow skills
   are readable in a run and not just their names in the plan prompt.
   *Done when:* the plan drill reads `fix-and-verify` and the backbrief quotes it.

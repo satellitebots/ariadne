@@ -41,7 +41,7 @@ What the docs ask for that the store cannot express today: `timed_out` (B1), the
 | B14 | Retire `ariadne_gate` | done `84de034` |
 | B15 | Wiki rewrite | **not started** (see below) |
 
-Suite: **127 tests at the start, 247 now** (the four gate tests went with the deleted plugin). Every commit above was
+Suite: **127 tests at the start, 252 now** (the four gate tests went with the deleted plugin). Every commit above was
 made with the suite green; every claim below is a command that ran, not a reading of the code.
 
 Deferred by the docs (needs the GPU or a live model): a first end-to-end flow run, watchdog thresholds under real
@@ -243,9 +243,20 @@ server if that is cheaper, and it is: `ariadne/runtime/` is 363 lines and owns t
 call, so it proves the loop, the phase split, the gates and the jail - not that a real coding task can be done. That
 distinction is the core of `docs/GAP-ANALYSIS.md`.
 
-**Queued (B12.3–B12.8).** MCP client in the runtime, skills as tools, `web_search`, parity hooks (park, KV, jobs,
-logs, todo, context trimming), flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in
-`docs/BACKLOG.md`; the counted capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
+**B12.3 — MCP in the runtime — DONE.** Delegated to a subagent (`qwen/qwen3.8-27b`, OpenRouter) with the file map and
+acceptance commands; QA'd here (diff read, targeted and full suites re-run, no orphan server processes). 
+`ariadne/runtime/mcp.py` gives the runtime a `Pool`: one thread, one asyncio task owning every `AsyncExitStack` (anyio
+cancel scopes are task-bound, so a per-call `run_coroutine_threadsafe` fails), a queue bridge into the sync loop,
+`mcp__<server>__<tool>` namespacing, schemas from each tool's `input_schema`, and read-only filtering by the flow's
+`plan_tools` - data the repo already carried, not a guess at which names mutate. `flows.mcp_server_config()` exposes
+the expansion `compile_flow` already did, without writing a home; `loop.run(mcp=...)` merges the pool's tools and
+routes `mcp__` calls; `runtime_run` opens the pool for the flow's servers, closes it in a `finally`, and says so in the
+report when a server will not attach. 5 tests against the real `data` server over stdio (schemas, a real profile call,
+plan-phase refusal, a bad command that errors without hanging, the worker wiring). Suite: **252 passed**.
+
+**Queued (B12.4-B12.8).** Skills as tools, `web_search`, parity hooks (park, KV, jobs, logs, todo, context trimming),
+flip the default and delete Hermes, then the chat. Sizes and acceptance criteria are in `docs/BACKLOG.md`; the counted
+capability matrix and the three root causes are in `docs/GAP-ANALYSIS.md`.
 
 ### B15 — Wiki rewrite (not started)
 

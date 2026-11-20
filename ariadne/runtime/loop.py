@@ -61,18 +61,21 @@ def _last_assistant(messages) -> str:
 
 
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
-        transport=None, base_url=None, clock=time.time, on_event=None):
+        transport=None, base_url=None, clock=time.time, on_event=None, mcp=None):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
-    records tool calls in the task's event log without the loop knowing what a store is.
+    records tool calls in the task's event log without the loop knowing what a store is. `mcp` is the flow's
+    `runtime.mcp.Pool`: its tools join the schemas, and `mcp__`-named calls are handed to it, filtered the same way
+    the loop filters its own tools by phase.
     """
     if not (model or "").strip():
         raise RunError("a run needs an explicitly chosen model")
     messages = session_mod.load(home, session) or [{"role": "system", "content": system_prompt(phase, str(workspace))}]
     messages.append({"role": "user", "content": prompt})
     started, answer = clock(), Answer(session=session)
-    schemas = tools_mod.offered(phase)
+    read = read_only(phase)
+    schemas = tools_mod.offered(phase) + (mcp.offered(read) if mcp else [])
     while answer.turns < max(1, int(max_turns)):
         if clock() - started > budget:
             answer.stopped, answer.text = "budget", _last_assistant(messages)
@@ -86,8 +89,11 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
         for call in reply["tool_calls"]:
             if on_event:
                 on_event("tool", f"{call['name']} {json.dumps(call['arguments'], ensure_ascii=False)[:200]}")
-            messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"],
-                             "content": tools_mod.call(call["name"], call["arguments"], workspace, phase)})
+            if call["name"].startswith("mcp__") and mcp is not None:
+                result = mcp.call(call["name"], call["arguments"], read_only=read)
+            else:
+                result = tools_mod.call(call["name"], call["arguments"], workspace, phase)
+            messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": result})
         session_mod.save(home, session, messages)
         if not reply["tool_calls"]:
             answer.text, answer.stopped = reply["content"], ("" if reply["content"] else "empty")

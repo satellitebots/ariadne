@@ -123,14 +123,27 @@ def runtime_run(flow, phase, prompt, workspace, tid, model=None, session=None):
 
     Same contract as `hermes_run`: a prompt in, a report out, and a session id to resume. `session` is the runtime's
     session name, so a failed gate resumes the same conversation. Out of turns or out of time comes back as 124, which
-    the worker already treats as "not failure, keep what was written, let the gates decide".
+    the worker already treats as "not failure, keep what was written, let the gates decide". The flow's MCP servers
+    ride along as `mcp__` tools; a server that will not start is said so in the report, not hidden.
     """
     from . import runtime
+    from .runtime import mcp as mcp_mod
     name = session or f"{tid}-{phase.replace(':', '-')}"
-    r = runtime.run(prompt, home=flow.home, workspace=workspace, phase=phase, model=model or flow.model,
-                    session=name, max_turns=flow.max_turns.get(phase, 40),
-                    budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))))
+    pool = None
+    cfg = flowlib.mcp_server_config(flow)
+    if cfg:
+        pool = mcp_mod.Pool(cfg, plan_allowed=flow.plan_tools)
+    try:
+        r = runtime.run(prompt, home=flow.home, workspace=workspace, phase=phase, model=model or flow.model,
+                        session=name, max_turns=flow.max_turns.get(phase, 40),
+                        budget=int(flow.run_budget.get(phase, flow.run_budget.get("execute", 1800))),
+                        mcp=pool)
+    finally:
+        if pool is not None:
+            pool.close()
     code = 124 if r.stopped in ("budget", "max_turns") else (0 if r.stopped == "" else 1)
+    if pool is not None and pool.errors:
+        r.text = f"MCP servers unavailable: {len(pool.errors)} (see runtime log)\n" + r.text
     if not r.text.strip():
         r.text = f"STOPPED ({r.stopped}) after {r.turns} turn(s); continue from the files as they are."
     return RunResult(r.text, code, str(flow.home / "runtime-sessions"), name)
