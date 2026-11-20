@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS steers(
   id INTEGER PRIMARY KEY AUTOINCREMENT, task TEXT, created REAL, text TEXT, consumed INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(
   name TEXT PRIMARY KEY, created REAL, updated REAL, source TEXT DEFAULT '',
-  segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', summary TEXT DEFAULT '',
+  segment INTEGER DEFAULT 1, flow TEXT DEFAULT '', workspace TEXT DEFAULT '', model TEXT DEFAULT '', summary TEXT DEFAULT '',
   fresh INTEGER DEFAULT 0, dirty INTEGER DEFAULT 0, hermes_id TEXT DEFAULT '');
 """
 
@@ -97,8 +97,10 @@ class Store:
             if "run_started" not in have:
                 # The task's wall clock starts whenever the worker claims it (B1); old rows have no baseline.
                 c.execute("ALTER TABLE tasks ADD COLUMN run_started REAL DEFAULT 0")
-            if "hermes_id" not in [r["name"] for r in c.execute("PRAGMA table_info(sessions)")]:
-                c.execute("ALTER TABLE sessions ADD COLUMN hermes_id TEXT DEFAULT ''")
+            sess_cols = [r["name"] for r in c.execute("PRAGMA table_info(sessions)")]
+            for col in ("hermes_id", "workspace", "model"):
+                if col not in sess_cols:
+                    c.execute(f"ALTER TABLE sessions ADD COLUMN {col} TEXT DEFAULT ''")
 
     @contextmanager
     def _conn(self):
@@ -117,7 +119,7 @@ class Store:
         log(f"task {tid}", f"{kind}: {detail}")
 
     def submit(self, text, source="cli", workspace="", flow="", session="", gates=None, model=""):
-        """session: a Hermes session to continue (the caller's conversation); default: one session per task.
+        """session: the durable workstream this task joins - many tasks share one session; default: the workspace folder.
         gates: the check gates (strings; `run: cmd` for commands) - else taken from the brief's Gates/Checks/Done when
         section. Without either, the task starts anyway: the planner proposes 1-3 gates in the backbrief, and the
         person approves them with the plan. Nothing waits for a person to invent gates."""
@@ -179,7 +181,7 @@ class Store:
     def sessions(self, limit=20):
         with self._conn() as c:
             return [dict(r) for r in c.execute(
-                "SELECT s.name, s.source, s.segment, s.flow, s.updated, substr(s.summary,1,200) AS summary, "
+                "SELECT s.name, s.source, s.segment, s.flow, s.workspace, s.model, s.updated, substr(s.summary,1,200) AS summary, "
                 "(SELECT count(*) FROM tasks t WHERE t.session=s.name) AS tasks FROM sessions s "
                 "ORDER BY s.updated DESC LIMIT ?", (int(limit),))]
 
@@ -378,7 +380,7 @@ class Store:
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             r = c.execute("SELECT id, status FROM tasks WHERE status IN ('new','approved') "
-                          "ORDER BY updated LIMIT 1").fetchone()
+                          "ORDER BY created LIMIT 1").fetchone()
             if not r:
                 c.execute("COMMIT")
                 return None

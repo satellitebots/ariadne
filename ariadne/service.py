@@ -44,8 +44,31 @@ def choices():
     return {"flows": flows, "models": models}
 
 
+def busy(store=None):
+    """The machine belongs to a task: a live worker owns one in planning/executing."""
+    from . import orchestrator
+    if not orchestrator.worker_running():
+        return False
+    db = _db(store)
+    for r in db.list(200):
+        if db.get(r["id"], events=False)["status"] in ("planning", "executing"):
+            return True
+    return False
+
+
+def _gate(store=None):
+    """One model, one thing: with the flag off, no session or task may start while the worker runs."""
+    from . import settings
+    if settings.get("orchestrator_resident"):
+        return
+    if busy(store):
+        raise TaskError("hardware occupied: the worker is running a task and parallel execution is off. "
+                        "Interrupt it (Stop -> parks -> listens), then try again.")
+
+
 def submit(text, *, source, workspace="", flow="", model="", session="", gates=None, store=None):
     """Create a task. The same call from MCP, the UI, the CLI or a chat."""
+    _gate(store)
     text = (text or "").strip()
     if not text:
         raise TaskError("a task needs a brief: what should be true when it is done?")
@@ -169,6 +192,29 @@ def schedule_delete(name, store=None):
     return {"deleted": name}
 
 
+def define_session(name, *, flow="", model="", workspace="", store=None):
+    """Create the workstream without a task: a session is the host, tasks are executions inside it."""
+    name = (name or "").strip()
+    if not name:
+        raise TaskError("a session needs a name: the project or folder it represents")
+    _gate(store)
+    db = _db(store)
+    db.session(name)
+    db.session_update(name, flow=flow, model=model, workspace=workspace)
+    return sessions_show(name, store=store)
+
+
+def sessions_show(name, store=None):
+    """One workstream: its pivot (flow, model, workspace) and the tasks that belong to it."""
+    name = (name or "").strip()
+    if not name:
+        raise TaskError("name the session")
+    for row in sessions_view(limit=500, store=store):
+        if row["name"] == name:
+            return row
+    raise TaskError(f"no session named {name!r}; `ariadne sessions` lists them")
+
+
 def events_since(since=0.0, limit=200, store=None):
     """Task events after `since`, oldest first: the live feed the UI streams."""
     return _db(store).events_since(since, limit)
@@ -227,7 +273,8 @@ def sessions_view(limit=25, store=None):
     for s in rows:
         mine = [t for t in tasks_ if (t.get("session") or "") == s["name"]]
         out.append({
-            "name": s["name"], "flow": s.get("flow") or "", "segment": s.get("segment"),
+            "name": s["name"], "flow": s.get("flow") or "", "model": s.get("model") or "",
+            "workspace": s.get("workspace") or "", "segment": s.get("segment"),
             "updated": s.get("updated"), "summary": (s.get("summary") or "")[:200],
             "waiting": sum(1 for t in mine if t["status"] in WAITING),
             "tasks": [{"id": t["id"], "status": t["status"],
