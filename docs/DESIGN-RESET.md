@@ -1,4 +1,10 @@
 # Design reset
+> **Partially superseded (2026-11-20).** 'Must not own an agent loop' and 'never edit upstream' are overridden:
+> Ariadne owns a small runtime runner as fallback, Hermes is the worker backend via the `vendor/hermes` submodule
+> plus overlay (BACKLOG B12/B17/B18, see also B18), and Ariadne owns its UI and chat. docs/CONVENTIONS.md lists
+> the authority order.
+
+
 
 This is the authority on what Ariadne is and how it should be built. The code before this document is a series of
 patches that answered yesterday's complaint; where the code and this document disagree, this document wins and the

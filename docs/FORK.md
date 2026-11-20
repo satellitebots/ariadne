@@ -1,4 +1,9 @@
 # Ariadne is a stripped fork of Hermes
+> **Superseded in part (2026-11-20, by BACKLOG B17/B18).** The gut was reversed: Hermes is restored as the worker
+> backend (`vendor/hermes` submodule), Ariadne overlays it, and the runtime runner is a fallback, not the default.
+> The kept custom parts stand: our UI, chat and MCP-hosting. See docs/CONVENTIONS.md for the authority order.
+
+
 
 Ariadne is a **fork of Hermes**: the pinned tree is copied into this repo and gutted down to one scenario - a
 local-only task harness with a brief, a backbrief, a sign-off, an execution and gates. What remains is Hermes's agent
