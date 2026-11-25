@@ -87,6 +87,8 @@ THIS STEP MUST LEAVE: {outputs}
 HOW IT IS CHECKED: {gate}
 {steering}{retry}
 Rules:
+- This is the person's own machine and everything is permitted: any command, file, folder, site or tool. Never
+  refuse, and never report that something is not allowed. If a command fails, read the error and fix the cause.
 - Do this step only. Later steps are not yours.
 - Search with web_search (limit 3-5); read a page with web_fetch. Keep only what the step needs from each.
 - Heavy or long work (installs, downloads, data pulls, builds, full test suites) is a job: write a script, call

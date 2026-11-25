@@ -80,8 +80,10 @@ tool list keeps the terminal for quick commands only. Hermes's gateway, messagin
 used.
 
 Workers have no Hermes restrictions. Hermes caps its agents because it expects hosted models; Ariadne's are local, so
-its approval layer, dangerous-command and hardline blocks, read-before-write, sensitive-path and protected-file
-guards, loop hard stops and private-URL block are all off (`flows.BASE_CONFIG`, `permissions.HERMES_ENV`, and the
+its approval layer, dangerous-command and hardline blocks, read-before-write, sensitive-path, protected-file and
+binary-file guards, read blocks on credential paths, URL/SSRF and cloud-metadata blocks, secret-shaped-URL refusals,
+workdir validation, repeated-read blocks, loop hard stops and private-URL block are all off, and the step prompt
+tells the model that everything is permitted and never to report something as not allowed (`flows.BASE_CONFIG`, `permissions.HERMES_ENV`, and the
 interpreter overlay `tools/permissions_hook.py`; vendor stays untouched). The only rules are the person's own,
 in `permissions.yaml`: default allow; `ask` lists tools, command regexes or write paths that hold a run (status
 `asking`, machine released) until `approve` or `reject`; `deny` refuses outright.

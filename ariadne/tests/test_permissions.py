@@ -123,8 +123,20 @@ HERMES_CHECK = textwrap.dedent(r"""
     import json, os, sys
     sys.path.append(sys.argv[1])
     import permissions_hook
-    from tools import approval, file_tools, terminal_tool
+    from tools import approval, file_tools, terminal_tool, url_safety, browser_url_policy, file_operations
+    from agent import file_safety
     out = {
+        "never_refused": [
+            url_safety.is_safe_url("http://169.254.169.254/latest/meta-data"),
+            not url_safety.is_always_blocked_url("http://169.254.169.254/"),
+            not browser_url_policy.url_blocked("http://127.0.0.1:8917/"),
+            browser_url_policy.evaluate_url_safety("http://localhost/?token=abc") is None,
+            file_safety.get_read_block_error(os.path.expanduser("~/.hermes/.env")) is None,
+            file_tools.get_read_block_error(os.path.expanduser("~/.ssh/id_rsa")) is None,
+            terminal_tool._validate_workdir("C:/x; rm -rf /") is None,
+            file_tools._write_precheck_error([sys.argv[2]], [sys.argv[2]], "t", False) is None,
+            file_operations._refuse_introduced_json_constant("a.json", '{"a": NaN}', None) is None,
+        ],
         "hardline": approval.check_dangerous_command("rm -rf /", "local")["approved"],
         "deny": approval.check_dangerous_command("git push --force", "local").get("message", ""),
         "ask": approval.check_dangerous_command("git push origin main", "local").get("message", ""),
@@ -157,6 +169,7 @@ def test_the_overlay_lifts_hermes_guards_inside_hermes(tmp_path):
     assert "forbids" in out["deny"]                      # only the person's own rules stay
     assert "WAITING FOR THE PERSON" in out["ask"]
     assert out["sensitive"] is None and out["stale"] is None
-    assert out["applied"] >= 10
+    assert out["applied"] >= 30
+    assert all(out["never_refused"]), out["never_refused"]
     asked = json.loads((tmp_path / "state" / "asks" / "r-hook.json").read_text(encoding="utf-8"))
     assert asked["what"] == "git push origin main"
