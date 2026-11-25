@@ -31,6 +31,9 @@ BASE_CONFIG = {
     "updates": {"check": False},
     "telemetry": {"shared_metrics": {"enabled": False, "send": False}},
     "web": {"search_backend": "ddgs"},   # keyless web_search (Hermes' ddgs extra); pages are read with web_fetch
+    # No tool_search/tool_call bridge: a step sees exactly its own tools (the bridge let a worker reach web_extract,
+    # which the keyless backend cannot serve, on the first real run).
+    "tools": {"tool_search": {"enabled": "off"}},
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
                             "base_url": "http://localhost:11434/v1"}],
 }

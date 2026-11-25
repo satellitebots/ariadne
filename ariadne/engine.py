@@ -86,6 +86,7 @@ HOW IT IS CHECKED: {gate}
 {steering}{retry}
 Rules:
 - Do this step only. Later steps are not yours.
+- Search with web_search (limit 3-5); read a page with web_fetch. Keep only what the step needs from each.
 - Heavy or long work (installs, downloads, data pulls, builds, full test suites) is a job: write a script, call
   submit_job, then reply 'JOB SUBMITTED: <id>' and stop. You are woken here with the result.
 - If the step cannot be done as written, reply starting with 'OFF-PLAN:' and the reason.
