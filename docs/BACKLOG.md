@@ -60,10 +60,23 @@ DESIGN-RESET's "must not own an agent loop": the alternative was owning a 163k-l
 
 **Left: nothing.** B12.1-B12.8 are done; B15 (the wiki rewrite) is the last item.
 
-### B15 - Wiki rewrite  (done: 847ed0e; publish pending)
-The six stale pages rewritten to the authority docs and `Desktop.md` deleted (commit 847ed0e). Publishing
-with `tools/publish_wiki.py` remains a separate, manual step - it pushes the wiki to GitHub and is not run
-automatically.
+### B15 - Wiki rewrite  (done: 847ed0e; published at c0d8671)
+The six stale pages rewritten to the authority docs and `Desktop.md` deleted (commit 847ed0e), and published to the
+GitHub wiki with `tools/publish_wiki.py` (wiki commit 4cc95f6, synced from c0d8671). Publishing stays a manual step.
+
+## Parked ideas
+
+Not scheduled; kept here so they are not lost (they lived in the root TODO.md, removed in 0a278f5).
+
+- Chat as the way in: the person just talks, and the orchestrator turns the conversation into a durable task.
+- The two home servers: load-balancing, CPU inference out of 64 GB RAM, jobs on another machine. Measure CPU-only
+  throughput per model first.
+- Compression telemetry as a health check (reduction and seconds per pass; median 22% and 85 s on the case studies).
+- Instruction decay over long runs: measure whether skills and rules are still followed late; re-inject if not.
+- Default code-quality gates added by the flow (ruff, mypy, pytest, bandit as jobs).
+- One Python environment per workspace, shared by the terminal, jobs and gates.
+- Slack channel.
+- Watch window: show running jobs and their progress lines.
 ## Explicitly deferred (needs a live model or the GPU)
 
 - The first end-to-end run of any flow, and the RAG case-study task still sitting `executing` in the store.
