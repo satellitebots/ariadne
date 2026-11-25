@@ -8,7 +8,7 @@ import pytest
 from ariadne import durable, engine, flows as flowlib, jobs, park, spec as speclib
 from ariadne.broker import Broker
 from ariadne.tests.test_broker import FakeServer
-from ariadne.worker import RunResult
+from ariadne.engine import RunResult
 
 FLOWS = flowlib.load_flows()
 PY = f'"{sys.executable}"'

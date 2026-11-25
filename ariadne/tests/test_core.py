@@ -6,7 +6,6 @@ import pytest
 
 from ariadne import flows as flowlib
 from ariadne import models as modellib
-from ariadne import orchestrator as orch
 from ariadne import paths
 from ariadne.memory import Memory, format_hits
 
@@ -73,105 +72,6 @@ def test_flow_validation(env, tmp_path):
 
 # ---------- orchestrator ----------
 
-class FakeRunner:
-    def __init__(self, plan="MISSION: fix it\nSTEPS:\n1. edit", results=("Changed add(); tests pass.",)):
-        self.plan, self.results, self.calls, self.reviews = plan, list(results), [], []
-
-    def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
-        self.calls.append((flow.name, phase, prompt, model))
-        if phase.startswith("checkpoint"):
-            return orch.RunResult("SITUATION: x\nDONE: y", 0, "log", session or "h")
-        if phase.startswith("review"):
-            return orch.RunResult(self.reviews.pop(0) if self.reviews else "G1: PASS - seen", 0, "log")
-        if phase.startswith("learn"):
-            name = f"{flow.name}-lessons"
-            return orch.RunResult(f"Here it is.\n---\nname: {name}\ndescription: lessons\n---\n- keep tests green", 0, "log")
-        text = self.plan if phase == "plan" else self.results.pop(0)
-        return orch.RunResult(text, 0, "log")
-
-
-def make_worker(env, runner, route_answer="coding", installer=None):
-    flows = flowlib.load_flows(REPO_FLOWS)
-    return orch.Worker(store=orch.Store(env / "t.db", require_gates=False), memory=Memory(env / "m.db"), flows=flows,
-                       runner=runner, llm_chat=lambda model, msgs: route_answer,
-                       installer=installer or (lambda name, cat, log=print: None), on_installed=lambda: None)
-
-
-def test_full_drill_brief_backbrief_signoff_execute(env):
-    run = FakeRunner()
-    w = make_worker(env, run)
-    tid = w.store.submit("fix the add bug", "test", str(env))
-    assert w.run_once()                                     # route + plan
-    t = w.store.get(tid)
-    assert t["status"] == "awaiting_signoff" and t["flow"] == "coding" and "MISSION" in t["plan"]
-    assert not w.run_once()                                 # nothing runs before sign-off
-    w.store.approve(tid)
-    assert w.run_once()                                     # execute
-    t = w.store.get(tid)
-    assert t["status"] == "done" and "tests pass" in t["result"]
-    assert [c[1] for c in run.calls] == ["plan", "checkpoint:plan", "execute", "checkpoint:execute"]
-    # local workers never write skills; feedback stays open until a larger model folds it into a shared skill
-    w.store.feedback(tid, "use pathlib, not os.path")
-    assert not w.run_once()
-    assert w.store.open_feedback()[0]["task"] == tid and "use pathlib" in w.store.open_feedback()[0]["feedback"][-1]
-    w.store.resolve_feedback([tid])
-    assert w.store.open_feedback() == []
-    assert "APPROVED PLAN" in run.calls[2][2] and "MISSION: fix it" in run.calls[2][2]
-    assert run.calls[2][2].startswith("SESSION HANDOFF")      # execute starts from the plan's handoff brief
-    assert "terminal" in run.calls[0][2] and "git (MCP)" in run.calls[0][2]   # planner knows the execute tools
-    assert "done" in w.memory.get("task", tid)["text"]      # outcome is in shared memory
-    assert any("route: coding" in e for e in t["events"])
-
-
-def test_revise_replans_with_feedback(env):
-    run = FakeRunner()
-    w = make_worker(env, run)
-    tid = w.store.submit("write a post", "test", str(env))
-    w.run_once()
-    w.store.revise(tid, "make it shorter")
-    assert w.store.get(tid)["status"] == "new"
-    w.run_once()
-    assert "make it shorter" in run.calls[-1][2] and w.store.get(tid)["status"] == "awaiting_signoff"
-
-
-def test_off_plan_goes_back_to_the_person(env):
-    w = make_worker(env, FakeRunner(results=["OFF-PLAN: the file does not exist"]))
-    tid = w.store.submit("fix x", "test", str(env))
-    w.run_once(); w.store.approve(tid); w.run_once()
-    assert w.store.get(tid)["status"] == "needs_attention"
-    w.store.revise(tid, "it is in src/")                    # person re-briefs; goes back to planning
-    assert w.store.get(tid)["status"] == "new"
-
-
-def test_failing_gates_iterate_and_stop_when_no_progress(env):
-    run = FakeRunner(results=["try 1", "try 2", "try 3", "try 4"])
-    w = make_worker(env, run)
-    w.flows["coding"].checks = ["exit 1"]                    # never passes
-    tid = w.store.submit("fix x", "test", str(env))
-    w.run_once(); w.store.approve(tid); w.run_once()
-    t = w.store.get(tid)
-    assert t["status"] == "failed" and "no progress in the last two iterations" in t["error"]
-    execs = [c for c in run.calls if c[1] == "execute"]
-    assert len(execs) == 3                                  # stopped early, well before max_iterations (10)
-    assert "GATES FAILED" in execs[-1][2]                   # each iteration was told what failed
-    # a failed gate resumes the same session; nothing is compressed away between attempts (B4)
-    assert [c[1] for c in run.calls if c[1].startswith("checkpoint")] == ["checkpoint:plan"]
-    assert w.flows["coding"].max_iterations == 5
-
-
-def test_a_timed_out_run_goes_to_the_gates_not_to_failed(env):
-    class Slow(FakeRunner):
-        def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
-            r = super().__call__(flow, phase, prompt, ws, tid, model, session)
-            return orch.RunResult("(timed out)", 124, "log") if phase == "execute" and len(self.calls) < 4 else r
-    run = Slow(results=["unused", "done now"])
-    w = make_worker(env, run)
-    tid = w.store.submit("fix x", "test", str(env))
-    w.run_once(); w.store.approve(tid); w.run_once()
-    t = w.store.get(tid)
-    assert t["status"] == "done" and any("run budget used up" in e for e in t["events"])
-
-
 def test_shared_skills_are_validated_committed_and_loaded(env, monkeypatch, tmp_path):
     from ariadne import skills
     monkeypatch.setattr(skills, "SKILLS", tmp_path / "skills")
@@ -191,96 +91,13 @@ def test_shared_skills_are_validated_committed_and_loaded(env, monkeypatch, tmp_
     assert fl.shared_skills == ["py-style"]
 
 
-def test_a_task_without_gates_starts_and_the_planner_proposes_them(env):
-    """Gates are not a precondition any more: the plan carries them and sign-off approves them with it."""
-    st = orch.Store(env / "t.db")
-    tid = st.submit("make it better", "test", str(env))
-    assert st.get(tid)["status"] == "new"                 # nothing waits for a person to invent gates
-    st.set_gates(tid, "- run: pytest -q\n- README explains every command")
-    t = st.get(tid)
-    assert t["status"] == "new" and json.loads(t["gates"]) == [
-        {"type": "run", "text": "pytest -q"}, {"type": "review", "text": "README explains every command"}]
-    brief = "Build it.\n\nDone when:\n- `pytest -q` passes\n- every command is documented\n\nNotes: none"
-    assert [g["type"] for g in orch.parse_gates(brief)] == ["run", "review"]
-    assert st.get(st.submit(brief, "test"))["status"] == "new"
-
-
-def test_the_planner_proposes_gates_when_the_task_has_none(env):
-    plan = ('```json\n{"mission": "find it", "steps": [{"n": 1, "text": "read the code"}], '
-            '"gates": ["the report names the failing test and the file"], "risks": [], "questions": []}\n```')
-    run = FakeRunner(plan=plan)
-    w = make_worker(env, run)
-    tid = w.store.submit("investigate the date bug", "test", str(env), flow="coding",
-                         model="qwen3.6-35b-a3b")
-    assert w.run_once()                                  # plan
-    t = w.store.get(tid)
-    assert t["status"] == "awaiting_signoff"
-    gates = json.loads(t["gates"])
-    assert gates and "failing test" in gates[0]["text"]  # the plan's proposal became the task's gates
-
-
-def test_review_gates_are_checked_by_a_reviewer_and_drive_iterations(env):
-    run = FakeRunner(results=["try 1", "try 2"])
-    run.reviews = ["G1: FAIL - README has no usage section", "G1: PASS - usage section present"]
-    w = make_worker(env, run)
-    w.store.require_gates = True
-    tid = w.store.submit("write docs", "test", str(env), gates=["README has a usage section"])
-    w.run_once()
-    assert "README has a usage section" in run.calls[0][2]    # the planner sees the gates
-    w.store.approve(tid); w.run_once()
-    t = w.store.get(tid)
-    assert t["status"] == "done" and [c[1] for c in run.calls].count("execute") == 2
-    assert "README has no usage section" in [c for c in run.calls if c[1] == "execute"][-1][2]
-    assert any("iterate" in e for e in t["events"]) and any("review: 1/1 gates passed" in e for e in t["events"])
-
-
-def test_conditional_check_skipped_when_path_missing(env):
-    w = make_worker(env, FakeRunner())
-    w.flows["coding"].checks = [{"run": "exit 1", "when_exists": "tests"}]
-    assert w.run_checks(w.flows["coding"], str(env)) == []
-
-
-def test_router_picks_an_approved_flow_and_rejects_otherwise(env):
-    w = make_worker(env, FakeRunner(), route_answer="I think: investigation")
-    tid = w.store.submit("compare two vendors", "test", str(env))
-    assert w.route(w.store.get(tid))[0] == "investigation"
-    w.llm_chat = lambda m, msgs: "no idea"
-    assert w.route(w.store.get(tid))[0] is None            # rejected, never defaulted to the first flow
-
-
-def test_sign_off_rules(env):
-    st = orch.Store(env / "t.db")
-    tid = st.submit("x", "test")
-    with pytest.raises(orch.TaskError):
-        st.approve(tid)                                     # nothing to approve yet
-    st.cancel(tid)
-    with pytest.raises(orch.TaskError):
-        st.revise(tid, "no")
-    with pytest.raises(orch.TaskError):
-        st.submit("   ")
-
-
-def test_worker_error_never_leaves_task_stuck(env):
-    def boom(*a):
-        raise RuntimeError("hermes missing")
-    w = make_worker(env, boom)
-    tid = w.store.submit("x", "test", str(env))
-    w.run_once()
-    assert w.store.get(tid)["status"] == "failed"
-
-
-def test_wait_returns_when_backbrief_ready(env):
-    w = make_worker(env, FakeRunner())
-    tid = w.store.submit("fix", "test", str(env))
-    w.run_once()
-    assert w.store.wait(tid, timeout=2, poll=0.1)["status"] == "awaiting_signoff"
-
-
 def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkeypatch):
     from ariadne import activity
     monkeypatch.setattr(activity, "LOG_DIR", env)
-    st = orch.Store(env / "t.db", require_gates=False)
-    tid = st.submit("x", "test")
+    from ariadne import durable
+    st = durable.Store(env / "a.db")
+    tid = "r1"
+    st.event(tid, "brief", "from test: x")
 
     class Server:
         def tool(self):
@@ -293,7 +110,7 @@ def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkey
         return a + b
     assert add(2, b=3) == 5 and add.__doc__ == "Add."
     text = activity.log_file().read_text()
-    assert f"[task {tid}] brief: from test: x" in text
+    assert f"[{tid}] brief: from test: x" in text
     assert "[mcp:demo] add(2, b=3)" in text and "[mcp:demo] add done in" in text
     tool = ("2026-11-17 22:09:26,706 INFO [local-c6] agent.tool_executor: tool terminal completed (1.66s, 74 chars)")
     call = ("2026-11-17 17:11:13,260 INFO [local-6] agent.conversation_loop: API call #1: model=qwen3.5-9b provider=custom "
@@ -310,17 +127,3 @@ def test_activity_log_records_task_events_mcp_calls_and_worker_lines(env, monkey
     assert len(list(env.glob("activity-*.log"))) == 2
 
 
-def test_the_worker_defaults_to_the_hermes_backend(env):
-    """The workers' loop, tools and skills are Hermes's; our own runtime is the opt-in fallback."""
-    from ariadne import worker as workerlib
-    w = workerlib.Worker(store=workerlib.Store(env / "default.db", require_gates=False),
-                         installer=lambda name, cat, log=print: None, on_installed=lambda: None)
-    assert w.runner is workerlib.hermes_run
-
-
-def test_our_own_runtime_is_opt_in(env, monkeypatch):
-    from ariadne import worker as workerlib
-    monkeypatch.setenv("ARIADNE_RUNTIME", "own")
-    w = workerlib.Worker(store=workerlib.Store(env / "own.db", require_gates=False),
-                         installer=lambda name, cat, log=print: None, on_installed=lambda: None)
-    assert w.runner is workerlib.runtime_run

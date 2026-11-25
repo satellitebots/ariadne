@@ -84,8 +84,10 @@ class Orchestrator:
         fl = flows.get(flow_name)
         if fl:
             return fl.step_model
-        from .chat import chat_model
-        return chat_model()
+        for m in catalog.models.values():       # outside a flow: the first installed agent model
+            if m.kind == "agent" and m.installed():
+                return m.name
+        raise verbs.VerbError("no agent model is installed; `ariadne models install <name>` first")
 
     def turn(self, ref, message, store, flows, catalog, broker, draft=None):
         """One turn. `ref` is the draft id (draft conversation) or a conversation name (general chat)."""

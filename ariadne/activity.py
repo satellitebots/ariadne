@@ -267,7 +267,7 @@ def watch(history=20, poll=1.0, out=sys.stdout, rounds=None):
             elif confirm_stop:
                 confirm_stop = False
                 if k == "y":
-                    from .orchestrator import stop_all
+                    from .daemon import stop_all
                     stopped = stop_all("stopped from the watch window")
                     print(f"Ariadne stopped (tasks back to you: {', '.join(stopped) or 'none'}). "
                           "Start again with any task command, or `python -m ariadne serve`.", file=out, flush=True)

@@ -25,7 +25,7 @@ def test_spawn_detached_runs_and_logs(tmp_path):
 
 def test_long_running_processes_start_outside_the_session():
     """The worker and the model server go through procs.spawn_detached; nothing else spawns them on its own."""
-    for mod in ("orchestrator.py", "serve.py"):
+    for mod in ("daemon.py", "serve.py"):
         src = (PKG / mod).read_text(encoding="utf-8")
         assert "spawn_detached(" in src, mod
         assert "DETACHED_PROCESS" not in src, f"{mod} starts a background process without procs.spawn_detached"

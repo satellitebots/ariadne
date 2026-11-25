@@ -11,7 +11,7 @@ import pytest
 
 from ariadne import flows as flowlib
 from ariadne import jobs, kvcache, llm, models as modellib, paths, serve, serving
-from ariadne import orchestrator as orch
+from ariadne import daemon as orch
 
 REPO_FLOWS = paths.ROOT / "flows"
 

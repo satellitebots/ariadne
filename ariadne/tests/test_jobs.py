@@ -2,8 +2,8 @@ import json
 import sys
 
 from ariadne import jobs
-from ariadne import orchestrator as orch
-from ariadne.tests.test_core import FakeRunner, make_worker, env  # noqa: F401 -- env is a fixture
+from ariadne import engine
+from ariadne.tests.test_core import env  # noqa: F401 -- env is a fixture
 
 PY = f'"{sys.executable}"'
 
@@ -33,28 +33,6 @@ def test_a_failing_and_a_too_long_job(env):  # noqa: F811
     assert jobs.run(j, db, unload=lambda: True, poll=0.05)["status"] == "timeout"
 
 
-def test_the_worker_runs_submitted_jobs_and_wakes_the_same_session(env):  # noqa: F811
-    class Submits(FakeRunner):
-        def __call__(self, flow, phase, prompt, ws, tid, model=None, session=None):
-            self.calls.append((flow.name, phase, prompt, model, session))
-            if phase == "execute" and sum(c[1] == "execute" for c in self.calls) == 1:
-                jobs.submit(tid, PY + ' -c "print(42)"', ws, why="answer", after="report it", db_path=env / "t.db")
-                return orch.RunResult("JOB SUBMITTED", 0, "log", "hermes-7")
-            return orch.RunResult(self.plan if phase == "plan" else "done; tests pass", 0, "log", "h")
-
-    run = Submits()
-    w = make_worker(env, run)
-    tid = w.store.submit("fix x", "test", str(env))
-    w.run_once(); w.store.approve(tid); w.run_once()
-    execs = [c for c in run.calls if c[1] == "execute"]
-    assert len(execs) == 2
-    assert execs[1][4] == "hermes-7" and "42" in execs[1][2] and "report it" in execs[1][2]
-    t = w.store.get(tid)
-    assert t["status"] == "done" and any("job" in e and "done: exit 0" in e for e in t["events"])
-    assert [j["status"] for j in jobs.for_task(tid, db_path=env / "t.db")] == ["done"]
-    assert json.loads(jobs.for_task(tid, db_path=env / "t.db")[0]["result"])["exit_code"] == 0
-
-
 def test_the_coding_flow_gets_the_jobs_server_with_its_home(env):  # noqa: F811
     from ariadne import flows as flowlib
     from ariadne.tests.test_core import REPO_FLOWS
@@ -62,4 +40,4 @@ def test_the_coding_flow_gets_the_jobs_server_with_its_home(env):  # noqa: F811
     cfg = flowlib.mcp_server_config(fl, REPO_FLOWS)
     assert "ariadne.jobs_mcp" in " ".join(cfg["jobs"]["args"])
     assert cfg["jobs"]["env"]["ARIADNE_FLOW_HOME"] == fl.home.as_posix()
-    assert orch.jobs_rule(fl) == orch.JOBS_RULE
+    assert "submit_job" in engine.STEP_PROMPT

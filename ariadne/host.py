@@ -58,7 +58,7 @@ async def _plain(send, status, body):
 def build_app(host, token):
     from mcp.server.transport_security import TransportSecuritySettings
 
-    from .tasks_mcp import server
+    from .front_mcp import server
     # The bearer token is the access control; Host-header checks would refuse LAN clients that use our IP.
     security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
     app = server.streamable_http_app(host=host, transport_security=security)
@@ -68,10 +68,10 @@ def build_app(host, token):
 def serve(host, port):
     import uvicorn
 
-    from .orchestrator import ensure_worker
+    from .daemon import ensure_worker
     token = get_token()
     ensure_worker()
-    print(f"Ariadne tasks MCP on http://{host}:{port}/mcp (bearer token in {TOKEN_FILE}); health: /health", flush=True)
+    print(f"Ariadne MCP on http://{host}:{port}/mcp (bearer token in {TOKEN_FILE}); health: /health", flush=True)
     uvicorn.run(build_app(host, token), host=host, port=port, log_level="warning")
 
 
@@ -84,7 +84,7 @@ def client_configs(host, port, token):
         "hermes_config_yaml": f"mcp_servers:\n  ariadne_tasks:\n    url: \"{url}\"\n    headers:\n"
                               f"      Authorization: \"Bearer {token}\"\n    timeout: 300\n",
         "local_stdio_no_network": {"mcpServers": {"ariadne-tasks": {
-            "command": str(paths.ROOT / ".venv" / "Scripts" / "python.exe"), "args": ["-m", "ariadne.tasks_mcp"],
+            "command": str(paths.ROOT / ".venv" / "Scripts" / "python.exe"), "args": ["-m", "ariadne.front_mcp"],
             "env": {"PYTHONPATH": str(paths.ROOT)}}}},
     }
 

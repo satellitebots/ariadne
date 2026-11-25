@@ -235,7 +235,7 @@ def flag_tasks(store, why):
     return f"flagged {', '.join(marked)}" if marked else "no task was running"
 
 
-def start(store, url="", unload=None, kill=None, flag=None, **kw):
+def start(store, url="", unload=None, kill=None, flag=None, running=None, **kw):
     """The continuous watchdog `serve` runs: one daemon thread, one jsonl row per sample, real callbacks.
 
     `stop()` ends it without waiting for the next interval. Every callback is injectable so the wiring can be
@@ -247,8 +247,10 @@ def start(store, url="", unload=None, kill=None, flag=None, **kw):
                    kill=kill or kill_server, flag=flag or (lambda tid, why: flag_tasks(store, why)), **kw)
     stop = threading.Event()
 
-    def running():
+    def running_task():
         """The task the worker is on, if any: the watchdog must not unload a model under it."""
+        if running is not None:
+            return running()
         try:
             for t in store.list(50):
                 if t.get("status") in ("planning", "executing"):
@@ -260,7 +262,7 @@ def start(store, url="", unload=None, kill=None, flag=None, **kw):
     def loop():
         while not stop.is_set():
             try:
-                dog.check(running())
+                dog.check(running_task())
             except Exception as e:                      # a broken sample is a row, not a crash
                 dog._write({"ts": round(time.time(), 3), "level": "ok", "error": f"{type(e).__name__}: {e}"})
             stop.wait(dog.interval)

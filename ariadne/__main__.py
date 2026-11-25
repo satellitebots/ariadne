@@ -1,62 +1,43 @@
 """Ariadne command line (Windows, Linux, macOS):  ariadne <command>   (or: python -m ariadne <command>)
 
-  (no command)               the inbox: what needs you, what is running, what finished
-  "a brief"                  one gesture: this folder, this session, followed live
-  doctor                     check every dependency (changes nothing)
-  install [--system] [--models]   install what is missing (--system: git/uv/ollama/node via winget, brew or apt;
-                             --models: also fetch the default models now instead of when a plan first picks them)
-  models [list | index | install NAME...]   the catalog; index: what this machine can run, by tier
-  kv [list | drop SESSION]   parked KV caches, per session, step and model
-  park [--resume | --status]   pause the running task at its next step boundary to have the model (never automatic)
-  browser [status | debug on|off]   debug on: the models' browser attaches to your Chrome and its logins
-  stop                       stop the background worker and models on purpose (also S in the watch window); they
-                             run outside any terminal or session, so nothing else takes them down
-  resources [max|shared|light]   how much of the machine the models may take (applied between tasks)
-  up [--lan]                 start the models and the MCP endpoint (http://<host>:8911/mcp, bearer token)
-  down                       stop them
-  connect [--host H]         print client configs (Claude Code, Claude Desktop, other MCP clients)
-  submit "text" --flow F --model M   give a task from the terminal (also: --file, --gate, --workspace, --session);
-                             then follow it live
-  task ...                   the same verbs: submit / wait / approve / revise / cancel / list / get
-  inbox                      what needs you, what is running, what finished (no model, works while the GPU is busy)
-  show [ID]                  a task as a person reads it: gates, backbrief, report, next action
-  follow [ID]                print a task's activity live, then its card when it needs you or finishes
-  ok [ID] [--model N=MODEL]  approve the backbrief (default: the task that needs you)
-  fix [ID] "feedback"        send it back to planning with what to change
-  no [ID]                    cancel it
-  gates ID GATE...           answer "what are the check gates?"
-  steer ID "message"          guide a planning/executing task; delivered at its next step boundary
-  chat [--session NAME]      the conversation bound to a session (submits tasks; it cannot do the work); tasks you give it join this
-                             chat's session, or NAME to continue a named one
-  sessions                   Ariadne sessions: tasks, segments, last handoff brief
-  schedules [create SESSION --cron EXPR --brief TEXT | on NAME | off NAME | rm NAME]   standing briefs
-  watch [--open|--always|--never]   live activity: tasks, MCP calls, worker, models, Hermes tool and model calls
-                             (--open: in its own window; --always: every run opens it; --never: only on --watch)
-  --watch                    with any command: open the activity window too
-  ui [--port N] [--bind HOST]    Ariadne's own console in a browser (loopback by default; ARIADNE_BIND for the LAN)
-  desktop                        retired: `ariadne ui` is the console (docs/FRONTEND.md)
-  serve | profile | flows | token     lower-level pieces
+Tasks and runs (the same verbs as the UI, the chat and MCP - docs/DESIGN.md):
+  (no command)               what is going on: the machine, live runs, open drafts, tasks
+  chat                       talk with the orchestrator: define tasks, start, park, steer and resume runs
+  draft "what you want" --flow F    open a draft from a flow template, then talk it through with `say`
+  say DRAFT "message"        one turn with the orchestrator about a draft
+  sign DRAFT                 sign a draft: it becomes a task version (and runs now if its trigger says so)
+  define FILE.yaml           a whole task definition from a file, as a draft to sign
+  tasks | task NAME          signed tasks; one task's definition and runs
+  run NAME                   run a task now          schedule NAME "0 7 * * 1-5"|manual|2026-11-25T07:00
+  runs [NAME] | run_show RUN the runs; one run's steps, checks and events
+  park RUN | steer RUN "note" | resume RUN | cancel RUN     steer a live run: park, steer, resume
+  machine                    who holds the GPU, who waits
+  flows                      the task templates and what they ask for
 
-Every command except doctor and install first checks that the dependencies are there.
+Machine and setup:
+  doctor | install [--system] [--models] | models [list|index|install NAME...] | resources [max|shared|light]
+  ui [--port N] [--bind HOST]   the console in a browser     up [--lan] | down | connect | token   the MCP endpoint
+  watch [--open|--always|--never]   live activity            stop [--hard]   stop Ariadne on purpose
+  kv [list|drop REF] | browser [status|debug on|off] | casestudy export WS NAME | server | watchdog | local-only
 """
+import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 from . import deps, paths
 
+ALIASES = {"park": "park_run", "show": "run_show"}
+
 
 def _project_venv():
-    """The venv `install` builds; None before it exists."""
     exe = Path("Scripts/python.exe") if os.name == "nt" else Path("bin/python")
     p = paths.ROOT / ".venv" / exe
     return p if p.exists() else None
 
 
 def _ensure_project_interpreter(argv):
-    """A system-python `ariadne` shim must not run the app: mcp, fastapi and uvicorn live in the project venv.
-    Re-exec once, before anything imports them, and set ARIADNE_REEXEC so this cannot loop."""
+    """A system-python `ariadne` shim must not run the app: re-exec once in the project venv."""
     if os.environ.get("ARIADNE_REEXEC") or not argv or argv[0] == "install":
         return
     venv = _project_venv()
@@ -71,66 +52,110 @@ def _ensure_project_interpreter(argv):
         pass
 
 
-def _runtime_ready():
-    """`up` and `serve` need the runtime deps before they start models; failing after llama-swap is up is worse."""
+def _when(ts):
+    import time
+    return time.strftime("%m-%d %H:%M", time.localtime(ts)) if ts else "-"
+
+
+def overview():
+    from . import verbs
+    m = verbs.call("machine")
+    print(f"machine: {m['summary']}")
+    live = verbs.call("runs", live=True)
+    print(f"\nLIVE RUNS ({len(live)})")
+    for r in live:
+        print(f"  {r['id']}  {r['status']:<8} {r['task']:<24} step {r['step']}/{r['steps_total']}")
+    drafts = verbs.call("drafts")
+    print(f"\nOPEN DRAFTS ({len(drafts)})")
+    for d in drafts:
+        name = d["spec"].get("name") or "(no name yet)"
+        print(f"  {d['id']}  {d['flow']:<13} {name:<24} {'ready to sign' if d['ready'] else str(len(d['problems'])) + ' to fill in'}")
+    tasks = verbs.call("tasks")
+    print(f"\nTASKS ({len(tasks)})")
+    for t in tasks:
+        print(f"  {t['name']:<24} v{t['version']:<3} {t['trigger']:<34} next {_when(t['next_due'])}")
+    print("\nariadne chat   - talk it through with the orchestrator")
+    return 0
+
+
+def _print(out):
+    if isinstance(out, dict) and "yaml" in out and "problems" in out:          # a draft
+        print(out["yaml"])
+        if out.get("reply"):
+            print(f"orchestrator: {out['reply']}\n")
+        print("ready to sign: ariadne sign " + out["id"] if out["ready"] else
+              "still missing:\n  - " + "\n  - ".join(out["problems"]))
+    elif isinstance(out, list) and out and isinstance(out[0], dict) and "steps_total" in out[0]:
+        for r in out:
+            print(f"{r['id']}  {r['status']:<10} {r['task']:<24} step {r['step']}/{r['steps_total']}  "
+                  f"{_when(r['created'])}  {r['trigger']}")
+    elif isinstance(out, list) and out and isinstance(out[0], dict) and "trigger" in out[0] and "version" in out[0]:
+        for t in out:
+            print(f"{t['name']:<24} v{t['version']:<3} {t['trigger']:<34} last {t['last_run'] or '-'}")
+    else:
+        print(json.dumps(out, indent=1, ensure_ascii=False, default=str))
+
+
+def verb_cli(name, rest):
+    """`ariadne <verb> positional... --key value`: positionals fill the verb's required arguments in order."""
+    from . import verbs
+    v = verbs.VERBS[name]
+    args, pos, i = {}, [], 0
+    while i < len(rest):
+        a = rest[i]
+        if a.startswith("--"):
+            key = a[2:].replace("-", "_")
+            if i + 1 < len(rest) and not rest[i + 1].startswith("--"):
+                args[key], i = rest[i + 1], i + 2
+            else:
+                args[key], i = "true", i + 1
+        else:
+            pos.append(a)
+            i += 1
+    order = [n for n in v.params if n not in args]
+    for n, val in zip(order, pos):
+        args[n] = val
+    if name == "define" and "yaml" in args and Path(args["yaml"]).exists():
+        args["yaml"] = Path(args["yaml"]).read_text(encoding="utf-8")
+    for n, (ann, _) in v.params.items():
+        if n in args and ann is bool:
+            args[n] = str(args[n]).lower() in ("1", "true", "yes")
+        elif n in args and ann is int:
+            args[n] = int(args[n])
+        elif n in args and ann is float:
+            args[n] = float(args[n])
     try:
-        import mcp  # noqa: F401
-        import uvicorn  # noqa: F401
-        return True
-    except ModuleNotFoundError:
-        print("this Python has no `mcp`/`uvicorn` - it is not the project venv.\n"
-              "Run `python -m ariadne install`, or .venv/Scripts/python.exe -m ariadne up.")
-        return False
+        out = verbs.call(name, **args)
+    except verbs.VerbError as e:
+        print(str(e))
+        return 2
+    if name in ("run", "rerun", "sign", "schedule", "resume"):
+        from .daemon import ensure_worker
+        ensure_worker()
+    _print(out)
+    return 0
 
 
-def _profile():
-    """Copy profiles/ariadne (config + skills) into the terminal's Hermes home, with this machine's paths."""
-    import shutil
-    from . import yamlio
-    src = paths.ROOT / "profiles" / "ariadne"
-    home = paths.GATEWAY_HOME
-    home.mkdir(parents=True, exist_ok=True)
-    cfg = yamlio.safe_load((src / "config.yaml").read_text(encoding="utf-8"))
-    cfg["mcp_servers"]["ariadne_tasks"].update(command=str(paths.VENV_PY), env={"PYTHONPATH": str(paths.ROOT)})
-    # Ariadne Desktop's package (desktop/plugin): status, park/resume, the chat-and-sessions shell. Hermes copies its
-    # desktop half into desktop-plugins/; its routes load only when allow-listed in plugins.enabled.
-    # The Hermes desktop plugin is retired (docs/FRONTEND.md): Ariadne serves its own UI. Remove any copy an older
-    # profile installed so the shell cannot load it.
-    pkg = home / "plugins" / "ariadne"
-    if pkg.exists():
-        shutil.rmtree(pkg)
-    # The gate is retired (docs/FRONTEND.md): the chat home is launched with only the task verbs, so there is no
-    # doing-tool to refuse. An older Ariadne may have left the plugin in this home - remove it, do not enable it.
-    gate = home / "plugins" / "ariadne_gate"
-    if gate.exists():
-        shutil.rmtree(gate)
-    plugins = cfg.setdefault("plugins", {})
-    plugins["enabled"] = sorted((set(plugins.get("enabled") or []) | set()) - {"ariadne", "ariadne_gate"})
-    from . import local_only
-    bad = local_only.violations(cfg)
-    if bad:
-        raise SystemExit("refusing to write a cloud provider into the Ariadne home:\n  - " + "\n  - ".join(bad))
-    (home / "config.yaml").write_text("# Generated by python -m ariadne profile from profiles/ariadne - do not edit.\n"
-                                      + yamlio.safe_dump(cfg), encoding="utf-8")
-    for skill in (src / "skills").iterdir():
-        dst = home / "skills" / skill.name
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(skill, dst)
-    print(f"terminal Hermes home: {home}")
-
-
-def _quick_task(text: str) -> int:
-    """One gesture: a brief from this folder, followed live, in this folder's session."""
-    from . import console, service
-    from .orchestrator import _default_session, _default_workspace, ensure_worker
-    workspace = _default_workspace()
-    session = _default_session(workspace)
-    store = service.store()
-    tid = service.submit_unrouted(text, source="cli", workspace=workspace, session=session, store=store)
-    ensure_worker()
-    print(f"{tid}  session {session}  {workspace}")
-    return console.follow(store, tid)
+def chat_loop(rest):
+    """A terminal conversation with the orchestrator (the same `chat` verb the UI uses)."""
+    from . import verbs
+    conv = rest[rest.index("--conversation") + 1] if "--conversation" in rest else ""
+    print("Ariadne orchestrator - it defines and manages tasks; workers do them. Empty line or Ctrl+C to leave.")
+    while True:
+        try:
+            msg = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not msg:
+            return 0
+        try:
+            out = verbs.call("chat", message=msg, conversation=conv)
+        except verbs.VerbError as e:
+            print(f"(error) {e}")
+            continue
+        conv = out["conversation"]
+        print(f"ariadne> {out['reply']}\n")
 
 
 def main(argv=None):
@@ -141,119 +166,52 @@ def main(argv=None):
         print(__doc__)
         return 0
     _ensure_project_interpreter(argv)
-    if not argv:
-        # `ariadne` with nothing else is the inbox: what needs me, what is running, what finished.
-        from . import console
-        return console.main(["inbox"])
-    if "--watch" in argv:  # any command: also open the activity window
+    if "--watch" in argv:
         argv.remove("--watch")
         from . import activity
         activity.open_window()
-        if not argv:
-            return 0
-    known = {"doctor", "install", "profile", "flows", "watch", "resources", "kv", "park", "browser", "casestudy",
-             "stop", "models", "inbox", "show", "follow", "ok", "fix", "no", "gates", "serve", "up", "down",
-             "connect", "token", "task", "desktop", "sessions", "chat", "local-only", "server", "watchdog", "submit",
-             "steer",
-             "ui", "schedules"}
-    # `ariadne "fix the failing date test"` - the one gesture the design asks for. Quoted, so the brief is one
-    # argument; an unquoted multi-word brief works too.
-    if argv and argv[0] not in known and not argv[0].startswith("-") and (len(argv) > 1 or " " in argv[0]):
-        return _quick_task(" ".join(argv))
+    if not argv:
+        return overview()
     cmd, rest = argv[0], argv[1:]
+    from . import verbs
+    cmd = ALIASES.get(cmd, cmd)
+    if cmd == "park_run" and (not rest or rest[0].startswith("--")):   # the old global form
+        from . import park
+        return park.main(rest)
+    if cmd == "chat":
+        return chat_loop(rest)
+    if cmd in verbs.VERBS and cmd not in ("flows",):
+        return verb_cli(cmd, rest)
+    if cmd == "flows":
+        _print(verbs.call("flows"))
+        return 0
     if cmd == "local-only":
         from . import local_only
         bad = local_only.check_home()
-        print("local-only: OK (inference is local; no key is configured)" if not bad
-              else "local-only: FAIL\n  - " + "\n  - ".join(bad))
+        print("local-only: OK" if not bad else "local-only: FAIL\n  - " + "\n  - ".join(bad))
         return 1 if bad else 0
-    if cmd in ("up", "serve", "chat", "task", "desktop"):
-        # Anything that can start a model checks the provider first: local inference and no key, or it does not run.
-        from . import local_only
-        try:
-            local_only.guard_home()
-        except local_only.LocalOnlyError as e:
-            print(str(e))
-            print("Point base_url at this machine or the LAN (ARIADNE_ALLOW_HOSTS for a named gateway), "
-                  "and remove the api_key; see docs/DESIGN-RESET.md.")
-            return 2
-    if cmd not in ("doctor", "install", "watch", "help"):
-        from . import activity
-        activity.maybe_open_window()  # watch --always: every run shows its activity
     if cmd == "doctor":
         return deps.doctor()
     if cmd == "install":
         return deps.install(system="--system" in rest, models="--models" in rest)
-    if cmd == "profile":
-        return _profile() or 0
-    if cmd == "flows":
-        from .flows import compile_all
-        for name, home in compile_all().items():
-            print(f"{name}: {home}")
-        return 0
-    if cmd == "watch":
-        from . import activity
-        return activity.main(rest)
-    if cmd == "resources":
-        from . import resources
-        return resources.main(rest)
-    if cmd == "kv":
-        from . import kvcache
-        return kvcache.main(rest)
-    if cmd == "park":
-        from . import park
-        return park.main(rest)
-    if cmd == "browser":
-        from . import browser
-        return browser.main(rest)
-    if cmd == "casestudy":
-        from . import casestudy
-        return casestudy.main(rest)
+    simple = {"watch": "activity", "resources": "resources", "kv": "kvcache", "browser": "browser",
+              "casestudy": "casestudy", "watchdog": "watchdog", "server": "serving", "models": "models"}
+    if cmd in simple:
+        import importlib
+        return importlib.import_module(f"ariadne.{simple[cmd]}").main(rest)
     if cmd == "stop":
-        from .orchestrator import stop_all
+        from .daemon import stop_all
         stopped = stop_all(hard="--hard" in rest)
-        print(f"Ariadne stopped: worker, Hermes gateways and models. Tasks back to you: {', '.join(stopped) or 'none'}")
+        print(f"Ariadne stopped: the worker and the models. Runs back to you: {', '.join(stopped) or 'none'}")
         return 0
-    if cmd == "watchdog":
-        # One sample of the machine, no model loaded: RAM, VRAM, and whether the server answers.
-        from . import watchdog
-        return watchdog.main(rest)
-    if cmd == "server":
-        # Where inference happens: our llama-server, a local Ollama, or an endpoint on the LAN. Model-free.
-        from . import serving
-        return serving.main(rest)
     if cmd == "ui":
-        # Our own console: it reads and signs off without a model, so it runs before the dependency gate. The bind is
-        # checked first (loopback or the LAN, never the internet).
         from . import server
         return server.main(rest)
-    if cmd == "models":
-        from . import models
-        return models.main(rest)
-    # The model-free control surface: reading state and signing off must work while the models are down or the
-    # GPU is busy, so these run before the dependency gate and never call a model.
-    if cmd == "steer":
-        from . import service
-        if len(rest) < 2:
-            print('steer ID "what should change"')
-            return 2
-        service.steer(rest[0], " ".join(rest[1:]))
-        print("queued; the worker delivers it at the next step boundary")
-        return 0
-    if cmd in ("inbox", "show", "follow", "ok", "fix", "no", "gates"):
-        from . import console
-        return console.main([cmd, *rest])
-    if cmd == "schedules":
-        # A standing brief; reading and switching one is model-free, so it runs before the dependency gate.
-        from . import schedule
-        return schedule.main(rest)
-    deps.require()  # everything below needs the dependencies
+    deps.require()
     if cmd == "serve":
         from . import serve
         return serve.stop() if "--stop" in rest else serve.start()
     if cmd == "up":
-        if not _runtime_ready():
-            return 2
         from . import host, serve
         serve.start()
         return host.main(["serve", "--host", "0.0.0.0" if "--lan" in rest else "127.0.0.1"])
@@ -263,21 +221,6 @@ def main(argv=None):
     if cmd in ("connect", "token"):
         from . import host
         return host.main([cmd, *rest])
-    if cmd in ("task", "submit"):
-        from . import orchestrator
-        return orchestrator.main([*rest] if cmd == "task" else ["submit", *rest])
-    if cmd == "desktop":
-        print("Ariadne Desktop (the rebranded Hermes app) is retired: Ariadne serves its own console - docs/FRONTEND.md.")
-        print("Run it with:  python -m ariadne ui")
-        return 1
-    if cmd == "sessions":
-        from . import orchestrator
-        return orchestrator.main(["sessions"])
-    if cmd == "chat":
-        # Our own chat: a Hermes session in the chat home, launched with only the task verbs, skills, clarify and
-        # read-only search - it can submit a task, not do one (ariadne/chat.py).
-        from . import chat
-        return chat.main(rest)
     print(f"unknown command '{cmd}'\n{__doc__}")
     return 2
 

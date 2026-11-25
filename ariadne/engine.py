@@ -11,14 +11,66 @@ Nothing here is a chatbot: no gateway, no persona, no memory of its own. Model-f
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import durable, flows as flowlib, jobs, park, paths, spec as speclib
-from .worker import PARKED, TURNS, RunResult, _clean_output, _kill_tree, _latest_session, _SESSION_ID
 
+PARKED = 125      # a run stopped at a boundary by a park request
+TURNS = 126       # out of turns (not failure: the check decides)
 CANCELLED = 130
+
+
+@dataclass
+class RunResult:
+    text: str
+    exit_code: int
+    log: str
+    session_id: str = ""     # the Hermes session the run used (printed by -Q)
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+_SESSION_ID = re.compile(r"session_id:\s*(\S+)")
+
+
+def _clean_output(out):
+    """Hermes -Q prints tool previews (boxed, coloured diffs), the answer, then session info; keep the answer."""
+    lines = []
+    for l in _ANSI.sub("", out or "").splitlines():
+        if re.match(r"^\s*(session[ _]?id|session:|resume with)", l, re.I) or l.lstrip().startswith("│"):
+            continue
+        lines.append(l)
+    return "\n".join(lines).strip()
+
+
+def _kill_tree(p):
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+    else:
+        p.kill()
+
+
+def _latest_session(home, since):
+    """The Hermes session a killed run was writing (its id is only printed at a clean exit)."""
+    try:
+        c = sqlite3.connect(str(Path(home) / "state.db"), timeout=10)
+        r = c.execute("SELECT id FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 1",
+                      (since - 2,)).fetchone()
+        c.close()
+        return r[0] if r else ""
+    except sqlite3.Error:
+        return ""
+
+
+def stop_gateway(home):
+    """Stop a Hermes gateway left running in a worker home (older workers started them; headless runs do not)."""
+    if not (Path(home) / "gateway.pid").exists():
+        return
+    subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=dict(os.environ, HERMES_HOME=str(home)),
+                   stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
 
 STEP_PROMPT = """You are a worker of Ariadne. You do ONE step of a signed task, then stop.
 

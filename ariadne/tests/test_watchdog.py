@@ -84,27 +84,11 @@ def test_the_flag_rung_acts_once_not_on_every_sample(tmp_path):
     assert [r.get("repeat") for r in rows[-4:]] == [None, True, True, True]
 
 
-def test_flag_tasks_hands_the_running_task_back_to_the_person(tmp_path):
-    from ariadne import orchestrator as orch
-    st = orch.Store(tmp_path / "t.db", require_gates=False)
-    running = st.submit("build it", "test", str(tmp_path))
-    done = st.submit("already finished", "test", str(tmp_path))
-    st.update(running, status="executing")
-    st.update(done, status="done")
-    msg = watchdog.flag_tasks(st, "free RAM 100 MB < 1500 MB")
-    assert running in msg
-    t = st.get(running)
-    assert t["status"] == "needs_attention" and "free RAM" in t["result"]
-    assert any("watchdog: free RAM" in e for e in t["events"])
-    assert st.get(done)["status"] == "done"                                  # finished work is not disturbed
-
-
 def test_start_runs_the_watchdog_in_a_thread_and_stops_it(tmp_path):
     import time
-    from ariadne import orchestrator as orch
-    st = orch.Store(tmp_path / "t.db", require_gates=False)     # nothing running: the full ladder is allowed
+    st = None                                                    # nothing running: the full ladder is allowed
     calls = []
-    stop = watchdog.start(st, url="http://127.0.0.1:1", interval=0.01, thresholds={"consecutive": 1},
+    stop = watchdog.start(st, running=lambda: "", url="http://127.0.0.1:1", interval=0.01, thresholds={"consecutive": 1},
                           sampler=_sampler([True] * 50), log_path=tmp_path / "watchdog.jsonl",
                           unload=lambda: calls.append("unload"), kill=lambda: calls.append("kill"),
                           flag=lambda tid, why: calls.append(("flag", tid, why)))
@@ -117,7 +101,7 @@ def test_start_runs_the_watchdog_in_a_thread_and_stops_it(tmp_path):
 
 
 def test_the_worker_serve_loop_starts_the_watchdog(monkeypatch):
-    from ariadne import orchestrator as orch
+    from ariadne import daemon
     started = {}
 
     def fake_start(store, **kw):
@@ -125,7 +109,7 @@ def test_the_worker_serve_loop_starts_the_watchdog(monkeypatch):
         return lambda: started.setdefault("stopped", True)
 
     monkeypatch.setattr(watchdog, "start", fake_start)
-    stop = orch._watchdog("a-store")
+    stop = daemon._watchdog("a-store", type("B", (), {"holder": lambda self: None})())
     assert started["store"] == "a-store"
     stop()
     assert started["stopped"] is True

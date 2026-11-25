@@ -81,30 +81,3 @@ def test_the_loop_dispatches_web_search_to_the_search(tmp_path):
     assert "web_search" in names                              # offered on the wire, in the plan phase
 
 
-def test_runtime_run_builds_a_search_for_the_run(tmp_path, monkeypatch):
-    from ariadne import flows as flowlib
-    from ariadne import worker as workerlib
-    from ariadne.runtime import model as model_mod
-
-    made = []
-
-    class FakeSearch:
-        def __init__(self, transport=None):
-            self.transport = transport
-            made.append(self)
-
-        def offered(self):
-            return []
-
-        def call(self, name, arguments):
-            return f"ERROR: fake {name}"
-
-    monkeypatch.setattr(web_mod, "Search", FakeSearch)
-    monkeypatch.setattr(model_mod, "chat", lambda messages, **kw:
-                        {"content": "reported", "tool_calls": [], "raw": {"role": "assistant", "content": "reported"}})
-    monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")    # the session lands in tmp, not the state dir
-
-    fl = flowlib.Flow(name="coding", description="d", when="w", folder=paths.FLOWS_DIR / "coding")
-    r = workerlib.runtime_run(fl, "plan", "p", str(tmp_path), "t1")
-    assert r.exit_code == 0 and "reported" in r.text
-    assert len(made) == 1

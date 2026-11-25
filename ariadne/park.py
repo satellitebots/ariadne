@@ -83,24 +83,11 @@ class StepBoundary:
         return any(m in new for m in self.MARKS)
 
 
-def status(store=None) -> dict:
-    """What the status screen shows: the task holding the model (if any), park state, what needs the person, recent
-    activity. Reads through `service`, like every other surface."""
-    from . import activity, service
-    rows = service.tasks(limit=30, store=store)
-    active = [t for t in rows if t["status"] in ("planning", "executing")]
-    t = active[0] if active else None
-    flag = requested()
-    needs = [{"id": r["id"], "status": r["status"], "text": (r["text"] or "").splitlines()[0][:120]}
-             for r in rows if r["status"] in ("awaiting_gates", "awaiting_signoff", "needs_attention")]
-    out = {"busy": bool(t), "park": flag, "recent": activity.recent(10), "task": None, "needs": needs}
-    if t:
-        full = service.task(t["id"], store=store)
-        ev = [e for e in full.get("events", []) if " feedback:" not in e[:20]]
-        out["task"] = {"id": t["id"], "status": t["status"], "flow": t.get("flow"),
-                       "text": (t["text"] or "").strip().splitlines()[0][:140],
-                       "since": t.get("updated"), "last": ev[-1] if ev else None}
-    return out
+def status() -> dict:
+    """What the status screen shows: who holds the machine, the park flag, live runs and recent activity."""
+    from . import activity, verbs
+    return {"machine": verbs.call("machine"), "park": requested(), "live": verbs.call("runs", live=True),
+            "recent": activity.recent(10)}
 
 
 def main(argv):

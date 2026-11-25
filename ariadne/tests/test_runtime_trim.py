@@ -87,22 +87,3 @@ def test_the_last_user_prompt_is_still_the_last_user_message_after_trimming(ws, 
             open_calls.discard(m["tool_call_id"])
 
 
-def test_runtime_run_writes_a_per_run_log(tmp_path, monkeypatch):
-    from ariadne import flows as flowlib
-    from ariadne import worker as workerlib
-    from ariadne.runtime import model as model_mod
-
-    monkeypatch.setattr(paths, "LOGS", tmp_path / "logs")
-    monkeypatch.setattr(paths, "HOMES", tmp_path / "homes")      # the session lands in tmp, not the state dir
-    monkeypatch.setattr(model_mod, "chat", lambda messages, **kw:
-                        {"content": "reported", "tool_calls": [],
-                         "raw": {"role": "assistant", "content": "reported"}})
-    fl = flowlib.Flow(name="logtest", description="d", when="w", mcp_servers=[])
-    r = workerlib.runtime_run(fl, "execute", "do the thing", str(tmp_path), "t9")
-    assert r.exit_code == 0
-    assert r.log
-    log = Path(r.log)
-    assert log.parent == tmp_path / "logs" and log.exists()
-    text = log.read_text(encoding="utf-8")
-    assert "do the thing" in text and "reported" in text and "phase: execute" in text
-    assert "flow: logtest" in text and "workspace:" in text

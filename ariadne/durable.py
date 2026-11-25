@@ -74,7 +74,13 @@ class Store:
 
     # ---------- events and messages ----------
     def event(self, ref, kind, detail=""):
-        self._exec("INSERT INTO event(ts, ref, kind, detail) VALUES (?,?,?,?)", time.time(), ref, kind, str(detail))
+        self._exec("INSERT INTO event(ts, ref, kind, detail) VALUES (?,?,?,?)", time.time(), ref, kind,
+                   str(detail)[:8000])
+        try:
+            from .activity import log
+            log(ref, f"{kind}: {detail}")
+        except Exception:
+            pass          # the activity log is a convenience; the store is the record
 
     def events(self, ref=None, since=0.0, limit=500):
         if ref:
