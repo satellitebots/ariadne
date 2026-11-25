@@ -23,6 +23,7 @@ export type Task = {
 export type RunSummary = {
   id: string; task: string; task_id: string; version: number; status: string; trigger: string; step: number;
   steps_total: number; created: number; started: number; ended: number; error: string;
+  ask: { kind: string; what: string; rule: string; text: string } | null;
 };
 export type Attempt = { attempt: number; status: string; started: number; ended: number | null; report: string; gate: string };
 export type Event = { ts: number; ref: string; kind: string; detail: string };
@@ -68,7 +69,7 @@ export function stream(onChange: (e: Event) => void, onMachine: (m: Machine) => 
   return () => { closed = true; es?.close(); };
 }
 
-export const LIVE = new Set(["queued", "waiting", "running", "parked"]);
+export const LIVE = new Set(["queued", "waiting", "running", "parked", "asking"]);
 
 export function ago(ts?: number | null): string {
   if (!ts) return "";

@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import durable, flows as flowlib, jobs, park, paths, spec as speclib
+from . import durable, flows as flowlib, jobs, park, paths, permissions, spec as speclib
 
 PARKED = 125      # a run stopped at a boundary by a park request
 TURNS = 126       # out of turns (not failure: the check decides)
@@ -158,7 +158,8 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             cmd += ["-m", model]
         if flow.reasoning.get("execute") and kind == "step":
             cmd += ["--reasoning", flow.reasoning["execute"]]
-    env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8")
+    permissions.install_hook()
+    env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8", **permissions.hermes_env(ref))
     log = qfile.with_suffix("").with_suffix(".log")
     started = time.time()
     p = subprocess.Popen(cmd, cwd=workspace, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -177,7 +178,7 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             stdout, stderr = p.communicate()
             code = 124
             break
-        if stop() or (park.requested() and kind == "step"):
+        if stop() or (park.requested() and kind == "step") or permissions.pending(ref):
             if boundary.reached():          # let the call in flight finish, then stop at that boundary
                 _kill_tree(p)
                 stdout, stderr = p.communicate()
@@ -195,7 +196,7 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
 
 class Engine:
     def __init__(self, store=None, flows=None, broker=None, step_runner=None, job_runner=None, kv=None,
-                 clock=time.time, wait_resumed=None, checks_timeout=600):
+                 clock=time.time, wait_resumed=None, checks_timeout=600, wait_answered=None):
         from . import broker as brokerlib
         self.store = store or durable.Store()
         self.flows = flows or flowlib.load_flows()
@@ -210,6 +211,7 @@ class Engine:
         self.kv = kv
         self.now = clock
         self.wait_resumed = wait_resumed or park.wait_resumed
+        self.wait_answered = wait_answered or self._wait_answered
         self.checks_timeout = checks_timeout
 
     # ---------- the scheduler ----------
@@ -306,6 +308,9 @@ class Engine:
         n, total = step["n"], len(sp["steps"])
         retry_text, session = "", None
         for attempt in range(1, sp["retries"] + 2):
+            ended = self._ask_tools(rid, step, lease)
+            if ended:
+                return ended
             notes = self.store.take_steers(rid)
             prompt = STEP_PROMPT.format(
                 today=_today(sp), goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
@@ -359,21 +364,24 @@ class Engine:
         scope = f"step-{step['n']}"
         for _ in range(40):
             self.kv.save(title, step["model"], scope)
-            if r.exit_code == PARKED:
-                self.store.run_set(rid, status="parked")
-                self.store.event(rid, "park", f"stopped at a boundary in step {step['n']}; the machine is free. "
-                                              "Steer it, then resume.")
-                park.mark_parked(rid, step["model"])
-                lease.release()
-                self.wait_resumed()
+            q = permissions.pending(rid)
+            if q or r.exit_code == PARKED:
+                if q:       # the worker hit a permissions.yaml ask: hold for the person's yes or no
+                    self._hold_for_answer(rid, step, lease, q)
+                else:
+                    self.store.run_set(rid, status="parked")
+                    self.store.event(rid, "park", f"stopped at a boundary in step {step['n']}; the machine is free. "
+                                                  "Steer it, then resume.")
+                    park.mark_parked(rid, step["model"])
+                    lease.release()
+                    self.wait_resumed()
                 if self._cancelled(rid):
                     return RunResult(r.text, CANCELLED, r.log, r.session_id)
-                again = self.broker.acquire("worker", rid, step["model"], note="resuming after park")
-                lease.held, lease.model = True, again.model
-                self.store.run_set(rid, status="running")
+                self._take_machine_back(rid, step, lease, "resuming after " + ("your answer" if q else "park"))
                 notes = self.store.take_steers(rid)
                 prompt = (STEERING.format(notes="\n- ".join(notes)) + "\n" if notes else "") + RESUME_PROMPT
-                self.store.event(rid, "park", "resumed" + (f" with {len(notes)} steering note(s)" if notes else ""))
+                self.store.event(rid, "ask" if q else "park",
+                                 "resumed" + (f" with {len(notes)} steering note(s)" if notes else ""))
                 self.kv.restore(title, step["model"], scope)
                 r = self._runner(rid, flow, "step", prompt, ws, step, session=r.session_id or None)
                 continue
@@ -393,6 +401,42 @@ class Engine:
             r = self._runner(rid, flow, "step", JOB_RESULT_PROMPT.format(results="\n\n".join(results)), ws, step,
                              session=r.session_id or None)
         return r
+
+    def _hold_for_answer(self, rid, step, lease, q):
+        """A run asks (permissions.yaml): give the machine back and wait for approve, reject or cancel."""
+        self.store.run_set(rid, status="asking")
+        self.store.event(rid, "ask", f"step {step['n']} {permissions.describe(q)}. Approve or reject it; "
+                                     "the machine is free meanwhile.")
+        lease.release()
+        self.wait_answered(rid)
+
+    def _wait_answered(self, rid, poll=2.0):
+        while permissions.pending(rid) and not self._cancelled(rid):
+            time.sleep(poll)
+
+    def _take_machine_back(self, rid, step, lease, note):
+        again = self.broker.acquire("worker", rid, step["model"], note=note)
+        lease.held, lease.model = True, again.model
+        self.store.run_set(rid, status="running")
+
+    def _ask_tools(self, rid, step, lease):
+        """Before a step starts: its tools against permissions.yaml. None to go on, else the run's end status."""
+        rules = permissions.load()
+        for tool in step["tools"]:
+            hit = permissions.match(rules, "tools", tool)
+            if not hit or permissions.is_approved(rid, "tools", hit[1]):
+                continue
+            if hit[0] == "deny":
+                return self._end(rid, "needs_you", error=f"step {step['n']} uses {tool}, which permissions.yaml "
+                                                         "denies; change the step or the rule")
+            self._hold_for_answer(rid, step, lease, permissions.ask(rid, "tools", tool, hit[1]))
+            if self._cancelled(rid):
+                return self._end(rid, "cancelled", "cancelled by you")
+            if not permissions.is_approved(rid, "tools", hit[1]):
+                return self._end(rid, "needs_you", error=f"you said no to step {step['n']} using {tool}; change "
+                                                         "the step or approve it next time")
+            self._take_machine_back(rid, step, lease, "starting after your answer")
+        return None
 
     def store_jobs_db(self):
         return None   # jobs live in jobs.py's own table (paths.TASKS_DB), where jobs_mcp records them

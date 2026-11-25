@@ -9,7 +9,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
-from . import durable, park, spec as speclib
+from . import durable, park, permissions, spec as speclib
 
 
 @dataclass
@@ -102,6 +102,8 @@ def _run_view(r, detail=False):
     v = {"id": r["id"], "task": t.get("name", r["task_id"]), "task_id": r["task_id"], "version": r["version"],
          "status": r["status"], "trigger": r["trigger"], "step": r["step"], "steps_total": len(sp.get("steps", [])),
          "created": r["created"], "started": r["started"], "ended": r["ended"], "error": r["error"]}
+    q = permissions.pending(r["id"]) if r["status"] in durable.LIVE else None
+    v["ask"] = {**q, "text": permissions.describe(q)} if q else None
     if detail:
         steps = s.steps(r["id"])
         v["steps"] = [{"n": st["n"], "title": st["title"], "model": st["model"],
@@ -392,6 +394,31 @@ def resume(run: str) -> dict:
 
 
 @verb("runs")
+def approve(run: str) -> dict:
+    """Say yes to what a run is asking (permissions.yaml ask). The yes holds for the rest of the run."""
+    r = _run(run)
+    q = permissions.answer(r["id"], yes=True)
+    if not q:
+        raise VerbError(f"run {run} is not asking anything")
+    ctx.store.steer(r["id"], f"The person approved: {q['what']}. Go ahead and do it now.")
+    ctx.store.event(r["id"], "ask", f"approved: {q['what'][:300]}")
+    return _run_view(ctx.store.run(r["id"]))
+
+
+@verb("runs")
+def reject(run: str, why: str = "") -> dict:
+    """Say no to what a run is asking. The worker is told no (and why) and continues another way."""
+    r = _run(run)
+    q = permissions.answer(r["id"], yes=False)
+    if not q:
+        raise VerbError(f"run {run} is not asking anything")
+    ctx.store.steer(r["id"], f"The person said no to: {q['what']}." + (f" Why: {why}" if why else "")
+                    + " Do not try it again; do the work another way, or report that it cannot be done.")
+    ctx.store.event(r["id"], "ask", f"rejected: {q['what'][:300]}" + (f" ({why})" if why else ""))
+    return _run_view(ctx.store.run(r["id"]))
+
+
+@verb("runs")
 def cancel(run: str) -> dict:
     """Cancel a run. A queued run ends now; a running one stops at its next step boundary."""
     r = _run(run)
@@ -401,6 +428,7 @@ def cancel(run: str) -> dict:
         ctx.store.run_set(r["id"], error="cancel requested")
         if r["status"] == "parked":
             park.resume()
+        permissions.answer(r["id"], yes=False)
     ctx.store.event(r["id"], "cancel", "requested")
     return _run_view(ctx.store.run(r["id"]))
 

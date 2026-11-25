@@ -108,6 +108,9 @@ textarea { resize: vertical; }
 .banner.error, .error { color: var(--bad); }
 .banner.error { border-color: var(--bad); }
 .banner.warn { border-color: var(--warn); }
+.banner.ask { border-color: var(--warn); border-left-width: 4px; white-space: normal; }
+.banner.ask p { margin: 0 0 10px; }
+.banner.ask .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- home ---------- */
 .start h1 { font-size: 36px; max-width: 20ch; }

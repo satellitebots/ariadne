@@ -1,0 +1,26 @@
+# What Ariadne's workers may do without asking you.
+#
+# The default is everything. Hermes's own approval layer, dangerous-command prompts, hardline blocklist,
+# read-before-write guard, sensitive-path and protected-file guards, loop hard stops and private-URL block are all
+# off (tools/permissions_hook.py). Those exist for agents driven by hosted models; Ariadne's models are local.
+#
+# Put something under `ask` and a run that reaches it stops and waits for you (status: needs you):
+#   ariadne approve <run>          yes, for the rest of this run
+#   ariadne reject <run> "why"     no; the worker is told why and continues another way
+# Put something under `deny` and it is refused outright, with no question.
+#
+#   tools:     toolsets or MCP servers a step may use (asked before the step starts), e.g. [browser]
+#   commands:  regular expressions matched against terminal commands, e.g. ['\bgit\s+push\b', '\brm\s+-rf\b']
+#   paths:     globs matched against file writes (~ allowed), e.g. ['~/.ssh/*', 'C:/Windows/*']
+
+default: allow
+
+ask:
+  tools: []
+  commands: []
+  paths: []
+
+deny:
+  tools: []
+  commands: []
+  paths: []

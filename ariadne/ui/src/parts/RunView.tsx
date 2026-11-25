@@ -3,7 +3,7 @@ import { ago, call, duration, LIVE, type Run } from "../api";
 import type { Selection } from "../App";
 
 const SAY: Record<string, string> = {
-  queued: "Queued for the machine", waiting: "Waiting for the machine", running: "Running", parked: "Parked",
+  queued: "Queued for the machine", waiting: "Waiting for the machine", running: "Running", parked: "Parked", asking: "Asking you",
   done: "Done", failed: "Failed", timed_out: "Out of time", cancelled: "Cancelled", needs_you: "Needs you",
 };
 
@@ -47,6 +47,15 @@ export default function RunView({ id, tick, go }: { id: string; tick: number; go
         </div>
       </header>
       {err && <p className="banner error">{err}</p>}
+      {r.ask && (
+        <div className="banner ask" role="alert">
+          <p>Step {r.step} {r.ask.text}. It waits for your answer; the machine is free meanwhile.</p>
+          <div className="row">
+            <button className="primary" onClick={() => act("approve")}>Approve for this run</button>
+            <button onClick={() => { act("reject", { why: note }); setNote(""); }}>Reject{note.trim() ? " with the note below" : ""}</button>
+          </div>
+        </div>
+      )}
       {r.error && !live && <p className={`banner ${r.status === "done" ? "" : "warn"}`}>{r.error}</p>}
 
       {live && (

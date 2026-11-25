@@ -79,6 +79,13 @@ the step's instruction, inputs, gate, and any steering notes. Heavy work leaves 
 tool list keeps the terminal for quick commands only. Hermes's gateway, messaging, persona and chat memory are not
 used.
 
+Workers have no Hermes restrictions. Hermes caps its agents because it expects hosted models; Ariadne's are local, so
+its approval layer, dangerous-command and hardline blocks, read-before-write, sensitive-path and protected-file
+guards, loop hard stops and private-URL block are all off (`flows.BASE_CONFIG`, `permissions.HERMES_ENV`, and the
+interpreter overlay `tools/permissions_hook.py`; vendor stays untouched). The only rules are the person's own,
+in `permissions.yaml`: default allow; `ask` lists tools, command regexes or write paths that hold a run (status
+`asking`, machine released) until `approve` or `reject`; `deny` refuses outright.
+
 ## The broker: one owner of the machine
 
 - **One lease.** Holders: the orchestrator (a draft), a worker (a run's step), a job. The rest wait in the queue,

@@ -15,8 +15,8 @@ from pathlib import Path
 
 from . import paths, spec as speclib
 
-RUN_STATUS = ("queued", "waiting", "running", "parked", "done", "failed", "timed_out", "cancelled", "needs_you")
-LIVE = ("queued", "waiting", "running", "parked")
+RUN_STATUS = ("queued", "waiting", "running", "parked", "asking", "done", "failed", "timed_out", "cancelled", "needs_you")
+LIVE = ("queued", "waiting", "running", "parked", "asking")   # asking: waits for a yes or no (permissions.yaml)
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS task(id TEXT PRIMARY KEY, name TEXT UNIQUE, created REAL, updated REAL, flow TEXT,
   status TEXT, version INTEGER DEFAULT 0, scheduled INTEGER DEFAULT 1, next_due REAL, last_run TEXT DEFAULT '');

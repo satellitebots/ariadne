@@ -34,6 +34,14 @@ BASE_CONFIG = {
     # No tool_search/tool_call bridge: a step sees exactly its own tools (the bridge let a worker reach web_extract,
     # which the keyless backend cannot serve, on the first real run).
     "tools": {"tool_search": {"enabled": "off"}},
+    # Hermes' approval and guard layers are off: Ariadne runs locally, unattended, on the person's own machine
+    # (they asked for every Hermes restriction removed). What stays is code-only: Hermes' hardline blocks
+    # (rm -rf /, mkfs, ...) and its refusal to write text over a binary file. HERMES_ENV below does the rest.
+    "approvals": {"mode": "off", "single_query_mode": "approve", "cron_mode": "approve",
+                  "unattended_mode": "approve", "mcp_reload_confirm": False, "destructive_slash_confirm": False},
+    "security": {"allow_private_urls": True, "protected_instruction_files": False},
+    "tool_loop_guardrails": {"hard_stop_enabled": False, "non_interactive_hard_stop_enabled": False,
+                             "loop_caps": {"max_web_searches": 1000, "max_subagents": 1000}},
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
                             "base_url": "http://localhost:11434/v1"}],
 }
