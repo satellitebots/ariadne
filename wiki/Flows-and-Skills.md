@@ -43,4 +43,4 @@ flows/coding/
 ## Gates and retries
 
 - `Flow.max_iterations` is 5 = one run plus at most four retries. The no-progress rule stops earlier.
-- A task without gates does not stall: the plan prompt asks for 1-3 check gates when none were given, `plan()` adopts them onto the task, and sign-off approves gates and plan together (B19). `set_gates` still works for a person who wants their own.
+- A template carries the steps and gates; the orchestrator fills in its parameters and may sharpen a gate before you sign (`flows/<name>/template.yaml`; investigation is the first).

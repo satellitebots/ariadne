@@ -1,17 +1,19 @@
 # Decisions
 
+The current ones; `docs/DESIGN.md` has the reasoning in full.
+
 | Decision | Why |
 |---|---|
-| **Own frontend (React UI)** | The Hermes desktop shell is a chat product with connectors, bots and a composer. Ariadne's console is a React + Vite + TS SPA served by its own FastAPI server. We keep Hermes's agent loop, tools, skills, MCP client and provider plumbing; we replace only the surfaces whose integration point belongs to the orchestrator (console, chat, MCP hosting). |
-| **Local-only inference** | `local_only` refuses any endpoint that is not loopback, RFC1918/ULA/link-local, a LAN suffix, or allowlisted. No API keys, no cloud providers. A localhost or LAN Ollama / llama-server is allowed through the serving registry; nothing else. |
-| **Sessions are hosts, tasks are drills** | A session is the durable context a person lives in (name, workspace, flow/model defaults, memory, handoff). A task is one pass through the worker inside it. One session hosts many tasks. A session has no execution of its own and no QA gate. `define_session` creates a session without a task; `submit` joins an existing session and never spawns its own. |
-| **One model, one thing (busy gate)** | When `orchestrator_resident` is off (the default) and a task is in planning or executing, the machine belongs to that task. `service.busy()` returns true; `submit` and `define_session` refuse with an occupied message. Stop interrupts the worker, the task parks, and the machine is free. Steering notes are accepted only for a parked or stopped task, never injected mid-run. Turning `orchestrator_resident` on lifts the gate. |
-| **Per-step MCP reporting** | The MCP surface (a foreign agent like Claude) drives one task at a time. Each step of a running task is reported back over MCP - a callback/event channel, not polling. The connection creates a disposable session to define the durable task, then watches step by step. It never lives in a session. |
-| **Retries are bounded, gates are proposed** | `Flow.max_iterations` is 5 (one run + at most four retries); the no-progress rule stops earlier. A task without gates does not stall: the planner proposes 1-3 check gates, and sign-off approves gates and plan together. The gates decide, not the model's opinion. Out of time or out of turns is not failure - the work stays and the gates decide. |
-| **Read-only plans at dispatch** | The plan/review/checkpoint phases are not offered write tools at all - a property of the loop, not a promise in a prompt. `plan_tools` is the allowlist; a read-only phase refuses a write tool at dispatch. |
-| **One model on the GPU (GPU handoff)** | The defining model plans, then sleeps (unloads) after sign-off; the worker takes the full VRAM card. Jobs run with the model unloaded and wake the same session with the result. Planner and worker never co-reside (unless `orchestrator_resident` is on). |
-| **Hermes is the worker backend via overlay** | The submodule stays pristine and updatable; our modules live in `overlay/` and win by `__path__` prepending. No 163k-line diff in our history, no broken absolute imports. The venv is built from Hermes's own lockfile. |
-| **Runtime fallback, not a replacement** | `ariadne/runtime/` is the model-free fallback, selectable with `ARIADNE_RUNTIME=own`. The default runner is `hermes_run`. The runtime exists so the drill is testable without a model and so a machine with no Hermes install can still run the flow. |
-| **Flows replace bots** | A Hermes bot is a persona with a soul file. Ariadne's unit is a flow: `flow.yaml` + `FLOW.md` + skills + gates, declaring model, toolsets, MCP servers, plan allowlist and how done is checked. A person signs off a plan, not a personality. |
-| **Explicit choice, enforced** | A task needs an explicit flow and an explicit agent model. `service.submit` refuses otherwise, so every door refuses identically. |
-| **The index is deterministic** | The shortlist is weights + a fixed 1.5 GB overhead against VRAM and the profile's total. Hugging Face suggestions are opt-in, cached, and never edit the catalog. |
+| **One front, generated** | MCP, HTTP and the chat are generated from `verbs.VERBS`, and a test checks they match. A front cannot drift or grow a feature of its own. |
+| **The orchestrator defines, never works** | It has no write, patch or terminal tool. Its only output is a draft; doing is the workers' job. |
+| **The orchestrator is local; MCP is the bypass** | It runs on this machine and shares the GPU. An outside agent over MCP can hand in a whole definition (`define`), so the local model never loads. |
+| **A task is a signed, versioned definition; a run executes one version** | Scheduling needs a definition that outlives its runs. Editing makes a new version to sign; runs in flight finish on theirs. |
+| **One worker per step, fresh context, files as the handover** | Small models do better with small contexts and a single job; a step's files are the evidence a check can read. |
+| **One owner of the machine** | Every November failure came from models loading behind each other's backs. Only the broker loads or unloads; handoffs happen at step boundaries. |
+| **Nothing interrupts a run on its own** | A running step keeps the machine until its boundary. Park is a person's act; steering is park, steer, resume. |
+| **The orchestrator uses the workers' weights when it can** | Then a handoff is a cache switch, not a 22 GB reload. |
+| **Jobs get the whole machine** | Heavy work in the model's terminal held the GPU and timed out. A job runs with every model unloaded. |
+| **Flows are templates, not bots** | A small orchestrator cannot invent coordination reliably; a template carries the steps, tools and gates, and the orchestrator fills it in. |
+| **Hermes stays stock** | `vendor/hermes` is pinned and never edited (overlay for anything that must differ). Only its headless worker is used: no gateway, persona or messaging. |
+| **Local-only inference** | `local_only` refuses any model endpoint that is not loopback, LAN or allowlisted, and any API key. Tools may use the internet. |
+| **Logins are the person's** | Workers never type credentials; `need_login` pauses the run for you to sign in (debug mode). |

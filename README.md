@@ -2,107 +2,67 @@
 
 # Ariadne
 
-A **local-only task harness**. Give it a brief and it answers with a plan, a model chosen for each step and the check
-gates it must pass; it executes only after you sign off, then works step by step, checks every gate, and iterates until
-they pass. Everything runs on your own machine.
+**Durable tasks on local models.** With the help of a local orchestrator you define a task (a chain of steps, each
+with the files it must leave and how it is checked), sign it, and run it now or on a schedule. Workers do the steps,
+one at a time, on your own machine; one GPU is shared through a lease so the orchestrator, the workers and heavy
+jobs never fight over it.
 
-Ariadne is an **orchestrator**; the agent that does the work is [Hermes Agent](https://github.com/NousResearch/hermes-agent),
-pinned as a submodule (`vendor/hermes`) and overlaid - never edited. We keep Hermes's loop, tools, skills, MCP client,
-context handling and provider plumbing as the worker backend, and replace only the surfaces whose integration point
-belongs to the orchestrator: the desktop app, the chat and the MCP hosting surface. The rest of Hermes - messaging,
-bots, connectors, cloud providers, telemetry, the desktop shell - is present in the tree but never started.
+- **One front.** The console, the chat, the terminal and MCP are generated from the same verbs
+  (`ariadne/verbs.py`); none has a feature the others lack. MCP is also the bypass: an outside agent (Claude) can hand
+  in a whole definition, so the local orchestrator never loads.
+- **The orchestrator defines; workers do.** The orchestrator has no tool that writes a file or runs a command. Each
+  step is one headless [Hermes Agent](https://github.com/NousResearch/hermes-agent) run (`vendor/hermes`, pinned and
+  never edited).
+- **One owner of the machine.** The broker (`ariadne/broker.py`) alone loads and unloads models. A running step keeps
+  the machine until its boundary; you park it to take the machine now. Steering is park, then steer, then resume.
 
-**Status:** 0.1.1. Four flows (`coding`, `design`, `investigation`, `content`), 301 model-free tests, the drill proven
-end to end against a scripted model. No flow has been run against a live model yet; that is the deferred GPU item.
+**Status:** the redesign of 24-25 Nov (`docs/DESIGN.md`). Investigation is the first flow rebuilt as a template.
 
-**[Wiki](wiki/Home.md)** · [release notes](https://github.com/satellitebots/ariadne/releases/tag/ariadne-0.1.1) ·
-[the fork and the overlay](docs/FORK.md) · [backlog](docs/BACKLOG.md)
-
-![Architecture](docs/img/architecture.png)
+**[Wiki](wiki/Home.md)** Ã‚Â· [design](docs/DESIGN.md) Ã‚Â· [backlog](docs/BACKLOG.md)
 
 ## Quick start
 
 ```sh
 git clone --recurse-submodules https://github.com/satellitebots/ariadne && cd ariadne
-uv run --no-project --python 3.14 python -m ariadne install --system   # venv from vendor/hermes, system tools, bins
-.venv\Scripts\activate                                                 # Windows; Linux/macOS: source .venv/bin/activate
-python -m ariadne doctor                # what is missing (changes nothing)
-python -m ariadne models index          # what this machine can run, by tier
-python -m ariadne up                    # model server + MCP endpoint
-python -m ariadne ui                    # the console at http://127.0.0.1:8917
-python -m ariadne submit "Add a --verbose flag" --flow coding --model qwen3.6-35b-a3b \
-    --workspace C:\path\to\repo --gate "run: pytest -q" --watch
+uv run --no-project --python 3.14 python -m ariadne install --system
+.venv\Scripts\activate                     # Windows; Linux/macOS: source .venv/bin/activate
+python -m ariadne doctor                   # what is missing (changes nothing)
+python -m ariadne ui                       # the console at http://127.0.0.1:8917
+python -m ariadne chat                     # or talk to the orchestrator in the terminal
 ```
 
 Requirements: Windows, Linux or macOS (Apple Silicon); an NVIDIA GPU with 8 GB+ (or Apple Silicon); 32 GB RAM
-recommended; [git](https://git-scm.com) and [uv](https://docs.astral.sh/uv/getting-started/installation/). `install`
-builds the venv from the pinned Hermes lockfile, installs what is missing (Ollama and Node.js with `--system`) and
-fetches the pinned binaries (sha256-verified). Models download the first time a signed-off plan needs them (`--models`
-fetches the defaults now).
+recommended; [git](https://git-scm.com) and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## How a task runs
 
-![Task lifecycle](docs/img/task-lifecycle.png)
+1. **Draft.** Say what you want and pick a flow (a template: investigation, coding, design, content). The
+   orchestrator fills in the template with you: the parameters, a name, the workspace, when it runs.
+2. **Sign.** The definition is YAML you can read and edit. Signing makes it a version; editing later makes the next
+   version, and runs in progress finish on the version they started.
+3. **Run.** Now, at a time, or on a cron schedule (`weekdays at 07:00`). A missed schedule runs once, not once per miss.
+4. **Steps.** Each step is one worker with only the step's tools. Steps hand over through files. Heavy work
+   (installs, data pulls, test suites) is a job: the worker writes a script, the models are unloaded, the job runs,
+   and the worker is woken with the result.
+5. **Checks.** A step's check (a command, or a read-only reviewer) must pass; a failure is retried once with the
+   reasons, then the run asks for you. Task gates are checked after the last step.
 
-1. **Brief** - the task, its workspace and its **check gates**: how we know it is done. Commands (`run: pytest -q`)
-   or outcomes a reviewer can verify. No gates, no start: the task waits and asks for them.
-2. **Backbrief** - the worker reads the workspace with read-only tools and answers with mission, steps, the model for
-   each step, and which step makes each gate pass.
-3. **Sign-off** - approve (optionally changing a step's model), revise with feedback, or cancel.
-4. **Execute** - one session per task; a step that needs a different agent model starts the next link of the chain with
-   a handoff brief. The planner is unloaded after sign-off and reloaded for the work.
-5. **QA** - command gates run; review gates are judged by a separate reviewer run. Failing gates go back to the worker
-   with the reasons, up to 10 rounds, stopping early when two rounds make no progress.
-6. **Report** - what changed, how it was verified.
-
-Out of wall-clock or out of turns is not failure: the work stays and the gates decide.
-
-## Four ways in
-
-### Console
+## The ways in
 
 ```sh
-python -m ariadne ui        # http://127.0.0.1:8917, loopback by default
+python -m ariadne                       # what is going on: the machine, live runs, drafts, tasks
+python -m ariadne chat                  # the orchestrator: define tasks, start, park, steer, resume runs
+python -m ariadne draft "what you want" --flow investigation
+python -m ariadne say <draft> "weekdays at 7, in C:/work/googl"
+python -m ariadne sign <draft>
+python -m ariadne run googl-daily       # schedule googl-daily "0 7 * * 1-5"
+python -m ariadne park <run>  Ã‚Â·  steer <run> "use weekly bars"  Ã‚Â·  resume <run>  Ã‚Â·  cancel <run>
+python -m ariadne machine               # who holds the GPU, who waits
+python -m ariadne connect               # MCP configs for Claude Code, Claude Desktop and other clients
 ```
 
-Sessions as the only navigation; the backbrief as a document; only the verbs legal for a task's status; live activity
-over SSE. The same verbs as the terminal (`submit`, `steer`, `gates`, `ok`, `fix`, `no`) - one experience, four surfaces.
-
-### Terminal
-
-```sh
-python -m ariadne "fix the failing date test"          # one gesture: this folder, this session, watched live
-python -m ariadne submit --file brief.md --flow design --model gemma-4-12b
-python -m ariadne inbox                               # what needs you, what is running, what finished
-python -m ariadne show <id>                           # the backbrief as a person reads it
-python -m ariadne ok <id>                             # approve; --model 2=gemma-4-12b changes a step
-python -m ariadne fix <id> "use pytest, not unittest" # send it back to planning
-python -m ariadne no <id>                             # cancel
-python -m ariadne gates <id> "run: pytest -q" "README covers every command"
-python -m ariadne steer <id> "use pytest, not unittest"   # guide it while it runs
-python -m ariadne stop                                  # kill switch: the whole Ariadne group
-```
-
-`inbox`, `show` and `follow` never call a model, so they work while the GPU is busy or the models are down.
-
-### Chat
-
-```sh
-python -m ariadne chat --session my-repo
-```
-
-A conversation bound to one session. It can talk, look things up read-only, and submit a task; it **cannot** do the
-work - it runs with `native_tools=False`, so the file, patch, search-in-files and terminal tools do not exist in that
-conversation.
-
-### MCP (Claude and other large models)
-
-```sh
-python -m ariadne connect     # configs for Claude Code, Claude Desktop and other MCP clients
-```
-
-`submit_task`, `set_gates`, `wait_task`, `approve_task`, `revise_task`, `cancel_task`, `get_task`, `list_tasks`,
-`list_sessions`, `get_status`, `feedback_task`, `list_skills`, `get_skill`, `save_skill`.
+The console (`ariadne ui`) shows the same things: the machine bar, tasks and drafts, each run drawn as a thread
+through its steps, and the orchestrator beside every page.
 
 ## Models
 
@@ -134,12 +94,10 @@ internet.
 ## Speed: KV cache parking and checkpoints
 
 One GPU means models swap constantly, and every swap throws the KV cache away. Ariadne parks it instead: after a run
-the cache is saved under **session + step + model** and woken when that session resumes on that model, so switching
-costs a disk read rather than a re-read of the conversation (`python -m ariadne kv`; 40 GB cap, `ARIADNE_KV=off`).
-
-Small models work best with small contexts, so a session is compressed at every phase boundary: plan approved, each
-step done, QA done. The model that just worked writes a handoff brief; the next phase starts from it. Inside a Hermes
-run, context is compressed past 30K tokens.
+each step's cache is saved under **run + step + model** and woken when that step resumes (after a park or a job), so
+switching costs a disk read rather than a re-read of the conversation (`python -m ariadne kv`; 40 GB cap,
+`ARIADNE_KV=off`). Steps start fresh and hand over through files, so contexts stay small; inside a Hermes run, context
+is compressed past 30K tokens.
 
 ## Jobs, the web and logins
 
@@ -160,8 +118,8 @@ write them (`save_skill`, which commits and pushes); local workers never write s
 
 ## The backend, and updates
 
-The worker runs Hermes at the pin in `vendor/hermes` (a submodule; `worker.hermes_run` is the default runner). The venv
-is built from that checkout's own lockfile. `ariadne/runtime/` is a complete fallback loop (`ARIADNE_RUNTIME=own`).
+Each step runs Hermes at the pin in `vendor/hermes` (a submodule; `engine.hermes_step`). The venv is built from that
+checkout's own lockfile. `ariadne/runtime/` is the small loop the orchestrator's conversation runs on.
 
 When a module genuinely has to differ, the file goes in `overlay/<package>/<module>.py`; `bootstrap.start()` puts the
 repo root and `vendor/hermes` ahead of site-packages and prepends the overlaid package's path, so our file wins for that

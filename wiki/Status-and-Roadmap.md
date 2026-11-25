@@ -1,47 +1,32 @@
 # Status and roadmap
 
-Mirrors `docs/BACKLOG.md`. An item is done only when the backlog says so.
+*As of 25 Nov 2026.* The redesign (`docs/DESIGN.md`, 24 Nov) is built; the old task model is removed.
 
-## Done
+## Built
 
-| Step | What | Evidence |
+| Piece | Where | Proof |
 |---|---|---|
-| **1. Session-as-host** | `sessions` schema gains `model`, `workspace`, `brief`; `define_session`, `sessions_show`; `submit` joins by name and never spawns; `claim_next` by `created`. | GAP-ANALYSIS step 1; B22/B23 in BACKLOG |
-| **2. MCP contract** | Disposable session to define the durable task interactively; step-wise reporting (callback/event channel, not polling); one task at a time. | B12.3, B12.8 |
-| **3. GPU handoff pin** | `test_the_orchestrator_model_is_unloaded_before_execution` pins it: the planner unloads after sign-off and at finish; resident mode is the only opt-out. | test_discrepancies.py, test_settings.py |
-| **4-slice-1. React UI** | React + Vite + TS rebuild of the console (shell, session rail, center stream, composer). | commit `f357980` |
-| **5. Queue truthfulness** | Eight stale backlog rows reconciled to cancelled; inbox mislabel fixed (queued+approved = "QUEUED / RUNNING", never "RUNNING" alone). | commit `c6e856e` |
-
-Additional done items from the backlog:
-
-- **B12** (all sub-items): own runtime, the drill, MCP servers as runtime tools, skills, web search, context trimming + per-run log, todo/park/MCP markers, the flip (default runner is Hermes), chat on the runtime. Suite 281 passed.
-- **B16**: Model index (`modelindex.py`), device scan, hardware-bounded shortlist, `--pulse`. 10 tests.
-- **B17**: Hermes restored as the worker backend. `vendor/hermes` pinned submodule; `hermes_run` is the default runner; `ARIADNE_RUNTIME=own` selects the fallback. Suite 289 passed.
-- **B18**: The overlay. `overlay.py`, `overlay.yaml`, `tools/sync_hermes.py`. 6 tests. Suite 295 passed.
-- **B19**: Gates are proposed, never demanded. A task without gates starts and the planner proposes them.
-- **B20**: Four retries, not ten rounds. `Flow.max_iterations` = 5.
+| Broker: one lease, a queue, handoff at boundaries, same-weights switch, server started on demand | `broker.py` | `test_broker.py` |
+| Durable tasks: specs, templates, signed versions, drafts, runs, triggers | `spec.py`, `durable.py` | `test_durable.py` |
+| One verb registry; MCP, HTTP and terminal generated from it | `verbs.py`, `front_mcp.py`, `server/app.py`, `__main__.py` | `test_surfaces.py` |
+| Engine: steps as Hermes workers, files as handover, checks and retries, jobs, park/steer/resume, cancel, scheduler | `engine.py`, `daemon.py` | `test_engine.py` |
+| Orchestrator: local, verbs as tools, nothing that writes | `orchestrate.py` | `test_orchestrate.py` |
+| Console rebuilt on the verbs | `ui/` | screenshots in the session notes |
+| First real orchestrator turn | 25 Nov: filled the investigation template from one message, ready to sign | `.ariadne` events |
 
 ## In progress
 
-- **Step 6. Doc convergence and the wiki rewrite (B15).** The six stale pages (Concepts, Architecture, Flows-and-Skills, Models-and-Resources, Decisions, Status-and-Roadmap) rewritten to match the authority docs. Desktop.md deleted. This commit.
+- **The first real run:** `googl-daily` (investigation, Qwen3.6 35B-A3B), defined in the orchestrator, signed, run.
 
-## Still open (from BACKLOG queue)
+## Next
 
-- **B21** (partly done): steer box in the console for a running task; `steer` on the chat's task card.
-- **B22**: `ariadne sessions show NAME`; "New task in this session" from the console; session-level chat that survives tasks.
-- **B23**: Full acceptance - `ariadne sessions` shows one session row with N tasks, not N one-task sessions.
-- **B24**: Busy gate and interrupt-first steering. `service.busy()`, Stop parks, steering only for parked/stopped tasks.
+1. Schedule `googl-daily` and let a scheduled run happen; write it up as a case study.
+2. Trim what a step loads: each worker currently opens with about 12K tokens of tool and skill descriptions.
+3. Rebuild coding, design and content as templates.
+4. Start the background process at login, so schedules fire after a reboot.
+5. Redo the RAG build on the new engine.
 
-## Deferred (needs a live model or the GPU)
+## Parked
 
-- The first end-to-end run of any flow against a real model, and the RAG case-study task still sitting in the store.
-- Load/stress behaviour of the watchdog under real VRAM pressure - thresholds get tuned then, not before.
-- Retrieval-quality gates for B6d.
-- A live CI provider (Jenkins/GitHub/GitLab) and a live embedding model.
-- The LAN smoke test.
-
-## Next (after B15)
-
-- The first real overlay entry, when a module genuinely has to differ.
-- Optionally, moving `hermes_run` from the `hermes` CLI to in-process `AIAgent`; the bootstrap and overlay are already in place.
-- Keep this wiki honest as the code moves.
+In `docs/BACKLOG.md` ("Parked ideas"): the two home servers, compression and instruction-decay telemetry, default
+quality gates, one Python environment per workspace, Slack.

@@ -2,32 +2,28 @@
 
 ## Park: a deliberate pause
 
-There is one GPU and one model slot. While a task runs, your chat waits for the task's current run to finish.
-Nothing interrupts a task on its own. To have the model now:
+There is one GPU. While a run holds it, the orchestrator waits for the run's next step boundary (the machine bar says
+so). Nothing interrupts a run on its own. To take the machine now:
 
-- **Park** (console *Park*, **P** in the watch window, `python -m ariadne park`): the task finishes the model
-  or tool call in flight, stops at that step boundary, saves its KV cache and waits.
-- **Resume** (console *Resume*, **R**, `python -m ariadne park --resume`): the cache is restored and the
-  *same* Hermes session continues, told to pick up where it left off.
+- **Park** (the console's *Park*, **P** in the watch window, `ariadne park <run>`): the step finishes the model or
+  tool call in flight, stops at that boundary, saves its cache and releases the machine.
+- **Steer** (`ariadne steer <run> "note"`, the console's steer box, or ask the orchestrator): the note is delivered
+  when the step continues.
+- **Resume** (`ariadne resume <run>`): the run waits for the machine, restores the cache and continues the *same*
+  Hermes session with your notes.
 
-A park never resumes on its own. The only other thing that parks a task is a step that needs a login
-(`need_login`, see [Web, browser and logins](Web-and-Browser.md)).
-
-The state is one file, `.ariadne/park.json`, so the worker, CLI, watch window and console all see the same
-thing.
+A step that needs a login parks itself the same way (`need_login`; see [Web, browser and logins](Web-and-Browser.md)).
 
 ## KV cache parking
 
-Every model swap normally throws away the model's KV cache, so the next run re-reads (prefills) the whole
-conversation. Ariadne saves the llama.cpp slot to disk after each run, under **session + step + model**, and
-restores it when that session resumes on that model.
+Every model swap throws the KV cache away, so the next call re-reads the whole conversation. Ariadne saves the
+llama.cpp slot to disk under **run + step + model** whenever a step is interrupted (a park or a job) and restores it
+when that step continues.
 
-- `python -m ariadne kv` lists the caches; `kv drop SESSION` forgets one.
-- They are capped at 40 GB, and the least recently used go first. Set `ARIADNE_KV=off` to disable.
+- `python -m ariadne kv` lists the caches; they are dropped when the run ends.
+- Capped at 40 GB, least recently used first. `ARIADNE_KV=off` disables it.
 
-## Checkpoints: keeping contexts small
+## Small contexts
 
-Small models work best with small contexts. At every phase boundary (plan approved, each step group done, QA
-done), the model that just worked writes a handoff brief, and the next phase starts a fresh segment from it.
-Inside a run, Hermes compresses past about 30K tokens. On the case-study runs that compression took about 85 s per
-pass, with a median 22% reduction.
+Each step starts a fresh worker and reads what earlier steps left in files, so no context grows across a task. Inside
+one Hermes run, context is compressed past about 30K tokens.

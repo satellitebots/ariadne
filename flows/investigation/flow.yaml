@@ -2,7 +2,7 @@ name: investigation
 status: experimental       # shipped, not yet validated end to end
 description: Investigate a question and return a cited report - gather evidence, separate fact from inference, name what is still unknown.
 when: research questions, comparing options or vendors, due diligence, reading a codebase or a document set to answer something, explaining why something behaves as it does (not fixing it)
-model: gemma-4-12b     # the agent model when a step names none (MoE: fast here)
+model: qwen3.6-35b-a3b    # the agent model when a step names none; the same weights as coding, so the orchestrator and workers never reload
 skills: [investigate]
 requires: [node, chrome]   # for the browser server; checked before a task runs
 mcp_servers: [memory, web, browser, export, jobs, data, office]
