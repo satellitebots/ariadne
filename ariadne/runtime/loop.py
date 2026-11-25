@@ -125,7 +125,7 @@ def _mark_omitted(content, n):
 
 def run(prompt, *, home, workspace, phase="execute", model, session="", max_turns=40, budget=1800,
         transport=None, base_url=None, clock=time.time, on_event=None, mcp=None, skills=None, web=None,
-        context_tokens=65536, trim_at=0.75, checkpoint=None, native_tools=True, system=None):
+        context_tokens=65536, trim_at=0.75, checkpoint=None, native_tools=True, system=None, extra=None):
     """One conversation turn-run. Returns an Answer; never leaves a half-written session behind.
 
     `session`: a name to resume (the task id, or the caller's session). `on_event(kind, detail)` is how the worker
@@ -158,7 +158,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
     schemas = ((tools_mod.offered(phase) if native_tools else [])
                + (mcp.offered(read) if mcp else [])
                + (skills.offered() if skills else [])
-               + (web.offered() if web else []))
+               + (web.offered() if web else [])
+               + (extra.offered() if extra else []))
+    extra_names = {s["function"]["name"] for s in (extra.offered() if extra else [])}
     while answer.turns < max(1, int(max_turns)):
         if answer.turns and checkpoint and checkpoint():
             # A park request mid-run: the in-flight turn (model call and tool calls) has finished and the session
@@ -182,7 +184,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
         for call in reply["tool_calls"]:
             if on_event:
                 on_event("tool", f"{call['name']} {json.dumps(call['arguments'], ensure_ascii=False)[:200]}")
-            if skills is not None and call["name"] in ("skills_list", "skill_view"):
+            if call["name"] in extra_names:
+                result = extra.call(call["name"], call["arguments"])
+            elif skills is not None and call["name"] in ("skills_list", "skill_view"):
                 result = skills.call(call["name"], call["arguments"])
             elif call["name"].startswith("mcp__") and mcp is not None:
                 result = mcp.call(call["name"], call["arguments"], read_only=read)

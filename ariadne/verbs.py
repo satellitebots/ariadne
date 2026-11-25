@@ -456,3 +456,6 @@ def schema(v: Verb) -> dict:
 
 def dumps(x):
     return json.dumps(x, ensure_ascii=False, indent=1, default=str)
+
+
+from . import orchestrate  # noqa: E402,F401  -- registers `chat`, the orchestrator's general conversation
