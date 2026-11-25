@@ -1,5 +1,8 @@
 # Gap analysis: the session/task model and the two surfaces
 
+> **Superseded (2026-11-24, by `docs/DESIGN.md`).** Sessions as hosts and the two-contract split are replaced by one
+> front, the task/run split and the machine broker. Kept for history.
+
 Supersedes the earlier B12-centric gap analysis. This one is about what is actually wrong now: sessions and tasks are
 conflated, and the two entry surfaces have never been given their different contracts. The model, stated once:
 

@@ -6,15 +6,17 @@ which one wins.
 ## Authority order (the current truth)
 
 1. `docs/CONVENTIONS.md` - this file: format and authority.
-2. `docs/GAP-ANALYSIS.md` - the current session/task model and the working order.
+2. `docs/DESIGN.md` - the model (front, orchestrator, task/run, worker, broker, flows) and the order of work.
 3. `docs/BACKLOG.md` - the queue and its history; an item is done only when it says so here.
-4. `docs/UI-DIRECTION.md`, `docs/MODELS.md`, `docs/MCP.md`, `docs/COVERAGE.md`, `docs/FRONTEND.md` - per-topic.
-5. Superseded in part, and marked as such at their top: `docs/FORK.md`, `docs/DESIGN-RESET.md`.
+4. `docs/MODELS.md`, `docs/MCP.md`, `docs/COVERAGE.md`, `docs/FRONTEND.md`, `docs/UI-DIRECTION.md` - per-topic;
+   where one disagrees with `DESIGN.md`, `DESIGN.md` wins until the topic doc is updated.
+5. Superseded, and marked as such at their top: `docs/GAP-ANALYSIS.md`, `docs/FORK.md`, `docs/DESIGN-RESET.md`.
 
-Current position, stated once: **Ariadne orchestrates** (the drill, the store, gates, sessions, the busy gate);
-**Hermes is the worker backend** (`vendor/hermes` submodule, overlaid, never edited directly); **Ariadne owns its
-frontend** (React UI), its **chat**, and its **MCP-hosting surface**; the small runtime runner
-(`ariadne/runtime/`) is the model-free fallback, selectable with `ARIADNE_RUNTIME=own`.
+Current position, stated once (details in `DESIGN.md`): **one front** (MCP, UI and chat over the same verbs, MCP
+also the bypass for an outside orchestrator); a **local orchestrator** that defines durable tasks and never works;
+**Hermes is the worker** (`vendor/hermes` submodule, overlaid, never edited directly), one headless run per step;
+a **broker** that alone owns the model server and hands the machine over at step boundaries; **flows** are task
+templates. The own runtime (`ariadne/runtime/`) runs only the orchestrator conversation.
 
 ## Document format
 
