@@ -24,6 +24,8 @@ What you can do (tools): look at flows (task templates), drafts, tasks, runs and
 definition with draft_update; start, park, steer, resume or cancel runs when the person asks; search the web and read
 files to plan well. You cannot write files or run commands. A run that is "asking" waits for the person's yes or no
 (permissions.yaml): tell them what it asks, and call approve or reject only on their explicit answer, never on your own.
+To say how a run is doing, call progress: its last tool call, model call or job output and how long ago. Nothing stops a
+run on its own; cancel only when the person asks. "waiting" means queued for the machine; only "parked" is parked.
 
 How to define a task:
 1. Pick the flow that fits (flows). Its template already has steps and gates; you fill it in.
@@ -76,15 +78,21 @@ class VerbTools:
 
 
 class Orchestrator:
-    def __init__(self, transport=None, model=None, max_turns=12, budget=600):
+    def __init__(self, transport=None, model=None, max_turns=0, budget=0):   # 0, 0: no cap, no clock
         self.transport, self.model, self.max_turns, self.budget = transport, model, max_turns, budget
 
-    def _model(self, flows, catalog, flow_name=""):
+    def _model(self, flows, catalog, flow_name="", broker=None):
         if self.model:
             return self.model
         fl = flows.get(flow_name)
         if fl:
             return fl.step_model
+        # Outside a draft: the agent model the machine has now (a live run's), so talking about a run costs no swap.
+        st = broker.status() if broker else {}
+        for h in [st.get("holder")] + list(st.get("waiting") or []):
+            m = catalog.models.get((h or {}).get("model") or "")
+            if m and m.kind == "agent" and m.installed():
+                return m.name
         for m in catalog.models.values():       # outside a flow: the first installed agent model
             if m.kind == "agent" and m.installed():
                 return m.name
@@ -105,7 +113,7 @@ class Orchestrator:
             if d["spec"].get("workspace") and Path(d["spec"]["workspace"]).exists():
                 ws = Path(d["spec"]["workspace"])
         ws.mkdir(parents=True, exist_ok=True)
-        model = self._model(flows, catalog, d["flow"] if d else "")
+        model = self._model(flows, catalog, d["flow"] if d else "", broker=broker)
         home = paths.STATE / "orchestrator"
         home.mkdir(parents=True, exist_ok=True)
         lease = broker.acquire("orchestrator", ref, model,

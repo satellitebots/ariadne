@@ -17,6 +17,3 @@ checks:
   - {run: "\"{python}\" -m pytest -q", when_exists: "tests"}
 browser:
   real_logins: false       # a clean, isolated Chrome; `python -m ariadne browser debug on` attaches to your Chrome when a step needs a login
-max_turns: {plan: 20, execute: 80}    # a 9-step build used all 40 in 40 min (RAG v1); running out goes to QA
-run_budget: {plan: 2700, execute: 3600}   # seconds; the 27B plans at ~2 tok/s
-task_budget: 14400        # the whole task's wall clock, worker time only; out of it keeps the work and lets the gates decide

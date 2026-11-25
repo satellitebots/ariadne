@@ -82,10 +82,15 @@ class Store:
         except Exception:
             pass          # the activity log is a convenience; the store is the record
 
-    def events(self, ref=None, since=0.0, limit=500):
+    def events(self, ref=None, since=0.0, limit=500, newest=False):
+        """Events in time order; `newest`: the last `limit` of them (a busy run logs every tool call)."""
+        order = "DESC" if newest else ""
         if ref:
-            return self._all("SELECT * FROM event WHERE ref=? AND ts>? ORDER BY ts LIMIT ?", ref, since, limit)
-        return self._all("SELECT * FROM event WHERE ts>? ORDER BY ts LIMIT ?", since, limit)
+            rows = self._all(f"SELECT * FROM event WHERE ref=? AND ts>? ORDER BY ts {order}, rowid {order} LIMIT ?",
+                             ref, since, limit)
+        else:
+            rows = self._all(f"SELECT * FROM event WHERE ts>? ORDER BY ts {order}, rowid {order} LIMIT ?", since, limit)
+        return rows[::-1] if newest else rows
 
     def message(self, ref, role, text):
         self._exec("INSERT INTO message(ref, ts, role, text) VALUES (?,?,?,?)", ref, time.time(), role, text)

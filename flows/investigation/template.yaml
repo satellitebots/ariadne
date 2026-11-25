@@ -39,5 +39,4 @@ steps:
 gates:
   - {type: review, text: "REPORT.md gives a short answer to the question, evidence with citations, inference marked as such, and open questions"}
 trigger: {kind: manual}
-budget_s: 5400
 retries: 1

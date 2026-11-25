@@ -79,6 +79,14 @@ the step's instruction, inputs, gate, and any steering notes. Heavy work leaves 
 tool list keeps the terminal for quick commands only. Hermes's gateway, messaging, persona and chat memory are not
 used.
 
+No clocks, no caps: a step, a review, a job and an orchestrator turn run until they finish. Stopping is always
+deliberate (cancel, park). Instead of a budget, progress is pushed as it happens: every tool call (from the phase
+plugin's log), every finished model call (Hermes's agent.log) and a running job's newest output become run events
+("step 2: wrote data/indicators.json", "step 2: ran: ...", "model call 4: 17,227 tokens in"). A long quiet spell
+adds one "quiet" event, never a kill. The `progress` verb (every front) answers "is it still moving?": seconds since
+the last activity, tool and model call counts, the files changed, the recent activity. An outside orchestrator over
+MCP reads it before deciding anything; the terminal chat's /status and the UI's "Now:" line show the same.
+
 Workers have no Hermes restrictions. Hermes caps its agents because it expects hosted models; Ariadne's are local, so
 its approval layer, dangerous-command and hardline blocks, read-before-write, sensitive-path, protected-file and
 binary-file guards, read blocks on credential paths, URL/SSRF and cloud-metadata blocks, secret-shaped-URL refusals,

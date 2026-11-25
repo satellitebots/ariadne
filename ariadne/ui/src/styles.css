@@ -222,3 +222,5 @@ button { white-space: nowrap; }
   .head { flex-direction: column; }
   .runs li a { grid-template-columns: 1fr auto; }
 }
+
+.run .now { margin: 6px 0 0; font-size: 0.92rem; overflow-wrap: anywhere; }

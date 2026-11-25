@@ -131,13 +131,107 @@ CHECK: {check}
 Reply with exactly one line: PASS - <evidence>   or   FAIL - <what is missing or wrong>"""
 
 
+# ---------- what a worker is doing, pushed as it happens ----------
+
+_API_CALL = re.compile(r"API call #(?P<n>\d+):.*?\bin=(?P<inp>\d+) out=(?P<out>\d+).*?latency=(?P<lat>[\d.]+)s")
+
+
+def _rel(path, ws):
+    p = str(path or "").replace("\\", "/")
+    base = str(ws).replace("\\", "/").rstrip("/") + "/"
+    return p[len(base):] if p.lower().startswith(base.lower()) else p
+
+
+def describe_tool(name, args, ws):
+    """One plain line for one tool call: what it changed, ran or read."""
+    a = args if isinstance(args, dict) else {}
+    path = _rel(a.get("path") or a.get("file_path") or "", ws)
+    short = lambda v, n=160: (str(v)[:n] + ("..." if len(str(v)) > n else "")).replace("\n", " ")
+    if name == "write_file":
+        return f"wrote {path}"
+    if name == "patch":
+        return f"edited {path or short(a.get('patch', ''), 80)}"
+    if name == "read_file":
+        return f"read {path}"
+    if name == "terminal":
+        return f"ran: {short(a.get('command', ''))}"
+    if name in ("search_files", "search"):
+        return f"searched files for {short(a.get('pattern') or a.get('query') or '', 80)}"
+    if name == "web_search":
+        return f"searched the web: {short(a.get('query', ''), 120)}"
+    if name in ("web_fetch", "web_extract"):
+        return f"fetched {short(a.get('url') or a.get('urls') or '', 160)}"
+    if name.endswith("submit_job"):
+        return f"submitted a job: {short(a.get('command', ''))}"
+    if name == "todo":
+        return "updated its todo list"
+    return f"{name} {short(json.dumps(a, ensure_ascii=False), 160)}"
+
+
+class Progress:
+    """Pushes a worker's activity into its run's events while it works: every tool call (the phase plugin's
+    logs/ariadne_tools.jsonl) and every finished model call (Hermes's logs/agent.log). Any front - the UI, the chat,
+    an outside orchestrator over MCP - reads those events to see that work is moving.
+
+    Nothing here stops a run. A long quiet spell is reported once per QUIET_S as a "quiet" event; stopping a run is
+    a deliberate cancel by the person or by whoever reads the progress."""
+    QUIET_S = 600
+
+    def __init__(self, home, workspace, emit, clock=time.time):
+        self.files = {"tools": home / "logs" / "ariadne_tools.jsonl", "agent": home / "logs" / "agent.log"}
+        self.pos = {k: (f.stat().st_size if f.exists() else 0) for k, f in self.files.items()}
+        self.ws, self.emit, self.clock = workspace, emit, clock
+        self.last = self.told = clock()
+        self.tools = self.calls = 0
+
+    def _new_lines(self, key):
+        f = self.files[key]
+        try:
+            size = f.stat().st_size
+        except OSError:
+            return []
+        if size < self.pos[key]:        # rotated
+            self.pos[key] = 0
+        if size == self.pos[key]:
+            return []
+        with open(f, "rb") as fh:
+            fh.seek(self.pos[key])
+            data = fh.read()
+        cut = data.rfind(b"\n") + 1     # keep a half-written last line for the next poll
+        self.pos[key] += cut
+        return data[:cut].decode("utf-8", "replace").splitlines()
+
+    def poll(self):
+        for line in self._new_lines("tools"):
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            self.tools += 1
+            self.last = self.clock()
+            self.emit("tool", describe_tool(e.get("tool", ""), e.get("args") or {}, self.ws))
+        for line in self._new_lines("agent"):
+            m = _API_CALL.search(line)
+            if m:
+                self.calls += 1
+                self.last = self.clock()
+                self.emit("model", f"model call {m['n']}: {int(m['inp']):,} tokens in, {m['out']} out, "
+                                   f"{float(m['lat']):.0f} s")
+        now = self.clock()
+        if now - self.last > self.QUIET_S and now - self.told > self.QUIET_S:
+            self.told = now
+            self.emit("quiet", f"no tool call or finished model call for {int((now - self.last) // 60)} min; it is "
+                               "still running and nothing stops it on its own (cancel it if it is stuck)")
+
+
 # ---------- one Hermes run for one step ----------
 
-def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, budget=1800, turns=60,
-                stop=lambda: False):
+def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, stop=lambda: False,
+                on_progress=None, **_):
     """One headless Hermes run. kind: "step" (the step's tools) or "review" (read-only, file tools only).
 
-    Returns RunResult; exit 125 when parked at a boundary, 130 when cancelled, 124 out of time, 126 out of turns.
+    No time budget and no turn cap: it runs until the worker answers, is parked (exit 125) or is cancelled (130).
+    `on_progress(kind, detail)` gets every tool call and model call as it happens (Progress).
     """
     home = flow.home
     home.mkdir(parents=True, exist_ok=True)
@@ -153,7 +247,7 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
     if session:
         cmd += ["--resume", session, "--no-restore-cwd"]
     else:
-        cmd += ["--run-budget", str(budget), "--max-turns", str(turns), "-t", ",".join(hermes_sets + mcp_sets)]
+        cmd += ["-t", ",".join(hermes_sets + mcp_sets)]     # no --run-budget, no --max-turns: Hermes's unlimited
         for s in flow.skills + flow.shared_skills:
             cmd += ["-s", s]
         if model:
@@ -167,6 +261,7 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
     p = subprocess.Popen(cmd, cwd=workspace, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
     boundary = park.StepBoundary(home)
+    progress = Progress(home, workspace, on_progress) if on_progress else None
     stdout = stderr = ""
     while True:
         try:
@@ -175,11 +270,8 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             break
         except subprocess.TimeoutExpired:
             pass
-        if time.time() > started + budget + 180:
-            _kill_tree(p)
-            stdout, stderr = p.communicate()
-            code = 124
-            break
+        if progress:
+            progress.poll()
         if stop() or (park.requested() and kind == "step") or permissions.pending(ref):
             if boundary.reached():          # let the call in flight finish, then stop at that boundary
                 _kill_tree(p)
@@ -188,6 +280,8 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
                 break
         else:
             boundary.pos = None
+    if progress:
+        progress.poll()
     out = (stdout or "") + ("\n[stderr]\n" + stderr if (stderr or "").strip() else "")
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
     sid = _SESSION_ID.findall(out) or ([session or _latest_session(home, started)] if code in (PARKED, CANCELLED) else [])
@@ -198,15 +292,15 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
 
 class Engine:
     def __init__(self, store=None, flows=None, broker=None, step_runner=None, job_runner=None, kv=None,
-                 clock=time.time, wait_resumed=None, checks_timeout=600, wait_answered=None):
+                 clock=time.time, wait_resumed=None, checks_timeout=None, wait_answered=None):
         from . import broker as brokerlib
         self.store = store or durable.Store()
         self.flows = flows or flowlib.load_flows()
         self.broker = broker or brokerlib.default()
         real = step_runner is None
         self.step_runner = step_runner or hermes_step
-        self.job_runner = job_runner or (jobs.run if real else (lambda j, db: jobs.run(j, db, unload=lambda: True,
-                                                                                            poll=0.05)))
+        self.job_runner = job_runner or (jobs.run if real else (lambda j, db, **kw: jobs.run(
+            j, db, unload=lambda: True, poll=0.05, **kw)))
         if kv is None:
             from . import kvcache
             kv = kvcache.default() if real else kvcache.NoKVCache()
@@ -262,13 +356,9 @@ class Engine:
                                     on_wait=lambda s: self.store.event(rid, "waiting", self.broker.describe()))
         try:
             self.store.run_set(rid, status="running", started=r["started"] or self.now())
-            started = self.now()
-            for step in steps[(r["step"] or 1) - 1:]:
+            for step in steps[(r["step"] or 1) - 1:]:       # no run clock: a run ends done, failed or cancelled
                 if self._cancelled(rid):
                     return self._end(rid, "cancelled", "cancelled by you")
-                if self.now() - started > sp["budget_s"]:
-                    return self._end(rid, "timed_out", error=f"the run used its {sp['budget_s']} s; the work so far "
-                                                               "is in the workspace")
                 if step["n"] > 1 and lease.boundary():
                     self.store.event(rid, "machine", f"yielding at the boundary before step {step['n']}: "
                                                      + self.broker.describe())
@@ -353,11 +443,11 @@ class Engine:
                                                  f"attempt(s):\n" + "\n".join(reasons))
 
     def _runner(self, rid, flow, kind, prompt, ws, step, session):
-        budget = int(flow.run_budget.get("execute", 1800))
-        turns = int(flow.max_turns.get("execute", 60))
         tools = step["tools"] if kind == "step" else ["file"]
+        where = f"step {step['n']}" if kind == "step" else "reviewer"
         return self.step_runner(flow, kind, prompt, str(ws), rid, step["model"], tools, session=session,
-                                budget=budget, turns=turns, stop=lambda: self._cancelled(rid))
+                                stop=lambda: self._cancelled(rid),
+                                on_progress=lambda what, detail: self.store.event(rid, what, f"{where}: {detail}"))
 
     def _settle(self, rid, flow, ws, step, r, lease):
         """Handle what a step run can come back with before it is checked: a park (hold, then resume the same
@@ -394,7 +484,8 @@ class Engine:
             lease.switch(None, kind="job")
             for j in pending:
                 self.store.event(rid, "job", f"{j['id']} started: {j['why'] or j['command']} (models unloaded)")
-                j = self.job_runner(j, self.store_jobs_db())
+                j = self.job_runner(j, self.store_jobs_db(), stop=lambda: self._cancelled(rid),
+                                    on_progress=lambda d, jid=j["id"]: self.store.event(rid, "job", f"{jid}: {d}"))
                 res = json.loads(j.get("result") or "{}")
                 self.store.event(rid, "job", f"{j['id']} {j['status']}: exit {j['exit_code']} in {res.get('seconds')} s")
                 results.append(jobs.result_text(j))

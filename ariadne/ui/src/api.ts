@@ -29,7 +29,7 @@ export type Attempt = { attempt: number; status: string; started: number; ended:
 export type Event = { ts: number; ref: string; kind: string; detail: string };
 export type Run = RunSummary & {
   steps: { n: number; title: string; model: string; attempts: Attempt[] }[]; result: string; events: Event[];
-  workspace: string;
+  workspace: string; activity: { ts: number; kind: string; detail: string } | null;
 };
 export type TaskDetail = Task & { yaml: string; runs: RunSummary[] };
 export type Machine = {

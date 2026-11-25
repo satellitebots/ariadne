@@ -161,14 +161,14 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
                + (web.offered() if web else [])
                + (extra.offered() if extra else []))
     extra_names = {s["function"]["name"] for s in (extra.offered() if extra else [])}
-    while answer.turns < max(1, int(max_turns)):
+    while not max_turns or answer.turns < int(max_turns):     # 0: no cap; stopping is the caller's deliberate act
         if answer.turns and checkpoint and checkpoint():
             # A park request mid-run: the in-flight turn (model call and tool calls) has finished and the session
             # is saved, so stop at this step boundary; the worker holds and resumes the same session.
             answer.stopped, answer.text = "parked", _last_assistant(messages)
             session_mod.save(home, session, messages)
             return answer
-        if clock() - started > budget:
+        if budget and clock() - started > budget:
             answer.stopped, answer.text = "budget", _last_assistant(messages)
             session_mod.save(home, session, messages)
             return answer
@@ -177,9 +177,9 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
         if dropped:
             answer.dropped += dropped
             messages[0] = {**messages[0], "content": _mark_omitted(messages[0].get("content") or "", dropped)}
-        left = max(30, int(budget - (clock() - started))) if budget else 600
+        left = min(600, max(30, int(budget - (clock() - started)))) if budget else None   # None: wait for the model
         reply = model_mod.chat(messages, model=model, tools=schemas, transport=transport, base_url=base_url,
-                               timeout=min(600, left))
+                               timeout=left)
         messages.append(reply["raw"])
         for call in reply["tool_calls"]:
             if on_event:

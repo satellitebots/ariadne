@@ -136,11 +136,89 @@ def verb_cli(name, rest):
     return 0
 
 
+CHAT_COMMANDS = {
+    "/status": "what holds the machine and every live run",
+    "/park": "[run] stop the live run at its next tool call and free the machine",
+    "/resume": "[run] continue a parked run",
+    "/steer": "[run] <note> leave a note it reads at its next boundary",
+    "/approve": "[run] yes to what a run is asking",
+    "/reject": "[run] [why] no to what a run is asking",
+    "/cancel": "[run] cancel a run",
+}
+
+
+def _live_runs():
+    from . import verbs
+    return verbs.call("runs", live=True)
+
+
+def _pick_run(words):
+    """The run a command names, else the only live run (the newest if several, said so)."""
+    live = _live_runs()
+    if words and (words[0].startswith("r1") or any(r["id"] == words[0] for r in live)):
+        return words[0], words[1:]
+    if not live:
+        raise ValueError("no run is live; name one (`/park r...`)")
+    return live[0]["id"], words
+
+
+def chat_command(line):
+    """Commands the terminal chat runs itself: they never wait for the machine or the model."""
+    from . import verbs
+    word, *rest = line.split()
+    if word in ("/help", "/?"):
+        return "\n".join(f"  {k:<9} {v}" for k, v in CHAT_COMMANDS.items())
+    if word not in CHAT_COMMANDS:
+        return f"(unknown command {word}; /help lists them)"
+    try:
+        if word == "/status":
+            lines = [verbs.call("machine")["summary"]]
+            for r in _live_runs():
+                lines.append(f"  {r['id']}  {r['status']:<8} {r['task']}  step {r['step']}/{r['steps_total']}"
+                             + (f"  ASKING: {r['ask']['text']}" if r.get("ask") else ""))
+                p = verbs.call("progress", run=r["id"], recent=0)
+                if p["last_activity"]:
+                    lines.append(f"      last: {p['last_activity']} ({p['seconds_since_activity']} s ago; "
+                                 f"{p['tool_calls']} tool calls, {p['model_calls']} model calls)")
+                if p["quiet_note"]:
+                    lines.append(f"      {p['quiet_note']}")
+            return "\n".join(lines)
+        rid, rest = _pick_run(rest)
+        if word == "/steer":
+            if not rest:
+                return "(say what the note is: /steer <note>)"
+            r = verbs.call("steer", run=rid, text=" ".join(rest))
+        elif word == "/reject":
+            r = verbs.call("reject", run=rid, why=" ".join(rest))
+        else:
+            r = verbs.call({"/park": "park_run", "/resume": "resume", "/approve": "approve",
+                            "/cancel": "cancel"}[word], run=rid)
+    except (verbs.VerbError, ValueError) as e:
+        return f"(error) {e}"
+    done = {"/park": "parking: it stops at its next tool call and gives the machine back",
+            "/resume": "resuming: it waits for the machine, then continues with any notes",
+            "/steer": "noted: it reads this at its next boundary", "/approve": "approved",
+            "/reject": "rejected: the worker is told no and why", "/cancel": "cancel requested"}[word]
+    return f"{r['id']} ({r['task']}, {r['status']}): {done}"
+
+
+def _busy_note():
+    """Said before a message that will wait: the orchestrator needs the machine, a worker has it until its step ends."""
+    from . import verbs
+    m = verbs.call("machine")
+    h = m.get("holder")
+    if not h or h["kind"] == "orchestrator":
+        return ""
+    return (f"(the machine is busy: {m['summary']}. Your message waits for that to finish; "
+            "/park stops a run now, Ctrl+C stops waiting.)")
+
+
 def chat_loop(rest):
     """A terminal conversation with the orchestrator (the same `chat` verb the UI uses)."""
     from . import verbs
     conv = rest[rest.index("--conversation") + 1] if "--conversation" in rest else ""
     print("Ariadne orchestrator - it defines and manages tasks; workers do them. Empty line or Ctrl+C to leave.")
+    print(f"Commands that act at once, without the model: {', '.join(sorted(CHAT_COMMANDS))} (/help).")
     while True:
         try:
             msg = input("you> ").strip()
@@ -149,10 +227,19 @@ def chat_loop(rest):
             return 0
         if not msg:
             return 0
+        if msg.startswith("/"):
+            print(chat_command(msg) + "\n")
+            continue
+        busy = _busy_note()
+        if busy:
+            print(busy)
         try:
             out = verbs.call("chat", message=msg, conversation=conv)
         except verbs.VerbError as e:
             print(f"(error) {e}")
+            continue
+        except KeyboardInterrupt:
+            print("\n(stopped waiting; the orchestrator did not answer that message)\n")
             continue
         conv = out["conversation"]
         print(f"ariadne> {out['reply']}\n")

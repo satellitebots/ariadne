@@ -12,9 +12,6 @@ toolsets:
 plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, web_search, web_fetch,
              navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 checks: []
-max_turns: {plan: 15, execute: 60}
-run_budget: {plan: 1800, execute: 3600}
-task_budget: 7200         # the whole task's wall clock, worker time only; out of it keeps the work and lets the gates decide
 browser:
   real_logins: false       # a clean, isolated Chrome; `python -m ariadne browser debug on` attaches to your Chrome when a step needs a login
 network:

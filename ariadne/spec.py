@@ -19,7 +19,6 @@ an MCP `define(spec)`, and an edit all land here, and only a spec with no proble
     gates: [{type: review, text: ...}]   # task gates, checked after the last step
     trigger: {kind: now}                 # or {kind: at, at: 2026-11-25T07:00} or {kind: cron, cron: "0 7 * * 1-5"}
     tz: America/New_York
-    budget_s: 3600                       # whole-run wall clock, worker time
     retries: 1                           # per step: retry once with the gate's reasons, then needs_you
 """
 import copy
@@ -32,7 +31,7 @@ from . import paths, yamlio
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}$")
 TRIGGERS = ("now", "manual", "at", "cron")
 GATE_TYPES = ("run", "review")
-DEFAULTS = {"trigger": {"kind": "manual"}, "tz": "America/New_York", "budget_s": 3600, "retries": 1,
+DEFAULTS = {"trigger": {"kind": "manual"}, "tz": "America/New_York", "retries": 1,
             "params": {}, "gates": []}
 
 
@@ -156,8 +155,7 @@ def validate(spec, flows, catalog=None):
         ZoneInfo(s["tz"])
     except Exception:
         problems.append(f"tz: '{s['tz']}' is not a time zone")
-    if not isinstance(s.get("budget_s"), int) or s["budget_s"] < 60:
-        problems.append("budget_s: whole seconds, at least 60")
+    s.pop("budget_s", None)     # older versions had a run clock; runs now end only done, failed or cancelled
     if not isinstance(s.get("retries"), int) or not 0 <= s["retries"] <= 4:
         problems.append("retries: 0 to 4")
     if problems:

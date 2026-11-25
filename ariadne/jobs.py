@@ -112,8 +112,16 @@ def shell_command(command):
     return ([bash, "-lc", command], False) if bash else (command, True)
 
 
-def run(job, db_path=None, unload=unload_models, poll=2.0):
-    """Run one job to the end (or its max_minutes). Returns the job row with its result filled in."""
+PROGRESS_S = 60      # how often a running job's newest log line is pushed as progress
+QUIET_S = 600        # a job whose log has not grown for this long is reported as quiet (never killed)
+
+
+def run(job, db_path=None, unload=unload_models, poll=2.0, stop=None, on_progress=None):
+    """Run one job to its end. Returns the job row with its result filled in.
+
+    Nothing stops a job on its own (max_minutes is the worker's estimate, shown, not enforced): `stop()` - the run
+    was cancelled - is the only kill. `on_progress(text)` gets the newest log line every PROGRESS_S while it runs,
+    and a quiet note when the log has not grown for QUIET_S."""
     logs = paths.LOGS / "jobs"
     logs.mkdir(parents=True, exist_ok=True)
     log = logs / f"{job['id']}.log"
@@ -129,16 +137,32 @@ def run(job, db_path=None, unload=unload_models, poll=2.0):
         p = subprocess.Popen(args, shell=use_shell, cwd=job["workdir"] or None, env=env, stdout=out,
                              stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=flags,
                              start_new_session=os.name != "nt")
-        status, deadline = "done", started + job["max_minutes"] * 60
+        status = "done"
+        told = grew = started
+        size = 0
         while p.poll() is None:
-            if time.time() > deadline:
+            if stop and stop():
                 from .procs import kill_tree
                 kill_tree(p.pid)
-                status = "timeout"
+                status = "cancelled"
                 break
+            now = time.time()
+            if on_progress:
+                cur = log.stat().st_size if log.exists() else 0
+                if cur != size:
+                    size, grew = cur, now
+                if now - told >= PROGRESS_S:
+                    told = now
+                    mins = int((now - started) // 60)
+                    if now - grew >= QUIET_S:
+                        on_progress(f"running {mins} min; no new output for {int((now - grew) // 60)} min "
+                                    "(it is not stopped on its own: cancel the run if it is stuck)")
+                    else:
+                        last = (_tail(log, 1) or "").strip()[-200:]
+                        on_progress(f"running {mins} min" + (f"; last output: {last}" if last else ""))
             time.sleep(poll)
         code = p.wait()
-    if status != "timeout" and code != 0:
+    if status == "done" and code != 0:
         status = "failed"
     ended = time.time()
     expects = json.loads(job.get("expects") or "[]")

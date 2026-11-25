@@ -27,10 +27,16 @@ def test_a_failing_and_a_too_long_job(env):  # noqa: F811
     bad = jobs.run(jobs.get(jobs.submit("t1", PY + ' -c "raise SystemExit(3)"', env, db_path=db), db), db,
                    unload=lambda: True, poll=0.05)
     assert bad["status"] == "failed" and bad["exit_code"] == 3
-    jid = jobs.submit("t1", PY + ' -c "import time; time.sleep(30)"', env, db_path=db)
+    # max_minutes is an estimate, never a kill: a job past it still finishes
+    jid = jobs.submit("t1", PY + ' -c "import time; time.sleep(1.5); print(1)"', env, db_path=db)
     j = jobs.get(jid, db)
-    j["max_minutes"] = 0.01   # under a second
-    assert jobs.run(j, db, unload=lambda: True, poll=0.05)["status"] == "timeout"
+    j["max_minutes"] = 0.01
+    assert jobs.run(j, db, unload=lambda: True, poll=0.05)["status"] == "done"
+    # the only kill is deliberate: the run was cancelled
+    jid = jobs.submit("t1", PY + ' -c "import time; time.sleep(30)"', env, db_path=db)
+    calls = iter([False, False, True])
+    got = jobs.run(jobs.get(jid, db), db, unload=lambda: True, poll=0.05, stop=lambda: next(calls, True))
+    assert got["status"] == "cancelled" and got["result"]
 
 
 def test_the_coding_flow_gets_the_jobs_server_with_its_home(env):  # noqa: F811

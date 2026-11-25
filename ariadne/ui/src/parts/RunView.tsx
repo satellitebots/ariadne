@@ -38,6 +38,7 @@ export default function RunView({ id, tick, go }: { id: string; tick: number; go
           <h1>{SAY[r.status] ?? r.status}</h1>
           <p className="facts"><span>started {ago(r.started || r.created)}</span>{r.started ? <span>{duration(elapsed)}</span> : null}
             <span className="dim">{r.id}</span></p>
+          {live && r.activity && <p className="now" aria-live="polite">Now: {r.activity.detail} <span className="dim">({ago(r.activity.ts)})</span></p>}
         </div>
         <div className="actions">
           {r.status === "running" && <button onClick={() => act("park_run")}>Park</button>}

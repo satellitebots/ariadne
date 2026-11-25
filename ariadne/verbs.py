@@ -110,7 +110,9 @@ def _run_view(r, detail=False):
                        "attempts": [{k: a[k] for k in ("attempt", "status", "started", "ended", "report", "gate")}
                                     for a in steps if a["n"] == st["n"]]} for st in sp.get("steps", [])]
         v["result"] = r["result"]
-        v["events"] = s.events(r["id"])[-200:]
+        v["events"] = s.events(r["id"], limit=300, newest=True)
+        act = next((e for e in reversed(v["events"]) if e["kind"] in ACTIVITY), None)
+        v["activity"] = {"ts": act["ts"], "kind": act["kind"], "detail": act["detail"]} if act else None
         v["workspace"] = r["workspace"]
     return v
 
@@ -360,6 +362,32 @@ def runs(task: str = "", live: bool = False) -> list:
 def run_show(run: str) -> dict:
     """A run: each step's attempts, reports and gate verdicts, and its events."""
     return _run_view(_run(run), detail=True)
+
+
+ACTIVITY = ("tool", "model", "job")     # events that show a run is doing work (engine.Progress, jobs.run)
+
+
+@verb("runs")
+def progress(run: str, recent: int = 15) -> dict:
+    """Is a run making progress? Its status and step, seconds since its last tool call, model call or job output,
+    how many of each, the files it wrote or edited, and its most recent activity. Nothing stops a run on its own:
+    read this before cancelling one that looks stuck."""
+    r = _run(run)
+    ev = ctx.store.events(r["id"], limit=2000, newest=True)
+    act = [e for e in ev if e["kind"] in ACTIVITY]
+    last = act[-1] if act else None
+    changed = sorted({e["detail"].split(": ", 1)[-1].split(" ", 1)[-1] for e in act if e["kind"] == "tool"
+                      and e["detail"].split(": ", 1)[-1].startswith(("wrote ", "edited "))})
+    quiet = next((e for e in reversed(ev) if e["kind"] == "quiet"), None)
+    view = _run_view(r)
+    return {"run": r["id"], "task": view["task"], "status": r["status"], "step": r["step"],
+            "steps_total": view["steps_total"], "ask": view["ask"],
+            "seconds_since_activity": round(time.time() - last["ts"]) if last else None,
+            "last_activity": last["detail"] if last else "",
+            "tool_calls": sum(e["kind"] == "tool" for e in act), "model_calls": sum(e["kind"] == "model" for e in act),
+            "files_changed": changed, "quiet_note": quiet["detail"] if quiet and (not last or quiet["ts"] > last["ts"])
+            else "", "recent": [{"ts": e["ts"], "kind": e["kind"], "detail": e["detail"]} for e in act[-recent:]],
+            "machine": ctx.broker.describe()}
 
 
 @verb("runs")
