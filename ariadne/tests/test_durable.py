@@ -88,7 +88,7 @@ def test_schedule_signs_a_new_version_and_the_store_says_what_is_due(ctx, tmp_pa
     d = verbs.call("define", yaml=speclib.dump(good_spec(tmp_path)))     # the MCP bypass: a full definition
     verbs.call("sign", draft=d["id"])
     t = verbs.call("schedule", task="googl-daily", trigger="0 7 * * 1-5")
-    assert t["version"] == 2 and "0 7 * * 1-5" in t["trigger"] and t["next_due"]
+    assert t["version"] == 2 and t["trigger"].startswith("weekdays at 07:00") and t["next_due"]
     assert ctx.store.due(t["next_due"] + 1)[0]["name"] == "googl-daily"
     verbs.call("unschedule", task="googl-daily")
     assert ctx.store.due(t["next_due"] + 1) == []

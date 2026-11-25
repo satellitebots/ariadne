@@ -211,7 +211,23 @@ def next_due(spec, after):
     return None
 
 
+DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"]
+
+
+def _cron_words(expr):
+    """'0 7 * * 1-5' -> 'weekdays at 07:00'; anything it cannot say plainly comes back as the expression."""
+    parts = str(expr).split()
+    if len(parts) != 5 or not parts[0].isdigit() or not parts[1].isdigit() or parts[2:4] != ["*", "*"]:
+        return f"on cron '{expr}'"
+    at, dow = f"{int(parts[1]):02d}:{int(parts[0]):02d}", parts[4]
+    days = {"*": "every day", "1-5": "weekdays", "0,6": "weekends", "6,0": "weekends"}.get(dow)
+    if days is None and dow.isdigit() and int(dow) < 7:
+        days = DAYS[int(dow)]
+    return f"{days} at {at}" if days else f"on cron '{expr}'"
+
+
 def describe_trigger(spec):
     t = spec.get("trigger") or {}
-    return {"now": "run once, now", "manual": "runs when you start it", "at": f"once at {t.get('at')} ({spec.get('tz')})",
-            "cron": f"on '{t.get('cron')}' ({spec.get('tz')})"}.get(t.get("kind"), "?")
+    tz = spec.get("tz") or DEFAULTS["tz"]
+    return {"now": "run once, now", "manual": "runs when you start it", "at": f"once at {t.get('at')} ({tz})",
+            "cron": f"{_cron_words(t.get('cron'))} ({tz})"}.get(t.get("kind"), "?")

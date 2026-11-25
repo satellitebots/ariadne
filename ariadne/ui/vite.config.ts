@@ -1,10 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The built console is served by the Ariadne server under /static/.
+// The built console is served by the Ariadne server at / (assets under /assets).
 export default defineConfig({
   plugins: [react()],
-  base: "/static/",
+  base: "/",
   build: {
     outDir: "dist",
     emptyOutDir: true,

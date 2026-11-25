@@ -1,369 +1,79 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, eventsUrl } from "./api";
-import type { Choices, Inbox, Session, TaskDoc, SseEvent, ChatMsg } from "./types";
-import Header from "./components/Header";
-import SessionRail from "./components/SessionRail";
-import CenterStream from "./components/CenterStream";
-import InboxView from "./components/InboxView";
-import Composer from "./components/Composer";
-import CommandPalette, { type CommandItem } from "./components/CommandPalette";
+import { call, stream, type Draft, type Machine, type RunSummary, type Task } from "./api";
+import MachineBar from "./parts/MachineBar";
+import Sidebar from "./parts/Sidebar";
+import Home from "./parts/Home";
+import TaskView from "./parts/TaskView";
+import RunView from "./parts/RunView";
+import DraftView from "./parts/DraftView";
+import Orchestrator from "./parts/Orchestrator";
 
-type View = "home" | "inbox";
+export type Selection =
+  | { kind: "home" }
+  | { kind: "task"; id: string }
+  | { kind: "run"; id: string }
+  | { kind: "draft"; id: string };
+
+function fromHash(): Selection {
+  const [kind, id] = location.hash.slice(1).split("/");
+  if ((kind === "task" || kind === "run" || kind === "draft") && id) return { kind, id };
+  return { kind: "home" };
+}
 
 export default function App() {
-  const [choices, setChoices] = useState<Choices | null>(null);
-  const [inbox, setInbox] = useState<Inbox | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [session, setSession] = useState<string | null>(null);
-  const [task, setTask] = useState<TaskDoc | null>(null);
-  const [view, setView] = useState<View>("home");
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sel, setSel] = useState<Selection>(fromHash);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [live, setLive] = useState<RunSummary[]>([]);
+  const [machine, setMachine] = useState<Machine | null>(null);
+  const [tick, setTick] = useState(0);              // bumps when the store changes; views refetch on it
   const [error, setError] = useState("");
-  const [occupied, setOccupied] = useState(false);
-  const [busyMsg, setBusyMsg] = useState("");
-  const [chat, setChat] = useState<ChatMsg[]>([]);
-  const [loading, setLoading] = useState(true);
+  const pending = useRef<number | null>(null);
 
-  const sinceRef = useRef(0);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  const taskRef = useRef<TaskDoc | null>(null);
-  const errorTimer = useRef<number | undefined>(undefined);
-
-  const fail = useCallback((e: unknown) => {
-    const msg = e instanceof Error ? e.message : String(e);
-    setError(msg);
-    if (errorTimer.current) window.clearTimeout(errorTimer.current);
-    errorTimer.current = window.setTimeout(() => setError(""), 8000);
+  const go = useCallback((s: Selection) => {
+    setSel(s);
+    location.hash = s.kind === "home" ? "" : `${s.kind}/${s.id}`;
   }, []);
 
-  const loadInbox = useCallback(async () => {
+  const refresh = useCallback(async () => {
     try {
-      const box = await api.inbox();
-      setInbox(box);
-      const h = await api.health().catch(() => ({ occupied: false, orchestrator: box.worker }));
-      setOccupied(h.occupied);
+      const [t, d, r] = await Promise.all([
+        call<Task[]>("tasks"), call<Draft[]>("drafts"), call<RunSummary[]>("runs", { live: true }),
+      ]);
+      setTasks(t); setDrafts(d); setLive(r); setError("");
     } catch (e) {
-      fail(e);
+      setError(`Ariadne is not answering: ${(e as Error).message}. Is \`ariadne ui\` still running?`);
     }
-  }, [fail]);
-
-  const loadSessions = useCallback(async () => {
-    try {
-      setSessions(await api.sessions());
-    } catch (e) {
-      fail(e);
-    }
-  }, [fail]);
-
-  const loadTask = useCallback(async (id: string) => {
-    try {
-      const doc = await api.task(id);
-      setTask(doc);
-      taskRef.current = doc;
-    } catch (e) {
-      fail(e);
-    }
-  }, [fail]);
-
-  const openSession = useCallback((name: string) => {
-    setSession(name);
-    setTask(null);
-    taskRef.current = null;
   }, []);
 
-  const openTask = useCallback(
-    (id: string, sessionId?: string) => {
-      if (sessionId && sessionId !== session) {
-        setSession(sessionId);
-      }
-      loadTask(id);
-    },
-    [session, loadTask]
-  );
-
-  // Initial load
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [ch, box, sess] = await Promise.all([api.choices(), api.inbox(), api.sessions()]);
-        if (cancelled) return;
-        setChoices(ch);
-        setInbox(box);
-        setSessions(sess);
-        const isBusy = box.worker && box.running.some((r) => r.status === "planning" || r.status === "executing");
-        setOccupied(isBusy);
-      } catch (e) {
-        fail(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [fail]);
-
-  // SSE stream
-  useEffect(() => {
-    const es = new EventSource(eventsUrl(sinceRef.current));
-    let timer: number | undefined;
-    es.onmessage = (m) => {
-      try {
-        const ev = JSON.parse(m.data) as SseEvent;
-        sinceRef.current = Math.max(sinceRef.current, Number(ev.ts) || 0);
-        if (timer) window.clearTimeout(timer);
-        timer = window.setTimeout(() => {
-          loadInbox();
-          loadSessions();
-          const cur = taskRef.current;
-          if (cur && ev.task_id === cur.id) loadTask(cur.id);
-        }, 400);
-      } catch { /* keepalive or partial frame */ }
-    };
-    es.onerror = () => { /* EventSource auto-reconnects */ };
-    return () => { es.close(); if (timer) window.clearTimeout(timer); };
-  }, [loadInbox, loadSessions, loadTask]);
-
-  // Verb actions
-  const doVerb = useCallback(
-    async (verb: string, tid: string) => {
-      try {
-        let doc: TaskDoc;
-        switch (verb) {
-          case "approve":
-            doc = await api.approve(tid);
-            break;
-          case "revise": {
-            const fb = prompt("What should change in the plan?");
-            if (!fb) return;
-            doc = await api.revise(tid, fb);
-            break;
-          }
-          case "set_gates": {
-            const txt = prompt("Check gates, one per line:");
-            if (txt === null) return;
-            const gates = txt.split("\n").map((g) => g.trim()).filter(Boolean);
-            doc = await api.gates(tid, gates);
-            break;
-          }
-          case "cancel":
-            if (!confirm(`Cancel task ${tid}?`)) return;
-            doc = await api.cancel(tid);
-            break;
-          case "steer": {
-            const fb = prompt("Guidance for the task:");
-            if (!fb) return;
-            doc = await api.steer(tid, fb);
-            break;
-          }
-          default:
-            return;
-        }
-        setTask(doc);
-        taskRef.current = doc;
-        loadInbox();
-        loadSessions();
-      } catch (e) {
-        fail(e);
-      }
-    },
-    [fail, loadInbox, loadSessions]
-  );
-
-  const submitTask = useCallback(
-    async (body: { text: string; flow: string; model: string; workspace: string; session: string; gates: string[] }) => {
-      try {
-        const doc = await api.submit(body);
-        setBusyMsg("");
-        openSession(doc.session);
-        loadTask(doc.id);
-        loadInbox();
-        loadSessions();
-      } catch (e) {
-        if (e instanceof ApiError && /hardware occupied/i.test(e.message)) {
-          setBusyMsg(e.message);
-        }
-        fail(e);
-      }
-    },
-    [fail, loadInbox, loadSessions, loadTask, openSession]
-  );
-
-  const chatSend = useCallback(
-    async (message: string) => {
-      if (!message.trim()) return;
-      setChat((prev) => [...prev, { who: "you", text: message }]);
-      try {
-        const res = await api.chat(message, session ?? "");
-        setChat((prev) => [...prev, { who: "it", text: res.reply }]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setChat((prev) => [...prev, { who: "it", text: msg }]);
-      }
-    },
-    [session]
-  );
-
-  const focusComposer = useCallback(() => {
-    composerRef.current?.focus();
-  }, []);
-
-  // Command palette commands
-  const commands: CommandItem[] = [
-    { id: "new-task", label: "New task", hint: "Focus composer", run: focusComposer },
-    { id: "inbox", label: "Open inbox", hint: "View decisions", run: () => setView("inbox") },
-  ];
-  for (const s of sessions) {
-    commands.push({ id: `sess-${s.name}`, label: `Go to: ${s.name}`, hint: "Session", run: () => { setView("home"); openSession(s.name); } });
-  }
-  if (task) {
-    const tid = task.id;
-    if (task.actions.includes("approve")) commands.push({ id: "cmd-approve", label: `Approve ${tid}`, run: () => doVerb("approve", tid) });
-    if (task.actions.includes("revise")) commands.push({ id: "cmd-revise", label: `Send back ${tid}`, run: () => doVerb("revise", tid) });
-    if (task.actions.includes("cancel")) commands.push({ id: "cmd-cancel", label: `Cancel ${tid}`, run: () => doVerb("cancel", tid) });
-    if (task.actions.includes("set_gates")) commands.push({ id: "cmd-gates", label: `Set gates ${tid}`, run: () => doVerb("set_gates", tid) });
-    if (task.status === "planning" || task.status === "executing") commands.push({ id: "cmd-steer", label: `Steer ${tid}`, run: () => doVerb("steer", tid) });
-  }
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-        return;
-      }
-      if (e.key === "Escape") {
-        setPaletteOpen(false);
-        return;
-      }
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
-      if (paletteOpen) return;
-
-      // j/k navigation
-      if (e.key === "j" || e.key === "k") {
-        e.preventDefault();
-        const dir = e.key === "j" ? 1 : -1;
-        if (view === "inbox" && inbox) {
-          // handled in InboxView via ref
-        }
-        // For session rail
-        setSession((prev) => {
-          if (!sessions.length) return prev;
-          const idx = sessions.findIndex((s) => s.name === prev);
-          const next = Math.max(0, Math.min(sessions.length - 1, (idx === -1 ? 0 : idx) + dir));
-          return sessions[next].name;
-        });
-      }
-      if (e.key === "Enter") {
-        if (session && view === "home") {
-          const s = sessions.find((s) => s.name === session);
-          if (s && s.tasks.length > 0) {
-            openTask(s.tasks[0].id, session);
-          }
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sessions, session, view, paletteOpen, inbox, openTask]);
-
-  const activeSessionData = session ? sessions.find((s) => s.name === session) ?? null : null;
-
-  const park = useCallback(async () => {
-    try {
-      await api.park();
-    } catch (e) {
-      fail(e);
-    }
-    loadInbox();
-  }, [fail, loadInbox]);
-
-  if (loading) {
-    return (
-      <div className="app loading">
-        <div className="header-skeleton" />
-        <div className="body">
-          <div className="rail-skeleton">
-            <div className="skel-row" /><div className="skel-row" /><div className="skel-row" /><div className="skel-row" />
-          </div>
-          <div className="center-skeleton">
-            <div className="skel-block" /><div className="skel-block" />
-          </div>
-        </div>
-        <div className="composer-skeleton" />
-      </div>
+    refresh();
+    const onHash = () => setSel(fromHash());
+    window.addEventListener("hashchange", onHash);
+    const stop = stream(
+      () => {   // coalesce bursts of events into one refresh
+        if (pending.current) window.clearTimeout(pending.current);
+        pending.current = window.setTimeout(() => { refresh(); setTick((t) => t + 1); }, 250);
+      },
+      setMachine,
     );
-  }
+    return () => { stop(); window.removeEventListener("hashchange", onHash); };
+  }, [refresh]);
+
+  const draftId = sel.kind === "draft" ? sel.id : "";
 
   return (
-    <div className="app">
-      <Header
-        view={view}
-        setView={setView}
-        inboxCount={inbox?.waiting.length ?? 0}
-        worker={inbox?.worker ?? false}
-        occupied={occupied}
-        onStop={park}
-        onPaletteToggle={() => setPaletteOpen((o) => !o)}
-      />
-
-      {(occupied || busyMsg) && (
-        <div className="occupied-strip" role="alert">
-          <span className="occupied-icon">⚠</span>
-          <span>{busyMsg || "The machine is occupied by a running task."}</span>
-          <button className="btn btn-secondary" disabled={!occupied} onClick={park}>
-            Stop
-          </button>
-        </div>
-      )}
-
-      <div className="body">
-        <SessionRail
-          sessions={sessions}
-          choices={choices}
-          active={session}
-          onSelect={openSession}
-          onCreate={async (body) => { await api.createSession(body); loadSessions(); }}
-          onDelete={async (name) => { await api.deleteSession(name); loadSessions(); }}
-        />
-
-        <main className="center">
-          {view === "inbox" && inbox ? (
-            <InboxView
-              inbox={inbox}
-              onOpenTask={openTask}
-              onVerb={(v, tid) => doVerb(v, tid)}
-            />
-          ) : (
-            <CenterStream
-              session={activeSessionData}
-              task={task}
-              onOpenTask={openTask}
-              onVerb={(v, tid) => doVerb(v, tid)}
-            />
-          )}
-        </main>
-      </div>
-
-      {error && <div className="toast-error" role="alert">{error}</div>}
-
-      <Composer
-        choices={choices}
-        session={session}
-        sessions={sessions}
-        chat={chat}
-        textareaRef={composerRef}
-        onSubmit={submitTask}
-        onChat={chatSend}
-      />
-
-      {paletteOpen && (
-        <CommandPalette
-          commands={commands}
-          onClose={() => setPaletteOpen(false)}
-        />
-      )}
+    <div className="shell">
+      <MachineBar machine={machine} live={live} go={go} />
+      <Sidebar tasks={tasks} drafts={drafts} live={live} sel={sel} go={go} />
+      <main className="main" aria-live="polite">
+        {error && <p className="banner error">{error}</p>}
+        {sel.kind === "home" && <Home tasks={tasks} live={live} drafts={drafts} go={go} />}
+        {sel.kind === "task" && <TaskView id={sel.id} tick={tick} go={go} />}
+        {sel.kind === "run" && <RunView id={sel.id} tick={tick} go={go} />}
+        {sel.kind === "draft" && <DraftView id={sel.id} tick={tick} go={go} />}
+      </main>
+      <Orchestrator draftId={draftId} go={go} tick={tick} />
     </div>
   );
 }

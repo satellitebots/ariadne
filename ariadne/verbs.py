@@ -161,7 +161,9 @@ def draft(text: str = "", flow: str = "", name: str = "", workspace: str = "") -
     if not fl:
         raise VerbError(f"no flow '{flow}'; flows: {', '.join(ctx.flows)}")
     sp, asks = speclib.from_template(fl, name=name, workspace=workspace)
-    if text and not sp.get("goal"):
+    if text and asks:            # what you typed answers the template's first question
+        sp["params"][next(iter(asks))] = text
+    elif text and not sp.get("goal"):
         sp["goal"] = text
     did = ctx.store.draft_new(flow, sp, asks, source="front")
     if text:
