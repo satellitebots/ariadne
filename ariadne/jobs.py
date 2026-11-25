@@ -88,6 +88,30 @@ def _tail(path, lines=80, limit=6000):
     return "\n".join(text.splitlines()[-lines:])[-limit:]
 
 
+def _bash():
+    """The bash the workers' terminal uses (Git for Windows, as Hermes resolves it); '' when there is none."""
+    if os.name != "nt":
+        return ""
+    try:
+        import pm.shell
+        b = pm.shell.bash()
+        if b:
+            return b
+    except Exception:
+        pass
+    for p in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"):
+        if Path(p).exists():
+            return p
+    return ""
+
+
+def shell_command(command):
+    """(args, shell): a job runs in the same shell the worker wrote it for. On Windows that is Git Bash - cmd.exe
+    does not understand `cd /c/...` or `.venv/bin/...`, which failed every job of the first real run."""
+    bash = _bash()
+    return ([bash, "-lc", command], False) if bash else (command, True)
+
+
 def run(job, db_path=None, unload=unload_models, poll=2.0):
     """Run one job to the end (or its max_minutes). Returns the job row with its result filled in."""
     logs = paths.LOGS / "jobs"
@@ -101,7 +125,8 @@ def run(job, db_path=None, unload=unload_models, poll=2.0):
     with open(log, "w", encoding="utf-8") as out:
         out.write(f"$ {job['command']}\n(cwd {job['workdir']})\n\n")
         out.flush()
-        p = subprocess.Popen(job["command"], shell=True, cwd=job["workdir"] or None, env=env, stdout=out,
+        args, use_shell = shell_command(job["command"])
+        p = subprocess.Popen(args, shell=use_shell, cwd=job["workdir"] or None, env=env, stdout=out,
                              stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=flags,
                              start_new_session=os.name != "nt")
         status, deadline = "done", started + job["max_minutes"] * 60

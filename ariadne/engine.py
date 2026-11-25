@@ -76,7 +76,8 @@ STEP_PROMPT = """You are a worker of Ariadne. You do ONE step of a signed task, 
 
 TODAY: {today}. "Recent", "last month" and "now" are relative to this date; check the dates on what you find.
 TASK GOAL: {goal}
-WORKSPACE: {workspace}   (the terminal is bash: write paths with forward slashes, e.g. {workspace_posix})
+WORKSPACE: {workspace}   (the terminal and jobs run in bash: write paths with forward slashes, e.g. {workspace_posix})
+{platform}
 
 STEP {n} of {total}: {title}
 {instruction}
@@ -93,6 +94,10 @@ Rules:
 - If the step cannot be done as written, reply starting with 'OFF-PLAN:' and the reason.
 - Finish with a short report: what you did, which files you left, how you checked them.
 """
+
+PLATFORM = ("THIS IS WINDOWS: Python is `python` (there is no python3); a venv is made with `python -m venv .venv` "
+            "and its interpreter is .venv/Scripts/python.exe. A job's command runs from the workspace folder."
+            if os.name == "nt" else "A job's command runs from the workspace folder.")
 
 RETRY = """
 THIS IS ATTEMPT {attempt}. The last attempt failed its check:
@@ -287,6 +292,7 @@ class Engine:
             notes = self.store.take_steers(rid)
             prompt = STEP_PROMPT.format(
                 today=_today(sp), goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
+                platform=PLATFORM,
                 n=n, total=total, title=step["title"], instruction=speclib.fill(step["instruction"], sp["params"]),
                 inputs=", ".join(o for s in sp["steps"][:n - 1] for o in s["outputs"]) or "none",
                 outputs=", ".join(step["outputs"]) or "nothing in particular; report what you did",
