@@ -74,6 +74,7 @@ def stop_gateway(home):
 
 STEP_PROMPT = """You are a worker of Ariadne. You do ONE step of a signed task, then stop.
 
+TODAY: {today}. "Recent", "last month" and "now" are relative to this date; check the dates on what you find.
 TASK GOAL: {goal}
 WORKSPACE: {workspace}   (the terminal is bash: write paths with forward slashes, e.g. {workspace_posix})
 
@@ -114,7 +115,8 @@ JOB_RESULT_PROMPT = """You were unloaded while Ariadne ran the job(s) you submit
 Continue the step from here: fix and resubmit if a job failed (resume, do not start over), otherwise finish the step."""
 
 REVIEW_PROMPT = """You are Ariadne's reviewer. Check one claim about the workspace ({workspace}) with your read tools; change
-nothing. Be strict: it passes only if you saw the evidence yourself.
+nothing. Be strict: it passes only if you saw the evidence yourself. TODAY is {today}: work that is about "now" but
+describes an older period fails.
 
 TASK GOAL: {goal}
 CHECK: {check}
@@ -284,7 +286,7 @@ class Engine:
         for attempt in range(1, sp["retries"] + 2):
             notes = self.store.take_steers(rid)
             prompt = STEP_PROMPT.format(
-                goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
+                today=_today(sp), goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
                 n=n, total=total, title=step["title"], instruction=speclib.fill(step["instruction"], sp["params"]),
                 inputs=", ".join(o for s in sp["steps"][:n - 1] for o in s["outputs"]) or "none",
                 outputs=", ".join(step["outputs"]) or "nothing in particular; report what you did",
@@ -392,7 +394,7 @@ class Engine:
             model = sp["steps"][-1]["model"]
             if lease.model != model:
                 lease.switch(model)
-            r = self._runner(rid, flow, "review", REVIEW_PROMPT.format(workspace=ws, goal=speclib.fill(
+            r = self._runner(rid, flow, "review", REVIEW_PROMPT.format(workspace=ws, today=_today(sp), goal=speclib.fill(
                 sp["goal"], sp["params"]), check=text), ws, {"model": model, "tools": ["file"]}, session=None)
             verdict = next((l.strip() for l in r.text.splitlines() if re.match(r"\s*(PASS|FAIL)\b", l)), "")
             if not verdict.upper().startswith("PASS"):
@@ -413,6 +415,13 @@ class Engine:
         self.store.event(rid, "end", status + (f": {error[:300]}" if error else ""))
         self.kv.drop(rid)
         return status
+
+
+def _today(sp):
+    """The date in the task's own time zone, written out so a model cannot misread it."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(sp.get("tz") or "UTC")).strftime("%A %d %B %Y, %H:%M %Z")
 
 
 def _gate_text(g, params):

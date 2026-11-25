@@ -17,8 +17,8 @@ from . import paths, spec as speclib, verbs
 
 CONVERSATION_VERBS = ("say", "chat")
 
-SYSTEM = """You are Ariadne's orchestrator, on the person's own machine. You help the person define durable tasks and
-manage them. You never do the work yourself: workers do it, one step at a time, after the person signs.
+SYSTEM = """You are Ariadne's orchestrator, on the person's own machine. Today is {today}. You help the person define
+durable tasks and manage them. You never do the work yourself: workers do it, one step at a time, after the person signs.
 
 What you can do (tools): look at flows (task templates), drafts, tasks, runs and the machine; update a draft's
 definition with draft_update; start, park, steer, resume or cancel runs when the person asks; search the web and read
@@ -114,7 +114,8 @@ class Orchestrator:
                             home=home, workspace=ws, phase="plan", model=model, session=f"orch-{ref}",
                             max_turns=self.max_turns, budget=self.budget, transport=self.transport,
                             web=web_mod.Search(), extra=VerbTools(d["id"] if d else ""),
-                            system=SYSTEM.format(sandbox=(paths.ROOT / "sandbox").as_posix()),
+                            system=SYSTEM.format(sandbox=(paths.ROOT / "sandbox").as_posix(),
+                                                 today=time.strftime("%A %d %B %Y")),
                             on_event=lambda kind, detail: store.event(ref, "orchestrator", detail))
         finally:
             lease.release()

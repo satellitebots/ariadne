@@ -71,6 +71,7 @@ def test_steps_run_in_order_hand_over_files_and_pass_gates(env):
     assert r["status"] == "done", r["error"]
     step2 = next(c for c in script.calls if c[1] == 2)
     assert "a.txt" in step2[2] and "forward slashes" in step2[2]          # inputs named; bash path rule given
+    assert f"TODAY: {time.strftime('%A')}" in step2[2] or "TODAY: " in step2[2]  # the worker knows the date (task tz)
     assert broker.holder() is None                                          # the machine is given back
 
 
