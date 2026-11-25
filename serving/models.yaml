@@ -17,12 +17,13 @@
 #        Agent models always get -c <context.window>.
 
 # Every agent model is served with this window (Hermes needs 64K). Context is kept small two ways:
-# - checkpoints: after the plan is approved, after each step, and after QA, the worker pauses and the model writes a
-#   handoff brief; the next phase starts a fresh Hermes session seeded with it (orchestrator.py, Worker.checkpoint)
-# - inside a run, past compress_at tokens Hermes pauses and summarises the older turns (same model, no swap)
+# - every step of a task is a fresh worker that reads what earlier steps left in files (engine.py)
+# - inside a step, past compress_at tokens Hermes pauses and summarises the older turns (same model, no swap).
+#   At 30K it fired on nearly every turn (a step opens at ~12K) and each pass took ~6 min on the 35B-A3B
+#   (googl-daily, 25 Nov), so it is two thirds of the window.
 context:
   window: 65536
-  compress_at: 30000
+  compress_at: 44000
 
 # How much of the machine the models may take (ariadne/resources.py): max | shared | light.
 # Change it any time with `python -m ariadne resources <profile>`; the worker applies it between tasks.

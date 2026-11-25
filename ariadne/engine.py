@@ -250,6 +250,8 @@ class Engine:
         ws = Path(sp["workspace"])
         ws.mkdir(parents=True, exist_ok=True)
         steps = sp["steps"]
+        if not r["step"]:
+            self._archive_outputs(rid, ws, sp)
         first = steps[r["step"] - 1] if r["step"] else steps[0]
         self.store.event(rid, "machine", self.broker.describe())
         lease = self.broker.acquire("worker", rid, first["model"],
@@ -283,6 +285,21 @@ class Engine:
             return self._end(rid, "done", result=self._reports(rid))
         finally:
             lease.release()
+
+    def _archive_outputs(self, rid, ws, sp):
+        """A run starts clean: what the steps must leave, if an earlier run left it, moves to .history/<time>/.
+        Leftover outputs made the second googl-daily run fight Hermes's refusal to overwrite unread files, and a
+        stale report can pass a check it never earned."""
+        import shutil
+        outs = {o for s in sp["steps"] for o in s["outputs"]}
+        found = [o for o in sorted(outs) if (ws / o).exists()]
+        if not found:
+            return
+        dest = ws / ".history" / time.strftime("%Y%m%d-%H%M%S")
+        for o in found:
+            (dest / o).parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(ws / o), str(dest / o))
+        self.store.event(rid, "workspace", f"moved the last run's {', '.join(found)} to {dest.relative_to(ws).as_posix()}")
 
     def _step(self, rid, sp, flow, ws, step, lease):
         """Run one step to a passing check, retrying with the reasons. Returns "passed" or the run's end status."""

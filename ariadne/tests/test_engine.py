@@ -75,6 +75,25 @@ def test_steps_run_in_order_hand_over_files_and_pass_gates(env):
     assert broker.holder() is None                                          # the machine is given back
 
 
+def test_a_new_run_starts_clean_and_keeps_the_last_outputs(env):
+    store, broker, server, tmp = env
+    ws = tmp / "ws"
+    ws.mkdir()
+    (ws / "a.txt").write_text("from the last run", encoding="utf-8")
+    sp = make_spec(ws, [{"title": "A", "instruction": "make a", "outputs": ["a.txt"]}])
+    rid = start(store, sp)
+    seen = []
+
+    def check(ws_, prompt):
+        seen.append((ws_ / "a.txt").exists())
+        return write("a.txt", "new")(ws_, prompt)
+
+    engine.Engine(store, FLOWS, broker, step_runner=Script({1: [check]})).run_once()
+    assert seen == [False] and store.run(rid)["status"] == "done"
+    old = list((ws / ".history").rglob("a.txt"))
+    assert len(old) == 1 and old[0].read_text(encoding="utf-8") == "from the last run"
+
+
 def test_a_failing_check_retries_with_the_reasons_then_needs_you(env):
     store, broker, server, tmp = env
     sp = make_spec(tmp / "ws", [{"title": "A", "instruction": "make a", "outputs": ["a.txt"]}], retries=1)
