@@ -1,0 +1,43 @@
+# The investigation flow as a task template (docs/DESIGN.md, "Flows as templates").
+# `params` are what the orchestrator asks the person; everything else is the starting definition it fills in and may
+# adjust (add a data-gathering step, tighten a gate) before the person signs.
+params:
+  question: "What should be answered, in one sentence?"
+  must_contain: "What must a good answer contain (numbers, names, dates, a comparison, a recommendation)?"
+goal: "REPORT.md answers: {question}"
+steps:
+  - title: Bound the question
+    instruction: |
+      Write NOTES.md: the question ({question}) as one sentence; what a good answer must contain ({must_contain});
+      what you already know and what you are assuming; and the primary sources you will look for. Do not research
+      yet.
+    tools: [file, skills]
+    outputs: [NOTES.md]
+  - title: Gather evidence
+    instruction: |
+      Collect evidence for the question in NOTES.md from primary sources: web_search, then web_fetch. For data (prices,
+      tables, downloads), write a script under scripts/ and submit it with submit_job; never run heavy or long work in
+      the terminal. Record every source in SOURCES.md as "- <url> - <what it supports> (<date>)", and save data to
+      data/.
+    tools: [file, terminal, search, web, jobs, skills]
+    outputs: [SOURCES.md]
+    gate: {type: run, text: "python -c \"import re,sys; t=open('SOURCES.md',encoding='utf-8').read(); sys.exit(0 if len(set(re.findall(r'https?://[^\\s)]+', t)))>=3 else 1)\""}
+  - title: Write the report
+    instruction: |
+      Write REPORT.md from NOTES.md, SOURCES.md and data/: the question, a short answer, the evidence with a citation
+      for each claim, what is inference rather than fact, what is unknown or contested, and what would change the
+      answer. Numbers carry units and dates.
+    tools: [file, skills]
+    outputs: [REPORT.md]
+  - title: Verify
+    instruction: |
+      Check every claim and number in REPORT.md against SOURCES.md and data/. Fix or remove anything you cannot
+      back; mark what is inference. End with a line "VERIFIED: <n> claims checked".
+    tools: [file, search, web]
+    outputs: [REPORT.md]
+    gate: {type: review, text: "Every number and factual claim in REPORT.md has a source listed in SOURCES.md"}
+gates:
+  - {type: review, text: "REPORT.md gives a short answer to the question, evidence with citations, inference marked as such, and open questions"}
+trigger: {kind: manual}
+budget_s: 5400
+retries: 1
