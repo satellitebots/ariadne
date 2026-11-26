@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import paths, spec as speclib, verbs
 
-CONVERSATION_VERBS = ("say", "chat")
+CONVERSATION_VERBS = ("say", "chat", "chat_activity")
 
 SYSTEM = """You are Ariadne's orchestrator, on the person's own machine. Today is {today}. You help the person define
 durable tasks and manage them. You never do the work yourself: workers do it, one step at a time, after the person signs.
@@ -149,3 +149,12 @@ def chat(message: str, conversation: str = "") -> dict:
     reply = c.orchestrator.turn(ref, message, store=c.store, flows=c.flows, catalog=c.catalog, broker=c.broker)
     c.store.message(ref, "orchestrator", reply)
     return {"conversation": ref, "reply": reply, "messages": c.store.messages(ref)}
+
+
+@verbs.verb("define")
+def chat_activity(conversation: str, since: float = 0.0) -> list:
+    """What the orchestrator did in a conversation (or a draft's conversation) after `since`: its waits for the
+    machine, its model calls and its tool calls, as they happen. A front shows these while a turn is working."""
+    return [{"ts": e["ts"], "kind": e["kind"], "detail": e["detail"]}
+            for e in verbs.ctx.store.events(conversation, since=since, limit=200)
+            if e["kind"] in ("orchestrator", "waiting")]

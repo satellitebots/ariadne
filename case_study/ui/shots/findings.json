@@ -1,0 +1,194 @@
+{
+ "base": "http://127.0.0.1:8917",
+ "scenes": {
+  "home-desktop": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": [
+    {
+     "kind": "http",
+     "text": "404 http://127.0.0.1:8917/favicon.ico"
+    },
+    {
+     "kind": "log.error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:8917/favicon.ico"
+    }
+   ]
+  },
+  "task-desktop": {
+   "url": "#task/t1125-071117-30bf",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "googl-daily"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-live-desktop": {
+   "url": "#run/r1125-192634-941c",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Running"
+    ],
+    "overflowX": false,
+    "now": "Now: step 1: model call 1: 10,326 tokens in, 765 out, 101 s (just now)",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-needs_you-desktop": {
+   "url": "#run/r1125-093018-3c69",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Needs you"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "home-phone": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "task-phone": {
+   "url": "#task/t1125-071117-30bf",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "googl-daily"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-live-phone": {
+   "url": "#run/r1125-192634-941c",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Running"
+    ],
+    "overflowX": false,
+    "now": "Now: step 1: model call 1: 10,326 tokens in, 765 out, 101 s (just now)",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-needs_you-phone": {
+   "url": "#run/r1125-093018-3c69",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Needs you"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "home-desktop-dark": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "task-desktop-dark": {
+   "url": "#task/t1125-071117-30bf",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "googl-daily"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-live-desktop-dark": {
+   "url": "#run/r1125-192634-941c",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Running"
+    ],
+    "overflowX": false,
+    "now": "Now: step 1: model call 1: 10,326 tokens in, 765 out, 101 s (just now)",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-needs_you-desktop-dark": {
+   "url": "#run/r1125-093018-3c69",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Needs you"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 0
+   },
+   "log": []
+  },
+  "run-activity": {
+   "probe": [
+    "7:26:34 PM\nqueued\ngoogl-daily v5 (manual)",
+    "7:26:34 PM\nworkspace\nmoved the last run's NOTES.md to .history/20261125-192634",
+    "7:26:34 PM\nmachine\norchestrator c1125-192431 holds the machine (qwen3.8-27b, 123 s)",
+    "7:26:34 PM\nwaiting\norchestrator c1125-192431 holds the machine (qwen3.8-27b, 123 s); waiting: worker r1125-192634-941c",
+    "7:27:09 PM\nstep\n1/5 Bound the question on qwen3.6-35b-a3b, attempt 1",
+    "7:28:06 PM\nsteer\nnote queued: In step 3 (Gather evidence) use news from the last 2 weeks only, from primary sources first: Alphabet IR (abc.xyz/investor), SEC f",
+    "7:29:10 PM\ntool\nstep 1: wrote NOTES.md",
+    "7:29:10 PM\nmodel\nstep 1: model call 1: 10,326 tokens in, 765 out, 101 s"
+   ]
+  }
+ }
+}

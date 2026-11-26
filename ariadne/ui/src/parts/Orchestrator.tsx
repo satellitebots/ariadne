@@ -12,6 +12,7 @@ export default function Orchestrator({ draftId, tick }: { draftId: string; go: (
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [doing, setDoing] = useState<{ ts: number; detail: string }[]>([]);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,21 +28,30 @@ export default function Orchestrator({ draftId, tick }: { draftId: string; go: (
   async function send() {
     const msg = text.trim();
     if (!msg) return;
-    setBusy(true); setErr(""); setText("");
+    setBusy(true); setErr(""); setText(""); setDoing([]);
     setMessages((m) => [...m, { role: "person", text: msg, ts: Date.now() / 1000 }]);
+    // Show what the orchestrator does while it works: its waits for the machine, model calls and tool calls.
+    const ref = draftId || conversation || `c${new Date().toISOString().replace(/\D/g, "").slice(4, 14)}`;
+    let since = Date.now() / 1000 - 1;
+    const timer = setInterval(async () => {
+      try {
+        const got = await call<{ ts: number; detail: string }[]>("chat_activity", { conversation: ref, since });
+        if (got.length) { since = got[got.length - 1].ts; setDoing((d) => [...d, ...got].slice(-8)); }
+      } catch { /* the next tick tries again */ }
+    }, 1500);
     try {
       if (draftId) {
         const d = await call<Draft>("say", { draft: draftId, message: msg });
         setMessages(d.messages);
       } else {
-        const out = await call<ChatOut>("chat", { message: msg, conversation });
+        const out = await call<ChatOut>("chat", { message: msg, conversation: ref });
         setConversation(out.conversation);
         sessionStorageSet("ariadne.conversation", out.conversation);
         setMessages(out.messages);
       }
     } catch (e) {
       setErr((e as Error).message);
-    } finally { setBusy(false); }
+    } finally { clearInterval(timer); setBusy(false); setDoing([]); }
   }
 
   return (
@@ -61,6 +71,9 @@ export default function Orchestrator({ draftId, tick }: { draftId: string; go: (
                                             : "Ask what is running, or say what you want done."}</p>
         )}
         {messages.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}
+        {busy && doing.length > 0 && (
+          <ul className="doing" aria-live="polite">{doing.map((d, i) => <li key={i}>{d.detail}</li>)}</ul>
+        )}
         {busy && <div className="msg orchestrator thinking">Thinking… (it waits if a run holds the machine)</div>}
         <div ref={end} />
       </div>

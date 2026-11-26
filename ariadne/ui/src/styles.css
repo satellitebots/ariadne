@@ -224,3 +224,10 @@ button { white-space: nowrap; }
 }
 
 .run .now { margin: 6px 0 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+
+.knot .work { list-style: none; margin: 2px 0 8px 40px; padding: 0; font-size: 0.86rem; }
+.knot .work li { padding: 2px 0; overflow-wrap: anywhere; }
+.knot .work li.looping, .knot .work li.quiet { color: var(--warn); }
+.orch .doing { list-style: none; margin: 4px 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); font-size: 0.82rem; }
+.orch .doing li { padding: 1px 0; overflow-wrap: anywhere; color: var(--dim, inherit); }
+.pill.stopped { opacity: 0.8; }

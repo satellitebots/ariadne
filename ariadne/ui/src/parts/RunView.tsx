@@ -7,6 +7,8 @@ const SAY: Record<string, string> = {
   done: "Done", failed: "Failed", timed_out: "Out of time", cancelled: "Cancelled", needs_you: "Needs you",
 };
 
+const WORK = new Set(["tool", "job", "looping", "quiet"]);   // what a worker does, pushed as it happens
+
 // The thread: one line through the run's steps, drawn as far as the run has got.
 export default function RunView({ id, tick, go }: { id: string; tick: number; go: (s: Selection) => void }) {
   const [r, setR] = useState<Run | null>(null);
@@ -64,18 +66,20 @@ export default function RunView({ id, tick, go }: { id: string; tick: number; go
           <label htmlFor="steer">Steer this run</label>
           <div className="row">
             <input id="steer" value={note} onChange={(e) => setNote(e.target.value)}
-                   placeholder={r.status === "parked" ? "What should change? It is read before the run continues." : "A note for the next step boundary"} />
+                   placeholder={r.status === "parked" ? "What should change? It is read before the run continues." : "A note for this run"} />
             <button type="submit" disabled={!note.trim()}>Send note</button>
           </div>
-          {r.status === "running" && <p className="dim small">To change course now: park it, talk it over with the orchestrator, send a note, then resume.</p>}
+          <p className="dim small">A note holds for every later step of this run.{r.status === "running" ? " To change course now: park it, talk it over with the orchestrator, send a note, then resume." : ""}</p>
         </form>
       )}
 
       <ol className={`thread ${r.status}`}>
         {r.steps.map((s) => {
           const last = s.attempts[s.attempts.length - 1];
-          const state = last ? last.status : r.status === "running" && r.step === s.n ? "running" : "pending";
+          const raw = last ? last.status : r.status === "running" && r.step === s.n ? "running" : "pending";
+          const state = !live && raw === "running" ? "stopped" : raw;   // cut off when the run ended
           const here = live && r.step === s.n;
+          const work = here ? r.events.filter((e) => WORK.has(e.kind) && e.detail.startsWith(`step ${s.n}`)).slice(-5) : [];
           return (
             <li key={s.n} className={`knot ${state} ${here ? "here" : ""}`}>
               <button className="knot-head" onClick={() => setOpen(open === s.n ? null : s.n)} aria-expanded={open === s.n}>
@@ -84,6 +88,13 @@ export default function RunView({ id, tick, go }: { id: string; tick: number; go
                 <span className="dim">{s.model}{s.attempts.length > 1 ? ` · ${s.attempts.length} attempts` : ""}</span>
                 <span className={`pill ${state}`}>{state}</span>
               </button>
+              {work.length > 0 && (
+                <ul className="work" aria-label={`What step ${s.n} is doing`} aria-live="polite">
+                  {work.map((e, i) => (
+                    <li key={i} className={e.kind}>{e.detail.replace(/^step \d+( check)?: /, "")} <span className="dim">{ago(e.ts)}</span></li>
+                  ))}
+                </ul>
+              )}
               {open === s.n && (
                 <div className="knot-body">
                   {s.attempts.length === 0 && <p className="dim">Not started.</p>}
