@@ -45,12 +45,15 @@ def test_a_worker_repeating_itself_is_reported_as_looping_once(tmp_path):
     got = []
     p = engine.Progress(tmp_path, "C:/ws", lambda k, d: got.append((k, d)))
     cycle = ["read a", "read b", "read c"]
-    for what in cycle * 4:
+    for what in cycle * 4:                             # 4 rounds: not yet a loop
+        p._watch_for_loops(what)
+    assert not got
+    for what in cycle * 3:
         p._watch_for_loops(what)
     loops = [d for k, d in got if k == "looping"]
     assert len(loops) == 1 and "3 tool call(s)" in loops[0] and "not stopped" in loops[0]
     p._watch_for_loops("wrote REPORT.md")              # real work: the loop is over, a new one may be reported
-    for what in ["ran: x"] * 3:
+    for what in ["ran: x"] * 5:
         p._watch_for_loops(what)
     assert len([k for k, _ in got if k == "looping"]) == 2
 

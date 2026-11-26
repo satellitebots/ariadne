@@ -203,7 +203,8 @@ class Progress:
         self.pos[key] += cut
         return data[:cut].decode("utf-8", "replace").splitlines()
 
-    LOOP_REPEATS = 3        # the same cycle of tool calls this many times in a row reads as a loop
+    LOOP_REPEATS = 5        # the same cycle of tool calls this many times in a row reads as a loop (3 flagged a
+                            # verify step's honest rewrites of one file; the real loop ran 266 times)
     LOOP_MAX_CYCLE = 6
 
     def _watch_for_loops(self, what):
