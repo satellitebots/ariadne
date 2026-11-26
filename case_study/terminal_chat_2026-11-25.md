@@ -18,6 +18,12 @@ bugs that every front shared. All six are in `main` with tests (235 passing).
 | 5 | After resume, the worker called `skill_view` on the same five skills for 15 minutes | `hermes --resume` started without `-t/-s/-m`, so every skill lookup failed | A resume gets the step's tools, skills and model; a repeating worker is reported as **looping** (never stopped) (935820b) |
 | 6 | "start googl-daily again" died with HTTP 500 and the chat exited with a traceback | The idle daemon rewrote the model-server config every 2 s; llama-swap reloaded 1,590 times and failed requests in flight | The config is written only on a real change (0 reloads since); the chat reports errors and carries on (1d526ab) |
 
+A seventh turned up while the case study's runs went on, through the new progress events: the next run's model
+calls took minutes instead of seconds. Hermes's CLI runs every session through a gateway it starts in the worker
+home, and that gateway auto-continues interrupted sessions for an hour, so it had brought the cancelled run back and
+ran it beside the new one on the single GPU slot ("running 14m44s" when stopped). Its auto-continue is now off and a
+cancel stops the gateway (b75ef70); the next run's calls were back to 7-10 s.
+
 Alongside these, prompted by the person mid-study: no clocks and no turn caps anywhere (a run ends done, failed or
 cancelled; killing is deliberate), and progress is pushed live: every tool call, model call and job output becomes a
 run event, `progress` answers "is it still moving?" on every front, and the chat prints the orchestrator's waits,
