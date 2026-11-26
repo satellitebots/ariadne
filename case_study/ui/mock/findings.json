@@ -1,0 +1,437 @@
+{
+ "base": "http://127.0.0.1:8918",
+ "scenes": {
+  "home-desktop": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "runs-desktop": {
+   "url": "#runs",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Runs"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "machine-desktop": {
+   "url": "#machine",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Machine"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "templates-desktop": {
+   "url": "#templates",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Templates"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "rules-desktop": {
+   "url": "#rules",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Rules"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "task-desktop": {
+   "url": "#task/t1126-001032-67d5",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "release-notes"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-desktop": {
+   "url": "#run/r1126-001032-8f97",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Queued"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-asking-desktop": {
+   "url": "#run/r1126-001032-3c39",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Asking you"
+    ],
+    "overflowX": false,
+    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (just now)",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-done-desktop": {
+   "url": "#run/r1126-001032-2bf9",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Done"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "draft-desktop": {
+   "url": "#draft/d1126-001032-06c6",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Untitled task"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "home-phone": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "runs-phone": {
+   "url": "#runs",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Runs"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "machine-phone": {
+   "url": "#machine",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Machine"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "templates-phone": {
+   "url": "#templates",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Templates"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "rules-phone": {
+   "url": "#rules",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Rules"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "task-phone": {
+   "url": "#task/t1126-001032-67d5",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "release-notes"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-phone": {
+   "url": "#run/r1126-001032-8f97",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Queued"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-asking-phone": {
+   "url": "#run/r1126-001032-3c39",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Asking you"
+    ],
+    "overflowX": false,
+    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (1 min ago)",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-done-phone": {
+   "url": "#run/r1126-001032-2bf9",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Done"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "draft-phone": {
+   "url": "#draft/d1126-001032-06c6",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Untitled task"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "home-desktop-dark": {
+   "url": "#",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "What should run on this machine?"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "runs-desktop-dark": {
+   "url": "#runs",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Runs"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "machine-desktop-dark": {
+   "url": "#machine",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Machine"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "templates-desktop-dark": {
+   "url": "#templates",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Templates"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "rules-desktop-dark": {
+   "url": "#rules",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Rules"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "task-desktop-dark": {
+   "url": "#task/t1126-001032-67d5",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "release-notes"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-desktop-dark": {
+   "url": "#run/r1126-001032-8f97",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Queued"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-asking-desktop-dark": {
+   "url": "#run/r1126-001032-3c39",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Asking you"
+    ],
+    "overflowX": false,
+    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (2 min ago)",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-done-desktop-dark": {
+   "url": "#run/r1126-001032-2bf9",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Done"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "draft-desktop-dark": {
+   "url": "#draft/d1126-001032-06c6",
+   "probe": {
+    "title": "Ariadne",
+    "h1": [
+     "Untitled task"
+    ],
+    "overflowX": false,
+    "now": "",
+    "unlabeled": 0,
+    "smallText": 2
+   },
+   "log": []
+  },
+  "run-activity": {
+   "probe": [
+    "googl-daily\nweekdays at 07:00",
+    "vendor-scorecard\nmanual",
+    "Untitled draft\n4 to fill in \u00b7 coding",
+    "rates-outlook\n1 to fill in \u00b7 investigation",
+    "1\nCollect the changes\ngemma-4-12b\npending",
+    "2\nWrite the notes\ngemma-4-12b\npending",
+    "3\nLoop check\ngemma-4-12b\npending",
+    "12:10:32 AM\nqueued\nrelease-notes v1 (manual)"
+   ]
+  }
+ }
+}

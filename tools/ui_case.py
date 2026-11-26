@@ -108,16 +108,23 @@ async def main(out, base):
             pump = asyncio.create_task(pg.pump())
             for d in ("Page", "Runtime", "Log", "Network"):
                 await pg.send(f"{d}.enable")
-            runs = api(base, "runs")
-            live = next((r for r in runs if r["status"] in ("running", "waiting", "parked", "asking")), None)
+            runs = api(base, "runs", limit=200)
+            live = next((r for r in runs if r["status"] in ("running", "waiting", "parked")), None)
+            asking = next((r for r in runs if r["status"] == "asking"), None)
             run = live or (runs[0] if runs else None)
             done = next((r for r in runs if r["status"] in ("done", "needs_you")), None)
             tasks = api(base, "tasks")
-            scenes = [("home", "#"), ("task", f"#task/{tasks[0]['id']}" if tasks else "#")]
+            drafts = api(base, "drafts")
+            scenes = [("home", "#"), ("runs", "#runs"), ("machine", "#machine"), ("templates", "#templates"),
+                      ("rules", "#rules"), ("task", f"#task/{tasks[0]['id']}" if tasks else "#")]
             if run:
                 scenes.append(("run-live" if live else "run", f"#run/{run['id']}"))
+            if asking:
+                scenes.append(("run-asking", f"#run/{asking['id']}"))
             if done:
                 scenes.append((f"run-{done['status']}", f"#run/{done['id']}"))
+            if drafts:
+                scenes.append(("draft", f"#draft/{drafts[0]['id']}"))
             found, timings = {}, {}
             for dark in (False, True):
                 await pg.dark(dark)

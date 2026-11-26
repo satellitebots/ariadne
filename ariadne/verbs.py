@@ -74,14 +74,15 @@ class Ctx:
 ctx = Ctx()
 
 
-def call(name, **args):
-    """Run a verb by name (what every front does). Unknown arguments are an error, not silently dropped."""
-    v = VERBS.get(name)
+def call(verb_name, /, **args):
+    """Run a verb by name (what every front does). Unknown arguments are an error, not silently dropped. The verb's
+    name is positional-only, so a verb may take an argument called `name` (draft, draft_fill)."""
+    v = VERBS.get(verb_name)
     if not v:
-        raise VerbError(f"no verb '{name}'; verbs: {', '.join(VERBS)}")
+        raise VerbError(f"no verb '{verb_name}'; verbs: {', '.join(VERBS)}")
     unknown = set(args) - set(v.params)
     if unknown:
-        raise VerbError(f"{name}: unknown argument(s) {', '.join(sorted(unknown))}; takes {', '.join(v.params)}")
+        raise VerbError(f"{verb_name}: unknown argument(s) {', '.join(sorted(unknown))}; takes {', '.join(v.params)}")
     return v.fn(**args)
 
 
@@ -207,13 +208,18 @@ def draft_show(draft: str) -> dict:
 
 
 @verb("define")
-def draft_fill(draft: str, name: str = "", workspace: str = "", trigger: str = "", params: dict = None) -> dict:
-    """Fill in a draft directly, without the orchestrator: its name, workspace folder, when it runs ('manual',
+def draft_fill(draft: str, name: str = "", workspace: str = "", goal: str = "", trigger: str = "",
+               params: dict = None) -> dict:
+    """Fill in a draft directly, without the orchestrator: its name, workspace folder, goal, when it runs ('manual',
     'now', an ISO time or cron) and answers to the template's questions. Empty values leave a field as it is."""
     d = _draft(draft)
     sp = dict(d["spec"])
     if name.strip():
         sp["name"] = name.strip()
+    if goal.strip():
+        sp["goal"] = goal.strip()
+        if "{goal}" in json.dumps(sp.get("steps") or []):       # a template-less flow's step is "{goal}"
+            sp["params"] = {**(sp.get("params") or {}), "goal": goal.strip()}
     if workspace.strip():
         sp["workspace"] = workspace.strip()
     trig = trigger.strip()

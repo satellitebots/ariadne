@@ -44,3 +44,11 @@ def test_the_mock_runs_asks_and_answers_without_a_model(tmp_path, monkeypatch):
     assert reply.startswith("(mock orchestrator)")
     assert verbs.call("chat_activity", conversation="c-test")       # its work is shown, as for the real one
     assert verbs.call("rules")["recipe"][0]["id"] == "W1"
+
+    # a template-less draft can be completed from the form alone, then signed
+    d = next(x for x in verbs.call("drafts") if x["flow"] == "coding")
+    d = verbs.call("draft_fill", draft=d["id"], name="csv-export", workspace=str(tmp_path / "work" / "csv"),
+                   goal="The member list exports to CSV", trigger="0 8 * * 1")
+    assert d["ready"], d["problems"]
+    t = verbs.call("sign", draft=d["id"])
+    assert t["name"] == "csv-export" and "Monday" in t["trigger"] or "1" in t["trigger"]

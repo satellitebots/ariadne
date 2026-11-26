@@ -4,7 +4,76 @@ import type { Selection } from "../App";
 
 // A placeholder with no value yet stays visible as "(question)", so the gap shows.
 function fill(text: string, params?: Record<string, string>): string {
-  return text.replace(/\{(\w+)\}/g, (_, k) => (params?.[k] ? params[k] : `(${k})`));
+  return text.replace(/\{(\w+)\}/g, (_, k) => (params?.[k] ? params[k] : k === "checks" ? "checks" : `(${k})`));
+}
+
+const WHEN: [string, string][] = [
+  ["Only when I start it", "manual"], ["Once, now", "now"], ["Weekdays at 7:00", "0 7 * * 1-5"],
+  ["Every day at 7:00", "0 7 * * *"], ["Every Monday at 8:00", "0 8 * * 1"],
+];
+
+// The template's questions, the name, the folder and the schedule, answered directly: no model needed.
+function DraftForm({ d, onSaved }: { d: Draft; onSaved: (x: Draft) => void }) {
+  const s = d.spec;
+  const [name, setName] = useState(s.name || "");
+  const [ws, setWs] = useState(s.workspace || "");
+  const [goal, setGoal] = useState(s.goal || "");
+  const [trig, setTrig] = useState("");
+  const [vals, setVals] = useState<Record<string, string>>({ ...(s.params || {}) });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+  const cur = s.trigger?.kind === "cron" ? s.trigger.cron : s.trigger?.kind || "manual";
+
+  useEffect(() => { setName(s.name || ""); setWs(s.workspace || ""); setGoal(s.goal || ""); setVals({ ...(s.params || {}) }); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [d.id, d.updated]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setErr(""); setSaved(false);
+    try {
+      const x = await call<Draft>("draft_fill", { draft: d.id, name, workspace: ws, goal, trigger: trig, params: vals });
+      onSaved(x); setSaved(true);
+    } catch (e2) { setErr((e2 as Error).message); } finally { setBusy(false); }
+  }
+
+  const asks = Object.entries(d.asks || {});
+  return (
+    <form className="fill" onSubmit={save} aria-labelledby="fill-h">
+      <h2 id="fill-h">Fill it in</h2>
+      <p className="dim small">Answer here, or talk it through with the orchestrator; both change the same definition.</p>
+      <div className="fields">
+        <label>Name <span className="dim small">lowercase, dashes</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="competitor-scan" /></label>
+        <label>Workspace folder <span className="dim small">where its files go</span>
+          <input value={ws} onChange={(e) => setWs(e.target.value)} placeholder="C:/repos/ariadne/sandbox/my-task" /></label>
+        {asks.length === 0 && (
+          <label className="wide">Goal <span className="dim small">one sentence: what is true when a run is done</span>
+            <textarea rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} /></label>
+        )}
+        {asks.map(([k, q]) => (
+          <label key={k} className="wide">{q}
+            <textarea rows={2} value={vals[k] || ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} /></label>
+        ))}
+      </div>
+      <fieldset className="when">
+        <legend>When it runs</legend>
+        <div className="presets">
+          {WHEN.map(([label, t]) => (
+            <label key={t} className={`chip ${(trig || cur) === t ? "on" : ""}`}>
+              <input type="radio" name="when" value={t} checked={(trig || cur) === t} onChange={() => setTrig(t)} />{label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="row">
+        <button type="submit" disabled={busy}>Save answers</button>
+        {saved && <span className="ok small" role="status">Saved</span>}
+        {err && <span className="error small" role="alert">{err}</span>}
+      </div>
+    </form>
+  );
 }
 
 // A draft is the definition while you and the orchestrator shape it. You can also edit the YAML yourself.
@@ -53,6 +122,8 @@ export default function DraftView({ id, tick, go }: { id: string; tick: number; 
         </div>
       </header>
       {err && <p className="banner error">{err}</p>}
+
+      <DraftForm d={d} onSaved={(x) => { setD(x); if (!dirty) setText(x.yaml); }} />
 
       <section className={`checklist ${d.ready ? "ready" : ""}`}>
         {d.ready ? <p>Ready to sign. Read the steps below; signing is what lets it run.</p> : (

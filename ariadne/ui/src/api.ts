@@ -8,7 +8,7 @@ export type Step = {
 export type Spec = {
   name?: string; flow?: string; goal?: string; workspace?: string; params?: Record<string, string>;
   steps?: Step[]; gates?: Gate[]; trigger?: { kind: string; cron?: string; at?: string }; tz?: string;
-  budget_s?: number; retries?: number;
+  retries?: number;
 };
 export type Message = { role: "person" | "orchestrator"; text: string; ts: number };
 export type Draft = {
@@ -27,17 +27,49 @@ export type RunSummary = {
 };
 export type Attempt = { attempt: number; status: string; started: number; ended: number | null; report: string; gate: string };
 export type Event = { ts: number; ref: string; kind: string; detail: string };
+export type Job = {
+  id: string; run: string; status: string; command: string; why: string; created: number; started: number | null;
+  ended: number | null; exit_code: number | null; seconds: number | null; log_tail: string;
+};
 export type Run = RunSummary & {
   steps: { n: number; title: string; model: string; attempts: Attempt[] }[]; result: string; events: Event[];
-  workspace: string; activity: { ts: number; kind: string; detail: string } | null;
+  workspace: string; activity: { ts: number; kind: string; detail: string } | null; notes: string[]; jobs: Job[];
 };
-export type TaskDetail = Task & { yaml: string; runs: RunSummary[] };
+export type Progress = {
+  run: string; status: string; step: number; steps_total: number; seconds_since_activity: number | null;
+  last_activity: string; tool_calls: number; model_calls: number; files_changed: string[]; quiet_note: string;
+  looping_note: string; recent: { ts: number; kind: string; detail: string }[]; machine: string;
+};
+export type TaskStats = { runs: number; done: number; needs_you: number; failed: number; cancelled: number; typical_s: number | null };
+export type TaskDetail = Task & { yaml: string; spec: Spec; stats: TaskStats; runs: RunSummary[] };
+export type Rules = {
+  permissions: { ask?: Record<string, string[]>; deny?: Record<string, string[]>; error?: string };
+  permissions_file: string;
+  recipe: { id: string; failure: string; seen: string; rule: string; where: string }[];
+};
+export type Activity = { ts: number; ref: string; kind: string; detail: string };
 export type Machine = {
   holder: { kind: string; ref: string; model: string; for_s: number; note: string } | null;
   waiting: { kind: string; ref: string; model: string; waited_s: number; note: string }[];
   summary: string;
 };
-export type Flow = { name: string; description: string; when: string; model: string; params: Record<string, string>; steps: string[] };
+export type Flow = {
+  name: string; description: string; when: string; model: string; params: Record<string, string>; steps: string[];
+  tools: string[];
+};
+
+// What a status means to a person, everywhere it is shown.
+export const SAY: Record<string, string> = {
+  queued: "Queued", waiting: "Waiting for the machine", running: "Running", parked: "Parked", asking: "Asking you",
+  done: "Done", failed: "Failed", timed_out: "Out of time", cancelled: "Cancelled", needs_you: "Needs you",
+};
+export const ATTENTION = new Set(["asking", "needs_you", "failed", "parked"]);
+
+// A run's step as a row of beads; shared by the task page, the runs page and home.
+export function beads(r: RunSummary): string[] {
+  return Array.from({ length: r.steps_total }, (_, i) =>
+    r.status === "done" || i < r.step - 1 ? "done" : i === r.step - 1 ? r.status : "");
+}
 
 export async function call<T>(verb: string, args: Record<string, unknown> = {}): Promise<T> {
   const r = await fetch(`/api/v/${verb}`, {
