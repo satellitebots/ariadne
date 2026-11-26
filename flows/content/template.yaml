@@ -1,0 +1,45 @@
+# The content flow as a task template. Steps are the backbone: outline from the sources, write each section as its
+# own step (a fresh session per section, so no single call writes the whole piece), then assemble and check.
+# Gates: command checks per step (facts: ledger, outline, coverage, well-formed HTML) and one model review at the end
+# that only reports (a failing review goes to the person, it is never retried).
+# {checks} is filled in by Ariadne: the folder of shared gate scripts.
+params:
+  piece: "What should be made, for whom, and where will it be read?"
+  output: "The file to make (e.g. index.html, POST.md, GUIDE.md)"
+  sources: "Where the facts come from (links, files in the workspace, or 'search the web')"
+goal: "{output}: {piece}"
+steps:
+  - title: Outline from the sources
+    instruction: |
+      Read the sources first ({sources}); search and fetch more only where they leave a gap. Record every source
+      you will use in SOURCES.md, one line each, exactly "- <url> | <publisher (the site it is on)> | <what it
+      supports> | <YYYY-MM-DD: the page's date, or today if it has none>"; a file from the workspace is
+      "- <path> | <who made it> | <what it supports>". Then write OUTLINE.md: '## Audience' (who reads it, what they need); '## Conventions'
+      (terms, notation and sign conventions as the sources use them, so every section says things the same way);
+      and '## Steps': one line per section of the piece, in reading order (3 to 12), each "Section title: what it
+      must cover (sources: ...)". Mark anything the sources do not state "(not in sources)"; do not invent it.
+    tools: [file, search, skills]
+    outputs: [SOURCES.md, OUTLINE.md]
+    gate: {type: run, text: "python {checks}/plan_steps.py OUTLINE.md --min 3 --max 12 && python {checks}/sources_ledger.py SOURCES.md --min 0"}
+  - title: Write
+    each: OUTLINE.md
+    instruction: |
+      Write section {i} of {count} of {output}: {item}
+      Use OUTLINE.md (its audience and conventions) and SOURCES.md; state nothing the sources do not support,
+      and where they are silent say so. Give the section a heading with its title. Add it after the sections
+      already in {output} (create the file with its frame if this is section 1); do not rewrite the others.
+    tools: [file, skills]
+    outputs: ["{output}"]
+  - title: Assemble and check
+    instruction: |
+      Read {output} whole. Fix order, duplicate or contradictory statements (follow '## Conventions' in
+      OUTLINE.md), headings and broken markup; add a short sources section from SOURCES.md. If it is HTML: one
+      self-contained file, a viewport meta tag, and wide tables or code scroll sideways (overflow-x: auto) instead
+      of widening the page. The check below runs when you finish; its findings come back to you once.
+    tools: [file, skills]
+    outputs: ["{output}"]
+    gate: {type: run, text: "python {checks}/piece_check.py OUTLINE.md {output}"}
+gates:
+  - {type: review, text: "Every factual statement in {output} is supported by a source in SOURCES.md, and nothing contradicts the conventions in OUTLINE.md"}
+trigger: {kind: manual}
+retries: 1

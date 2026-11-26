@@ -25,11 +25,6 @@ server = MCPServer("ariadne", instructions=INSTRUCTIONS)
 
 def _expose(v):
     def tool(**kwargs):
-        from .daemon import ensure_worker
-        try:
-            ensure_worker()
-        except Exception:
-            pass
         try:
             return verbs.dumps(verbs.call(v.name, **kwargs))
         except verbs.VerbError as e:
@@ -46,7 +41,18 @@ for _v in verbs.VERBS.values():
     server.tool()(_expose(_v))
 
 
+def wake_worker():
+    """The worker is started when the MCP front starts and after any verb that may queue work (verbs.WAKES)."""
+    from .daemon import ensure_worker
+    verbs.set_waker(ensure_worker)
+    try:
+        ensure_worker()
+    except Exception:
+        pass
+
+
 def main():
+    wake_worker()
     server.run("stdio")
 
 

@@ -108,7 +108,8 @@ export default function TaskView({ id, tick, go }: { id: string; tick: number; g
                 <div className="knot-head static">
                   <span className="n">{i + 1}</span>
                   <span className="title">{st.title}</span>
-                  <span className="dim small">{(st.outputs || []).join(", ")}</span>
+                  {st.each && <span className="each" title="This step is repeated, once per line of the Steps list an earlier step writes">once per step in {st.each}</span>}
+                  <span className="dim small">{(st.outputs || []).map((o) => fill(o, t.spec.params)).join(", ")}</span>
                 </div>
                 <div className="knot-body">
                   <p className="small">{fill(st.instruction, t.spec.params)}</p>

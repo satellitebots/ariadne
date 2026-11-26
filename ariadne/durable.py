@@ -48,6 +48,9 @@ class Store:
         self.specs_dir = Path(self.db_path).parent / "tasks"
         with self._conn() as c:
             c.executescript(SCHEMA)
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(run)")}
+            if "plan" not in cols:      # added 26 Nov: a run's own steps once `each:` steps are expanded
+                c.execute("ALTER TABLE run ADD COLUMN plan TEXT DEFAULT ''")
 
     @contextmanager
     def _conn(self):
@@ -195,6 +198,14 @@ class Store:
             q += f" AND status IN ({','.join('?' * len(LIVE))})"
             a += list(LIVE)
         return self._all(q + " ORDER BY created DESC LIMIT ?", *a, limit)
+
+    def run_plan(self, rid):
+        """The run's own steps once an `each:` step was expanded, else None (the signed spec's steps)."""
+        r = self._one("SELECT plan FROM run WHERE id=?", rid)
+        return json.loads(r["plan"]) if r and r["plan"] else None
+
+    def run_plan_set(self, rid, steps):
+        self._exec("UPDATE run SET plan=? WHERE id=?", json.dumps(steps), rid)
 
     def run_set(self, rid, **f):
         self._exec(f"UPDATE run SET {', '.join(k + '=?' for k in f)} WHERE id=?", *f.values(), rid)

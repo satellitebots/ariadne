@@ -372,3 +372,5 @@ pre.cmd, pre.logtail { background: var(--sheet); border: 1px solid var(--line); 
 .banner.ask code.what { font-family: var(--code); font-size: 14px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); }
 .banner.ask code { font-family: var(--code); font-size: 12px; }
 .knot.asking .n, .knot.parked .n { border-color: var(--warn); color: var(--warn); }
+
+.each { font-size: 12px; padding: 1px 8px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted, inherit); white-space: nowrap; }

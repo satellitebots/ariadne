@@ -298,11 +298,16 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             pass
         if progress:
             progress.poll()
-        if stop() or (park.requested() and kind == "step") or permissions.pending(ref):
-            if boundary.reached():          # let the call in flight finish, then stop at that boundary
+        if stop():                          # a cancel is now: an 8-minute model call held one for minutes (26 Nov)
+            _kill_tree(p)
+            stdout, stderr = p.communicate()
+            code = CANCELLED
+            break
+        if (park.requested() and kind == "step") or permissions.pending(ref):
+            if boundary.reached():          # let the call in flight finish, then stop at that boundary (resumable)
                 _kill_tree(p)
                 stdout, stderr = p.communicate()
-                code = CANCELLED if stop() else PARKED
+                code = PARKED
                 break
         else:
             boundary.pos = None
@@ -349,6 +354,9 @@ class Engine:
         queued = []
         for t in self.store.due(now):
             sp = self.store.spec(t["id"])
+            if (sp.get("trigger") or {}).get("kind") in ("now", "manual"):     # started by signing or by you, never here
+                self.store.task_set(t["id"], next_due=None)
+                continue
             if any(r["status"] in durable.LIVE for r in self.store.runs(t["id"], live=True)):
                 self.store.event(t["id"], "schedule", "due, but a run is still live; skipped this time")
             else:
@@ -378,16 +386,23 @@ class Engine:
             return self._end(rid, "failed", error=f"flow {sp['flow']} no longer exists")
         ws = Path(sp["workspace"])
         ws.mkdir(parents=True, exist_ok=True)
-        steps = sp["steps"]
+        plan = self.store.run_plan(rid) or [dict(s) for s in sp["steps"]]
         if not r["step"]:
             self._archive_outputs(rid, ws, sp)
-        first = steps[r["step"] - 1] if r["step"] else steps[0]
+        first = plan[r["step"] - 1] if r["step"] else plan[0]
         self.store.event(rid, "machine", self.broker.describe())
         lease = self.broker.acquire("worker", rid, first["model"],
                                     on_wait=lambda s: self.store.event(rid, "waiting", self.broker.describe()))
         try:
             self.store.run_set(rid, status="running", started=r["started"] or self.now())
-            for step in steps[(r["step"] or 1) - 1:]:       # no run clock: a run ends done, failed or cancelled
+            i = (r["step"] or 1) - 1
+            while i < len(plan):                            # no run clock: a run ends done, failed or cancelled
+                step = plan[i]
+                if step.get("each"):                        # becomes one step per item of the plan it names
+                    plan, why = self._expand(rid, sp, ws, plan, i)
+                    if why:
+                        return self._end(rid, "needs_you", error=why)
+                    continue
                 if self._cancelled(rid):
                     return self._end(rid, "cancelled", "cancelled by you")
                 if step["n"] > 1 and lease.boundary():
@@ -399,9 +414,10 @@ class Engine:
                 if lease.model != step["model"]:
                     lease.switch(step["model"])
                 self.store.run_set(rid, step=step["n"])
-                outcome = self._step(rid, sp, flow, ws, step, lease)
+                outcome = self._step(rid, sp, flow, ws, step, lease, plan)
                 if outcome != "passed":
                     return outcome
+                i += 1
             failures = self._gates(rid, sp, flow, ws, sp["gates"], lease)
             if failures:
                 self.store.event(rid, "gates", "task gates failing:\n" + "\n".join(failures))
@@ -411,12 +427,31 @@ class Engine:
         finally:
             lease.release()
 
+    def _expand(self, rid, sp, ws, plan, i):
+        """Replace an `each:` step with one step per item of the '## Steps' list in the file it names. The run keeps
+        its own plan, so a resumed run, the run page and later steps see the concrete steps."""
+        step = plan[i]
+        f = Path(ws) / step["each"]
+        items = speclib.plan_items(f.read_text(encoding="utf-8", errors="replace")) if f.exists() else []
+        if not items:
+            return plan, (f"step {step['n']} ({step['title']}) repeats for each item of the '## Steps' list in "
+                          f"{step['each']}, but {'it has none' if f.exists() else 'the file is missing'}")
+        if len(items) > speclib.MAX_ITEMS:
+            return plan, f"{step['each']} lists {len(items)} steps; at most {speclib.MAX_ITEMS} (plan bigger pieces)"
+        new = plan[:i] + speclib.expand_each(step, items, sp["params"]) + plan[i + 1:]
+        for k, s in enumerate(new, 1):
+            s["n"] = k
+        self.store.run_plan_set(rid, new)
+        self.store.event(rid, "plan", f"step {step['n']} ({step['title']}) became {len(items)} steps, one per item "
+                                      f"in {step['each']}: " + "; ".join(speclib._short(x, 50) for x in items))
+        return new, ""
+
     def _archive_outputs(self, rid, ws, sp):
         """A run starts clean: what the steps must leave, if an earlier run left it, moves to .history/<time>/.
         Leftover outputs made the second googl-daily run fight Hermes's refusal to overwrite unread files, and a
         stale report can pass a check it never earned."""
         import shutil
-        outs = {o for s in sp["steps"] for o in s["outputs"]}
+        outs = {speclib.fill(o, sp["params"]) for s in sp["steps"] for o in s["outputs"] if "{item" not in o}
         found = [o for o in sorted(outs) if (ws / o).exists()]
         if not found:
             return
@@ -426,9 +461,12 @@ class Engine:
             shutil.move(str(ws / o), str(dest / o))
         self.store.event(rid, "workspace", f"moved the last run's {', '.join(found)} to {dest.relative_to(ws).as_posix()}")
 
-    def _step(self, rid, sp, flow, ws, step, lease):
-        """Run one step to a passing check, retrying with the reasons. Returns "passed" or the run's end status."""
-        n, total = step["n"], len(sp["steps"])
+    def _step(self, rid, sp, flow, ws, step, lease, plan=None):
+        """Run one step to a passing check, retrying with the reasons. Returns "passed" or the run's end status.
+        Only checks that are facts retry (missing outputs, command gates, a failed worker run); a reviewer's FAIL
+        goes to the person, because a weak reviewer would otherwise send the work round and round."""
+        plan = plan or sp["steps"]
+        n, total = step["n"], len(plan)
         retry_text, session = "", None
         for attempt in range(1, sp["retries"] + 2):
             ended = self._ask_tools(rid, step, lease)
@@ -440,8 +478,9 @@ class Engine:
                 today=_today(sp), goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
                 platform=PLATFORM,
                 n=n, total=total, title=step["title"], instruction=speclib.fill(step["instruction"], sp["params"]),
-                inputs=", ".join(o for s in sp["steps"][:n - 1] for o in s["outputs"]) or "none",
-                outputs=", ".join(step["outputs"]) or "nothing in particular; report what you did",
+                inputs=", ".join(speclib.fill(o, sp["params"]) for s in plan[:n - 1] for o in s["outputs"]) or "none",
+                outputs=", ".join(speclib.fill(o, sp["params"]) for o in step["outputs"])
+                or "nothing in particular; report what you did",
                 gate=_gate_text(step["gate"], sp["params"]),
                 steering=STEERING.format(notes="\n- ".join(notes)) if notes else "", retry=retry_text)
             if notes:
@@ -463,14 +502,18 @@ class Engine:
                 if r.exit_code:
                     self.store.event(rid, "step", f"{n}: {'time' if r.exit_code == 124 else 'turns'} used up; "
                                                   "keeping what it wrote and checking")
-                reasons = self._outputs_missing(ws, step) + self._gates(rid, sp, flow, ws, [step["gate"]] if step["gate"]
-                                                                         else [], lease)
+                reasons = self._outputs_missing(ws, step, sp) + self._gates(rid, sp, flow, ws, [step["gate"]]
+                                                                             if step["gate"] else [], lease)
             if not reasons:
                 self.store.step_set(rid, n, attempt, status="passed", ended=self.now(), gate="passed")
                 self.store.event(rid, "step", f"{n}/{total} passed")
                 return "passed"
             self.store.step_set(rid, n, attempt, status="failed", ended=self.now(), gate="\n".join(reasons)[:4000])
             self.store.event(rid, "step", f"{n}/{total} failed its check: {reasons[0][:300]}")
+            if all(x.startswith("[review]") for x in reasons):
+                return self._end(rid, "needs_you", error=f"step {n} ({step['title']}): the reviewer objects. That is a "
+                                                         "model's judgment, not a test, so it is not retried; read it "
+                                                         "and decide (rerun, steer, or accept):\n" + "\n".join(reasons))
             retry_text = RETRY.format(attempt=attempt + 1, reasons="\n".join(reasons))
         return self._end(rid, "needs_you", error=f"step {n} ({step['title']}) still fails after {sp['retries'] + 1} "
                                                  f"attempt(s):\n" + "\n".join(reasons))
@@ -567,8 +610,9 @@ class Engine:
     def store_jobs_db(self):
         return None   # jobs live in jobs.py's own table (paths.TASKS_DB), where jobs_mcp records them
 
-    def _outputs_missing(self, ws, step):
-        return [f"{o} is missing (the step must leave it)" for o in step["outputs"] if not (Path(ws) / o).exists()]
+    def _outputs_missing(self, ws, step, sp=None):
+        outs = [speclib.fill(o, (sp or {}).get("params")) for o in step["outputs"]]
+        return [f"{o} is missing (the step must leave it)" for o in outs if not (Path(ws) / o).exists()]
 
     def _gates(self, rid, sp, flow, ws, gates, lease):
         """Command gates run in the workspace; review gates go to a read-only reviewer run. Returns the failures."""

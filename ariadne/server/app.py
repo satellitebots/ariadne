@@ -46,6 +46,9 @@ def stream_batch(since=0.0, limit=200):
 def create_app(ctx=None, start_worker=True):
     """The app; a test passes its own verbs.Ctx so it needs no model and no real database. The mock backend passes
     start_worker=False: its engine runs in-process, and the real daemon must not start."""
+    if start_worker:
+        from ..daemon import ensure_worker
+        verbs.set_waker(ensure_worker)
     if ctx is not None:
         verbs.ctx = ctx
     app = FastAPI(title="Ariadne", version=VERSION, docs_url=None, redoc_url=None, openapi_url=None)
@@ -68,12 +71,6 @@ def create_app(ctx=None, start_worker=True):
             out = verbs.call(name, **(args or {}))
         except verbs.VerbError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        if start_worker and name in ("run", "rerun", "sign", "schedule", "resume", "chat", "say"):
-            from ..daemon import ensure_worker
-            try:
-                ensure_worker()
-            except Exception:
-                pass
         return out
 
     @app.get("/api/stream")
@@ -120,7 +117,18 @@ def main(argv=None):
     check_bind(bind)
     import uvicorn
     print(f"Ariadne: http://{bind}:{port}")
-    uvicorn.run(create_app(), host=bind, port=port, log_level="warning", timeout_graceful_shutdown=3)
+    if "--no-reload" in argv:
+        uvicorn.run(create_app(), host=bind, port=port, log_level="warning", timeout_graceful_shutdown=3)
+        return 0
+    # Reload on a change to Ariadne's code, flows or skills, like the worker does between runs: the console served
+    # old code after a fix on 26 Nov until it was restarted by hand. Runs live in the worker, so a reload of the
+    # console never touches one.
+    from .. import paths
+    pkg = Path(__file__).resolve().parents[1]
+    uvicorn.run("ariadne.server.app:create_app", factory=True, host=bind, port=port, log_level="warning",
+                timeout_graceful_shutdown=3, reload=True,
+                reload_dirs=[str(pkg), str(paths.FLOWS_DIR)], reload_includes=["*.py", "*.yaml", "SKILL.md"],
+                reload_excludes=["ui/*", "tests/*", "node_modules/*"])
     return 0
 
 

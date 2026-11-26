@@ -34,6 +34,12 @@ driving Hermes one step at a time. A bigger model moves the thresholds, not the 
 - **No clocks, no caps, no silent kills.** Runs end done, failed or cancelled. Progress is pushed (tool calls, model
   calls, job output, quiet and looping notes); whoever decides reads `progress` first.
 - **No permission refusals.** Hermes's guards are off; `permissions.yaml` is the only policy, empty by default.
+- **A single step never carries the whole task.** A planning step writes `## Steps`; `each:` runs one fresh step
+  per item. One "do the task" step wrote a whole study guide in one 8-minute call: unchecked, off-syllabus in places,
+  with a convention backwards (case study 26 Nov).
+- **A reviewer's FAIL is not retried.** It goes to the person; only facts (scripts, missing outputs) retry, once.
+- **A cancel is immediate**, and a run whose worker died while you cancelled it ends cancelled, not stuck.
+- **`now` runs once.** The scheduler never starts `now` or `manual` tasks.
 - **Steering notes hold for the rest of the run**, and the orchestrator proposes a note instead of acting on a run
   it was only asked about.
 
@@ -66,7 +72,9 @@ Kept as a log so a future change can be traced to the evidence. "Generalised as"
 3. **Does it cite sources?** Ledger format `- <url> | <publisher> | <what it supports> | <YYYY-MM-DD>` and gate with
    `python {checks}/sources_ledger.py SOURCES.md --min 3 [--within-days N]`.
 4. **Keep steps small**: one deliverable, roughly thirty tool calls. Split any step that both researches and writes.
-5. **Verify last, locally**: deterministic checks as run gates, then one review gate that names the claims to check.
+   Anything with parts (sections, changes, views) is planned as a `## Steps` list and done with `each:`.
+5. **Verify last, locally**: deterministic checks as run gates (`plan_steps`, `verify_result`, `piece_check`,
+   `sources_ledger`, `facts_in_report`), then at most one review gate that names the claims to check.
 6. **Heavy work is a job** (installs, downloads, data pulls, builds, test suites).
 
 ## 5. Open, known limits
@@ -74,4 +82,7 @@ Kept as a log so a future change can be traced to the evidence. "Generalised as"
 - Turn latency: a chat turn costs one to three minutes on this machine; time-critical actions are slash commands.
 - The model can still loop; looping is reported, not acted on. A fresh session (cancel and rerun the step) clears
   it; resuming the same session usually does not.
-- A reviewer can be wrong too. Run gates first so the reviewer only judges what a script cannot.
+- A reviewer can be wrong too. Run gates first so the reviewer only judges what a script cannot; its FAIL goes to
+  the person, never back into the work.
+- A plan is only as good as the planner: `each:` makes every item its own step, but a missing item stays missing.
+  Give the planning step the source of truth for coverage (a syllabus, an outline, a spec) as an input.

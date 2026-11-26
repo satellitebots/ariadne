@@ -143,11 +143,12 @@ export default function DraftView({ id, tick, go }: { id: string; tick: number; 
                 <div className="knot-head static">
                   <span className="n">{i + 1}</span>
                   <span className="title">{st.title}</span>
+                  {st.each && <span className="each" title="This step is repeated, once per line of the Steps list an earlier step writes">once per step in {st.each}</span>}
                   <span className="dim">{(st.tools || []).join(", ")}</span>
                 </div>
                 <div className="knot-body">
                   <p>{fill(st.instruction, s.params)}</p>
-                  {st.outputs?.length ? <p className="dim small">Leaves {st.outputs.join(", ")}</p> : null}
+                  {st.outputs?.length ? <p className="dim small">Leaves {st.outputs.map((o) => fill(o, s.params)).join(", ")}</p> : null}
                   {st.gate ? <p className="dim small">Checked by {st.gate.type === "run" ? "a command" : "a reviewer"}: {st.gate.text}</p> : null}
                 </div>
               </li>

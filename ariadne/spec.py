@@ -16,10 +16,18 @@ an MCP `define(spec)`, and an edit all land here, and only a spec with no proble
         tools: [file, terminal, jobs]    # a subset of the flow's toolsets and MCP servers
         outputs: [data/prices.csv]       # files the step must leave
         gate: {type: run, text: "python scripts/check_prices.py"}   # or {type: review, text: ...}; optional
+      - title: Write the section
+        each: PLAN.md                    # runs once per item of the '## Steps' list in PLAN.md (made by an earlier
+        instruction: ... {item} ...      #   step); {item}, {i} and {count} are filled in for each
     gates: [{type: review, text: ...}]   # task gates, checked after the last step
     trigger: {kind: now}                 # or {kind: at, at: 2026-11-25T07:00} or {kind: cron, cron: "0 7 * * 1-5"}
     tz: America/New_York
-    retries: 1                           # per step: retry once with the gate's reasons, then needs_you
+    retries: 1                           # per step: retry once with the gate's reasons, then needs_you (0-2)
+
+Steps are the backbone: a task is a sequence of small steps, each with its own fresh session, outputs and check, and
+a step that would be long (write a guide, make a change in several places) is planned first and then repeated per
+item with `each:`, so no single model call has to do everything. Review gates are a model's judgment: a failing one
+is shown to the person, never retried (a weak reviewer could otherwise loop the work for ever).
 """
 import copy
 import re
@@ -31,6 +39,9 @@ from . import paths, yamlio
 # Placeholders every definition may use without a param: {checks} is the folder of shared gate scripts
 # (docs/WORKER-RECIPE.md), so a gate reads `python {checks}/facts_in_report.py REPORT.md data/facts.json`.
 BUILTIN_PARAMS = {"checks": (paths.ROOT / "checks").as_posix()}
+ITEM_PARAMS = ("item", "i", "count")     # filled per item when an `each:` step is expanded
+MAX_RETRIES = 2
+MAX_ITEMS = 25
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}$")
 TRIGGERS = ("now", "manual", "at", "cron")
@@ -104,7 +115,8 @@ def validate(spec, flows, catalog=None):
     texts = [str(s.get("goal", ""))] + [str(g) for g in s.get("gates") or []] + \
             [str(st.get(k, "")) for st in s.get("steps") or [] if isinstance(st, dict) for k in ("instruction", "gate")]
     used = {m for t in texts for m in re.findall(r"\{(\w+)\}", t)}
-    missing = sorted(used - {k for k, v in params.items() if str(v).strip()} - set(BUILTIN_PARAMS))
+    missing = sorted(used - {k for k, v in params.items() if str(v).strip()} - set(BUILTIN_PARAMS)
+                     - set(ITEM_PARAMS))
     if missing:
         problems.append(f"params: the steps use {', '.join(missing)}, which have no value")
     steps = s.get("steps") or []
@@ -132,9 +144,18 @@ def validate(spec, flows, catalog=None):
                 catalog.get(model)
             except Exception:
                 problems.append(f"{where}: model {model} is not in the catalog")
-        norm.append({"n": i, "title": str(st.get("title", "")).strip(), "instruction": str(st.get("instruction", "")).strip(),
-                     "model": model, "tools": tools, "outputs": list(st.get("outputs") or []),
-                     "gate": _gate(st.get("gate"), where, problems)})
+        each = str(st.get("each") or "").strip()
+        earlier = {o for prev in norm for o in prev["outputs"]}
+        if each and each not in earlier:
+            problems.append(f"{where}: each: {each} must be an output of an earlier step (the plan it repeats over)")
+        step = {"n": i, "title": str(st.get("title", "")).strip(), "instruction": str(st.get("instruction", "")).strip(),
+                "model": model, "tools": tools, "outputs": list(st.get("outputs") or []),
+                "gate": _gate(st.get("gate"), where, problems)}
+        if each:
+            step["each"] = each
+        if st.get("item"):          # an already expanded item (a run's own plan)
+            step["item"] = st["item"]
+        norm.append(step)
     s["steps"] = norm
     s["gates"] = [g for g in (_gate(g, f"gate {i}", problems) for i, g in enumerate(s.get("gates") or [], 1)) if g]
     t = s.get("trigger") or {}
@@ -160,8 +181,8 @@ def validate(spec, flows, catalog=None):
     except Exception:
         problems.append(f"tz: '{s['tz']}' is not a time zone")
     s.pop("budget_s", None)     # older versions had a run clock; runs now end only done, failed or cancelled
-    if not isinstance(s.get("retries"), int) or not 0 <= s["retries"] <= 4:
-        problems.append("retries: 0 to 4")
+    if not isinstance(s.get("retries"), int) or not 0 <= s["retries"] <= MAX_RETRIES:
+        problems.append(f"retries: 0 to {MAX_RETRIES} (more retries mostly repeat the same mistake)")
     if problems:
         raise SpecError(problems)
     return s
@@ -183,8 +204,7 @@ def template(flow):
 
 def from_template(flow, **given):
     """A starting draft from the flow's template: its steps and gates, the params given so far, blanks for the rest."""
-    tpl = template(flow) or {"steps": [{"title": "Do the task", "instruction": "{goal}", "tools": list(flow.execute_toolsets)}],
-                             "params": {}}
+    tpl = template(flow) or generic_template(flow)
     asks = tpl.get("params") or {}
     spec = {k: copy.deepcopy(v) for k, v in tpl.items() if k != "params"}
     spec["flow"] = flow.name
@@ -193,6 +213,68 @@ def from_template(flow, **given):
         if given.get(k):
             spec[k] = given[k]
     return spec, asks
+
+
+def generic_template(flow):
+    """For a flow with no template.yaml: plan, do each planned item as its own step, check. Never one big step: a
+    single "do the task" step put a whole study guide in one 8-minute model call (26 Nov case study)."""
+    tools = list(flow.execute_toolsets)
+    return {"params": {}, "steps": [
+        {"title": "Plan", "tools": tools, "outputs": ["PLAN.md"],
+         "instruction": "Plan the work for: {goal}. Read what you need first; do not do the work yet. Write PLAN.md "
+                        "with '## Done when' (how anyone can check the result: a command to run, a file and what it "
+                        "must show) and '## Steps': a numbered list of 2 to 8 small pieces of work in order, one line "
+                        "each, each naming the file it makes or changes.",
+         "gate": {"type": "run", "text": "python {checks}/plan_steps.py PLAN.md --min 2 --max 8"}},
+        {"title": "Step", "each": "PLAN.md", "tools": tools,
+         "instruction": "Do step {i} of {count} in PLAN.md, and only that one: {item}. Earlier steps are done; read "
+                        "PLAN.md and what they made first. Leave later steps for later."},
+        {"title": "Check", "tools": tools, "outputs": ["CHECK.md"],
+         "instruction": "Check the result against '## Done when' in PLAN.md: run or open what it names, fix small "
+                        "problems, and write CHECK.md: each check and what you saw, ending with the line "
+                        "'RESULT: PASS' or 'RESULT: FAIL: <why>'.",
+         "gate": {"type": "run", "text": "python {checks}/verify_result.py CHECK.md"}},
+    ]}
+
+
+def plan_items(text):
+    """The items of the '## Steps' section of a plan file: its top-level list lines ('- x', '1. x', '- [ ] x'), in
+    order. Indented lines are details of an item, not items."""
+    items, inside = [], False
+    for line in text.splitlines():
+        h = re.match(r"^\s*#{1,6}\s+(.*)$", line)
+        if h:
+            if inside:
+                break
+            inside = bool(re.search(r"\bsteps\b", h.group(1), re.I))
+            continue
+        m = re.match(r"^(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?(.+?)\s*$", line) if inside else None
+        if m:
+            items.append(m.group(1))
+    return items
+
+
+def expand_each(step, items, params=None):
+    """The concrete steps of an `each:` step, one per item ({item}, {i}, {count} filled in; numbered later)."""
+    out = []
+    for i, item in enumerate(items, 1):
+        vals = {"item": item, "i": str(i), "count": str(len(items))}
+
+        def f(t, vals=vals):
+            return re.sub(r"\{(item|i|count)\}", lambda m: vals[m.group(1)], str(t))
+        title = f(step["title"]) if "{item}" in step["title"] else f"{step['title']} {i}/{len(items)}: {_short(item)}"
+        s = {k: copy.deepcopy(v) for k, v in step.items() if k != "each"}
+        s.update(title=title, instruction=f(step["instruction"]), outputs=[f(o) for o in step.get("outputs") or []],
+                 item=item, each_of=step["each"])
+        if step.get("gate"):
+            s["gate"] = {**step["gate"], "text": f(step["gate"]["text"])}
+        out.append(s)
+    return out
+
+
+def _short(text, n=70):
+    text = re.sub(r"[*_`]", "", text)
+    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
 
 
 # ---------- when is it due ----------

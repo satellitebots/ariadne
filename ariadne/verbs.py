@@ -38,6 +38,20 @@ class VerbError(ValueError):
     """A request a person can fix: say what is wrong, never a traceback."""
 
 
+# Verbs after which there may be work for the worker: one rule for every front (UI, terminal chat, CLI, MCP, and
+# the orchestrator's own tool calls). Before 26 Nov each front had its own list, and a run the orchestrator signed
+# from the terminal chat sat queued with no worker behind it.
+WAKES = {"run", "rerun", "sign", "schedule", "resume", "approve", "reject", "define", "chat", "say"}
+_waker = None
+
+
+def set_waker(fn):
+    """A front that runs for a person (UI server, terminal, MCP) installs `daemon.ensure_worker` here; tests and
+    the mock leave it unset, so nothing starts a real worker."""
+    global _waker
+    _waker = fn
+
+
 class Ctx:
     """What the verbs work against. Tests replace any of it."""
     def __init__(self, store=None, flows=None, catalog=None, broker=None, orchestrator=None):
@@ -83,7 +97,13 @@ def call(verb_name, /, **args):
     unknown = set(args) - set(v.params)
     if unknown:
         raise VerbError(f"{verb_name}: unknown argument(s) {', '.join(sorted(unknown))}; takes {', '.join(v.params)}")
-    return v.fn(**args)
+    out = v.fn(**args)
+    if _waker and verb_name in WAKES:
+        try:
+            _waker()
+        except Exception:
+            pass
+    return out
 
 
 # ---------- shapes the fronts render ----------
@@ -92,7 +112,8 @@ def _task_view(t):
     s = ctx.store
     sp = s.spec(t["id"]) or {}
     return {"id": t["id"], "name": t["name"], "flow": t["flow"], "status": t["status"], "version": t["version"],
-            "goal": sp.get("goal", ""), "trigger": speclib.describe_trigger(sp), "scheduled": bool(t["scheduled"]),
+            "goal": speclib.fill(sp.get("goal", ""), sp.get("params")), "trigger": speclib.describe_trigger(sp),
+            "scheduled": bool(t["scheduled"]),
             "next_due": t["next_due"], "last_run": t["last_run"], "updated": t["updated"]}
 
 
@@ -100,16 +121,17 @@ def _run_view(r, detail=False):
     s = ctx.store
     t = s.task(r["task_id"]) or {}
     sp = s.spec(r["task_id"], r["version"]) or {}
+    plan = s.run_plan(r["id"]) or sp.get("steps", [])        # a run's own steps once `each:` steps are expanded
     v = {"id": r["id"], "task": t.get("name", r["task_id"]), "task_id": r["task_id"], "version": r["version"],
-         "status": r["status"], "trigger": r["trigger"], "step": r["step"], "steps_total": len(sp.get("steps", [])),
+         "status": r["status"], "trigger": r["trigger"], "step": r["step"], "steps_total": len(plan),
          "created": r["created"], "started": r["started"], "ended": r["ended"], "error": r["error"]}
     q = permissions.pending(r["id"]) if r["status"] in durable.LIVE else None
     v["ask"] = {**q, "text": permissions.describe(q)} if q else None
     if detail:
         steps = s.steps(r["id"])
-        v["steps"] = [{"n": st["n"], "title": st["title"], "model": st["model"],
+        v["steps"] = [{"n": st["n"], "title": st["title"], "model": st["model"], "each": st.get("each", ""),
                        "attempts": [{k: a[k] for k in ("attempt", "status", "started", "ended", "report", "gate")}
-                                    for a in steps if a["n"] == st["n"]]} for st in sp.get("steps", [])]
+                                    for a in steps if a["n"] == st["n"]]} for st in plan]
         v["result"] = r["result"]
         v["events"] = s.events(r["id"], limit=300, newest=True)
         act = next((e for e in reversed(v["events"]) if e["kind"] in ACTIVITY), None)

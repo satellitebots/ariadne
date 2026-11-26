@@ -48,8 +48,7 @@ steps:
     tools: [file, terminal, skills]
     outputs: [REPORT.md]
     gate: {type: run, text: "python {checks}/facts_in_report.py REPORT.md data/facts.json --allow-empty && python {checks}/report_shape.py REPORT.md --needs answer,evidence,inference,unknown --verified"}
-gates:
-  - {type: review, text: "Every factual claim in REPORT.md has a source in SOURCES.md, and every number matches data/facts.json"}
-  - {type: review, text: "REPORT.md gives a short answer to the question, evidence with citations, inference marked as such, and open questions"}
+gates:     # one model review at the end, never retried: a failing one goes to the person (scripts did the rest)
+  - {type: review, text: "Every factual claim in REPORT.md has a source in SOURCES.md, every number matches data/facts.json, and inference is marked as such"}
 trigger: {kind: manual}
 retries: 1

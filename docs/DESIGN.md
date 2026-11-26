@@ -40,6 +40,12 @@ test walks the verb list against the MCP tool list, the HTTP routes and the chat
 
 **The UI** renders the same verbs and adds nothing.
 
+**One backend.** Every front is a funnel onto the same verbs: the UI's HTTP routes, the terminal (`ariadne <verb>`
+and the chat's slash commands), the orchestrator's tools and MCP all end in `verbs.call`, and nothing a front does
+is behaviour of its own. Even "wake the worker after a verb that may queue work" is one rule in the registry
+(`verbs.WAKES`), installed by each front that serves a person; before 26 Nov each front kept its own list and a run
+the orchestrator signed from the terminal chat sat queued. The mock backend seeds through the same verbs.
+
 **MCP is the bypass.** An outside agent (e.g. Claude) may skip the local orchestrator: `define(spec)` takes a full
 task definition and returns it as a draft to sign, so the local orchestrator model never loads. MCP also exposes the
 extra control a capable agent needs: `machine_release`, `run_logs`, `job_output`, `events` (raw).
@@ -60,10 +66,24 @@ flow template asked for, e.g. a ticker), steps, task gates, trigger, budget, fai
 (`draft` | `signed` | `retired`).
 
 **Step**: number, title, instruction, model, tools (a subset of the flow's), inputs (files from earlier steps),
-outputs (files it must leave), gate (command or review).
+outputs (files it must leave), gate (command or review), and optionally `each: <plan file>`.
 
-**Trigger**: `now`, `at <time>`, or `cron <expr>` with a time zone. Missed runs while the machine was off run once
-on wake, not once per miss.
+**Steps are the backbone.** A task is a sequence of small steps, each a fresh session with its own outputs and check;
+nothing else gives a local model a chance at a long piece of work. Every template starts the same way: a planning
+step writes a plan file with a `## Steps` list (gated by `checks/plan_steps.py`), then an `each:` step runs once per
+item of that list ({item}, {i}, {count} filled in), then a deterministic check. The engine expands an `each:` step
+when it reaches it and stores the run's own plan, so the run page, a resumed run and later steps see the concrete
+steps ("Write 3/7: Divide and conquer"). A template-less flow gets the same shape (plan, each, check), never one big
+"do the task" step: that put a whole study guide in one 8-minute model call (case study, 26 Nov).
+
+**Gates: facts first, judgment once.** Command gates (scripts in `checks/`) retry a step once with their findings.
+A review gate is a model's judgment, and a weak local reviewer can be wrong in both directions, so a failing review
+is never retried: the run goes to `needs_you` with the reviewer's words, and the person decides. Templates carry at
+most one review, at the end, and only where claims need sources. `retries` is 0 to 2.
+
+**Trigger**: `manual`, `now`, `at <time>`, or `cron <expr>` with a time zone. `now` runs once, started by signing;
+the scheduler never starts `now` or `manual` (on 26 Nov it re-ran a `now` task after every run). Missed runs while
+the machine was off run once on wake, not once per miss.
 
 **Run**: run id, task id + version, trigger, status (`queued` | `waiting` (for the machine) | `running` | `parked` |
 `done` | `failed` | `timed_out` | `cancelled` | `needs_you`), current step, per-step results, log.
@@ -80,7 +100,8 @@ tool list keeps the terminal for quick commands only. Hermes's gateway, messagin
 used.
 
 No clocks, no caps: a step, a review, a job and an orchestrator turn run until they finish. Stopping is always
-deliberate (cancel, park). Instead of a budget, progress is pushed as it happens: every tool call (from the phase
+deliberate (cancel, park). A cancel stops the worker at once, even mid model call; a park and an ask wait for the
+call in flight to finish, because they resume the same session. Instead of a budget, progress is pushed as it happens: every tool call (from the phase
 plugin's log), every finished model call (Hermes's agent.log) and a running job's newest output become run events
 ("step 2: wrote data/indicators.json", "step 2: ran: ...", "model call 4: 17,227 tokens in"). A long quiet spell
 adds one "quiet" event, never a kill. The `progress` verb (every front) answers "is it still moving?": seconds since
@@ -114,10 +135,16 @@ in `permissions.yaml`: default allow; `ask` lists tools, command regexes or writ
 
 ## Flows as templates
 
-`flows/<name>/flow.yaml` gains a `template` block: parameters (with descriptions the orchestrator asks about), steps
-(title, instruction with `{params}`, tools, outputs, gate), task gates, and the default trigger. Each flow lists only
-the tools its steps need; nothing is on by default. First flow to rebuild: **investigation** (gather data as a job →
-analyse → write with citations → verify).
+`flows/<name>/template.yaml`: parameters (with the questions the orchestrator or the draft form asks), steps
+(title, instruction with `{params}`, tools, outputs, gate, `each:`), task gates, and the default trigger. Each flow
+lists only the tools its steps need; a test validates every template as a task. Templates:
+
+| Flow | Steps |
+|---|---|
+| investigation | bound the question → gather sources (ledger) → compute the facts (script) → write → verify; one review |
+| coding | plan the change (`## Steps`, `## Done when`) → one step per change → prove it (`CHECK.md`, `RESULT: PASS`) |
+| content | outline from the sources (ledger, conventions) → one step per section → assemble and check (`piece_check`); one review |
+| design | scope the views → one step per view (Mermaid + section) → assemble and check |
 
 ## Cut list
 

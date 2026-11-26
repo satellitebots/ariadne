@@ -1,0 +1,34 @@
+# The design flow as a task template. Steps are the backbone: scope the design as a list of views (one diagram or
+# section each), draw each view as its own step, then assemble DESIGN.md and check every diagram is there.
+# {checks} is filled in by Ariadne: the folder of shared gate scripts.
+params:
+  subject: "What should be designed (a system, a flow, a screen), and for whom?"
+goal: "DESIGN.md designs {subject}"
+steps:
+  - title: Scope the views
+    instruction: |
+      Read what exists in the workspace about {subject}. Write PLAN.md: '## Purpose' (what the design must decide),
+      '## Constraints', and '## Steps': one line per view in the order a reader needs them (2 to 8), each
+      "View title: diagram kind (flowchart, sequence, state, ER, layout) and what it must show".
+    tools: [file, search, skills]
+    outputs: [PLAN.md]
+    gate: {type: run, text: "python {checks}/plan_steps.py PLAN.md --min 2 --max 8"}
+  - title: Draw
+    each: PLAN.md
+    instruction: |
+      Draw view {i} of {count}: {item}
+      Write it as Mermaid in diagrams/view-{i}.mmd (diagram-first skill: check it parses), then add a section
+      to DESIGN.md with the view's title as its heading, the diagram, and the decisions it shows in a few
+      sentences. Do not rewrite the other sections.
+    tools: [file, skills, diagram]
+    outputs: ["diagrams/view-{i}.mmd", DESIGN.md]
+  - title: Assemble and check
+    instruction: |
+      Read DESIGN.md whole: an opening paragraph (purpose, constraints), the views in PLAN.md order, and an
+      '## Open questions' section. Fix contradictions between views. The check below runs when you finish.
+    tools: [file, skills]
+    outputs: [DESIGN.md]
+    gate: {type: run, text: "python {checks}/piece_check.py PLAN.md DESIGN.md --min-words 15"}
+gates: []
+trigger: {kind: manual}
+retries: 1

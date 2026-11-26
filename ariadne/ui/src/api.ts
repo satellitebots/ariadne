@@ -4,6 +4,7 @@
 export type Gate = { type: "run" | "review"; text: string } | null;
 export type Step = {
   n: number; title: string; instruction: string; model: string; tools: string[]; outputs: string[]; gate: Gate;
+  each?: string;   // repeated once per item of the '## Steps' list in this file
 };
 export type Spec = {
   name?: string; flow?: string; goal?: string; workspace?: string; params?: Record<string, string>;

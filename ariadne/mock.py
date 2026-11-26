@@ -73,6 +73,12 @@ def _work(title, outputs):
     return acts
 
 
+MOCK_PLAN = ["Exam format: weights and what the final covers", "Dynamic programming: LIS, LCS, knapsack",
+             "Divide and conquer: master theorem, FFT, median of medians", "Graphs: SCC, 2-SAT, MST",
+             "Max flow: Ford-Fulkerson, Edmonds-Karp, min cut", "Linear programming: duality, simplex",
+             "NP-completeness: reductions, halting problem"]
+
+
 class MockWorker:
     """Stands in for engine.hermes_step: walks a step's scripted actions, pushes them as progress, honours park,
     ask and cancel between actions, writes the step's outputs, submits a job where the step has one, and answers
@@ -99,7 +105,9 @@ class MockWorker:
         else:
             step_n = int(prompt.split("STEP ", 1)[1].split(" ", 1)[0]) if "STEP " in prompt else 1
         sp = verbs.ctx.store.spec(verbs.ctx.store.run(ref)["task_id"], verbs.ctx.store.run(ref)["version"])
-        step = sp["steps"][step_n - 1] if sp and step_n <= len(sp["steps"]) else {"title": "", "outputs": []}
+        plan = verbs.ctx.store.run_plan(ref) or (sp or {}).get("steps", [])     # the run's own steps, as expanded
+        step = plan[step_n - 1] if step_n <= len(plan) else {"title": "", "outputs": []}
+        step = {**step, "outputs": [speclib.fill(o, (sp or {}).get("params")) for o in step.get("outputs") or []]}
         sid = session or f"mock-{ref}-{step_n}-{int(time.time())}"
         self.step_of[sid] = step_n
         acts = _work(step["title"], step["outputs"])
@@ -142,7 +150,15 @@ class MockWorker:
         for o in step["outputs"]:
             p = ws / o
             p.parent.mkdir(parents=True, exist_ok=True)
-            if not p.exists():
+            if o in ("PLAN.md", "OUTLINE.md"):          # a plan the next step repeats over (each:)
+                p.write_text(f"# {o}\n\n## Steps\n" + "".join(f"{n}. {s}\n" for n, s in enumerate(MOCK_PLAN, 1)),
+                             encoding="utf-8")
+            elif o == "CHECK.md":
+                p.write_text("# Check\n\n- ran the commands in PLAN.md: all pass\n\nRESULT: PASS\n", encoding="utf-8")
+            elif step.get("item"):                       # one planned item: add its section
+                with p.open("a", encoding="utf-8") as f:
+                    f.write(f"\n## {step['item'].split(':')[0]}\n\nWritten by the mock worker (step {step_n}).\n")
+            elif not p.exists():
                 p.write_text(f"# {o}\n\nWritten by the mock worker for step {step_n}.\n\nVERIFIED: 4 claims checked\n",
                              encoding="utf-8")
         self.pos.pop(sid, None)
@@ -274,6 +290,14 @@ def seed(store, flows, root):
         store.run_set(rid, status=status, started=now - ago, ended=now - ago + last * 240 + 200, step=last,
                       error=err, result="REPORT.md written and verified." if status == "done" else "")
         store.event(rid, "end", status + (f": {err[:200]}" if err else ""))
+    # a content task from its template: an outline, then one step per section (each:), then assemble and check
+    gsp, _ = speclib.from_template(flows["content"], name="ga-study-guide", workspace=str(ws("ga-guide")))
+    gsp["params"] = {"piece": "a study guide for the CS6515 cumulative final, for a student revising",
+                     "output": "GUIDE.md", "sources": "refs/LINKS.md"}
+    for st in gsp["steps"]:
+        st["gate"] = None                       # the mock checks only what the mock worker can satisfy
+    guide, _ = store.sign(speclib.validate(gsp, flows))
+
     # drafts: one nearly ready, one just begun
     d1sp, asks = speclib.from_template(inv, name="rates-outlook", workspace=str(ws("rates")))
     d1sp["params"] = {"question": "Where are US mortgage rates heading over the next quarter?"}
@@ -281,10 +305,9 @@ def seed(store, flows, root):
     store.message(d1, "person", "Where are US mortgage rates heading over the next quarter?")
     store.message(d1, "orchestrator", "(mock orchestrator) What must a good answer contain, and how far back may "
                                       "sources go?")
-    d2sp, asks2 = speclib.from_template(flows["coding"], name="", workspace="")
-    d2 = store.draft_new("coding", d2sp, asks2, source="front")
-    store.message(d2, "person", "Add CSV export to the hiking app's member list")
-    return {"googl": googl, "scan": scan, "audit": audit, "notes": notes, "score": score}
+    # the way every front starts one: the `draft` verb (what you typed answers the template's first question)
+    verbs.call("draft", text="Add CSV export to the hiking app's member list", flow="coding")
+    return {"googl": googl, "scan": scan, "audit": audit, "notes": notes, "score": score, "guide": guide}
 
 
 # ---------- the loop ----------
@@ -295,7 +318,7 @@ class MockEngine:
         self.eng = enginemod.Engine(store, flows, broker, step_runner=MockWorker(),
                                     job_runner=lambda j, db, **kw: jobs.run(j, db, unload=lambda: True, poll=0.2, **kw))
         self.store, self.tasks, self.idle_s = store, tasks, idle_s
-        self.order = [tasks["scan"], tasks["audit"], tasks["notes"], tasks["score"], tasks["googl"]]
+        self.order = [tasks["guide"], tasks["scan"], tasks["audit"], tasks["notes"], tasks["score"], tasks["googl"]]
         self.i, self.quiet_since = 0, time.time()
 
     def loop(self):

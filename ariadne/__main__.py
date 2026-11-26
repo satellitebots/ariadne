@@ -130,9 +130,6 @@ def verb_cli(name, rest):
     except verbs.VerbError as e:
         print(str(e))
         return 2
-    if name in ("run", "rerun", "sign", "schedule", "resume"):
-        from .daemon import ensure_worker
-        ensure_worker()
     _print(out)
     return 0
 
@@ -308,6 +305,9 @@ def main(argv=None):
     if cmd == "park_run" and (not rest or rest[0].startswith("--")):   # the old global form
         from . import park
         return park.main(rest)
+    if cmd == "chat" or cmd in verbs.VERBS:     # a person at the terminal: verbs that queue work wake the worker
+        from .daemon import ensure_worker
+        verbs.set_waker(ensure_worker)
     if cmd == "chat":
         return chat_loop(rest)
     if cmd in verbs.VERBS and cmd not in ("flows",):

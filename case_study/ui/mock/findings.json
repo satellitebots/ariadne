@@ -72,7 +72,7 @@
    "log": []
   },
   "task-desktop": {
-   "url": "#task/t1126-001032-67d5",
+   "url": "#task/t1126-051630-6447",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -86,7 +86,7 @@
    "log": []
   },
   "run-desktop": {
-   "url": "#run/r1126-001032-8f97",
+   "url": "#run/r1126-051630-47df",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -100,7 +100,7 @@
    "log": []
   },
   "run-asking-desktop": {
-   "url": "#run/r1126-001032-3c39",
+   "url": "#run/r1126-051630-874e",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -114,7 +114,7 @@
    "log": []
   },
   "run-done-desktop": {
-   "url": "#run/r1126-001032-2bf9",
+   "url": "#run/r1126-051630-3427",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -128,7 +128,7 @@
    "log": []
   },
   "draft-desktop": {
-   "url": "#draft/d1126-001032-06c6",
+   "url": "#draft/d1126-051630-7516",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -212,7 +212,7 @@
    "log": []
   },
   "task-phone": {
-   "url": "#task/t1126-001032-67d5",
+   "url": "#task/t1126-051630-6447",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -226,7 +226,7 @@
    "log": []
   },
   "run-phone": {
-   "url": "#run/r1126-001032-8f97",
+   "url": "#run/r1126-051630-47df",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -240,21 +240,21 @@
    "log": []
   },
   "run-asking-phone": {
-   "url": "#run/r1126-001032-3c39",
+   "url": "#run/r1126-051630-874e",
    "probe": {
     "title": "Ariadne",
     "h1": [
      "Asking you"
     ],
     "overflowX": false,
-    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (1 min ago)",
+    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (just now)",
     "unlabeled": 0,
     "smallText": 2
    },
    "log": []
   },
   "run-done-phone": {
-   "url": "#run/r1126-001032-2bf9",
+   "url": "#run/r1126-051630-3427",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -268,7 +268,7 @@
    "log": []
   },
   "draft-phone": {
-   "url": "#draft/d1126-001032-06c6",
+   "url": "#draft/d1126-051630-7516",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -352,7 +352,7 @@
    "log": []
   },
   "task-desktop-dark": {
-   "url": "#task/t1126-001032-67d5",
+   "url": "#task/t1126-051630-6447",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -366,7 +366,7 @@
    "log": []
   },
   "run-desktop-dark": {
-   "url": "#run/r1126-001032-8f97",
+   "url": "#run/r1126-051630-47df",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -380,21 +380,21 @@
    "log": []
   },
   "run-asking-desktop-dark": {
-   "url": "#run/r1126-001032-3c39",
+   "url": "#run/r1126-051630-874e",
    "probe": {
     "title": "Ariadne",
     "h1": [
      "Asking you"
     ],
     "overflowX": false,
-    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (2 min ago)",
+    "now": "Now: step 2: ran: git push origin main (waiting for your OK) (1 min ago)",
     "unlabeled": 0,
     "smallText": 2
    },
    "log": []
   },
   "run-done-desktop-dark": {
-   "url": "#run/r1126-001032-2bf9",
+   "url": "#run/r1126-051630-3427",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -408,7 +408,7 @@
    "log": []
   },
   "draft-desktop-dark": {
-   "url": "#draft/d1126-001032-06c6",
+   "url": "#draft/d1126-051630-7516",
    "probe": {
     "title": "Ariadne",
     "h1": [
@@ -425,12 +425,12 @@
    "probe": [
     "googl-daily\nweekdays at 07:00",
     "vendor-scorecard\nmanual",
-    "Untitled draft\n4 to fill in \u00b7 coding",
+    "Untitled draft\n3 to fill in \u00b7 coding",
     "rates-outlook\n1 to fill in \u00b7 investigation",
     "1\nCollect the changes\ngemma-4-12b\npending",
     "2\nWrite the notes\ngemma-4-12b\npending",
     "3\nLoop check\ngemma-4-12b\npending",
-    "12:10:32 AM\nqueued\nrelease-notes v1 (manual)"
+    "5:16:30 AM\nqueued\nrelease-notes v1 (manual)"
    ]
   }
  }

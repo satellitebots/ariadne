@@ -68,9 +68,9 @@ def build_app(host, token):
 def serve(host, port):
     import uvicorn
 
-    from .daemon import ensure_worker
+    from .front_mcp import wake_worker
     token = get_token()
-    ensure_worker()
+    wake_worker()
     print(f"Ariadne MCP on http://{host}:{port}/mcp (bearer token in {TOKEN_FILE}); health: /health", flush=True)
     uvicorn.run(build_app(host, token), host=host, port=port, log_level="warning")
 

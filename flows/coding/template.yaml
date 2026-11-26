@@ -1,0 +1,37 @@
+# The coding flow as a task template (docs/DESIGN.md, "Flows as templates"). Steps are the backbone: plan the change
+# as a short list, make each item as its own step (a fresh session, one small change), then prove it with commands.
+# No model reviewer: the repository's tests and the plan's own commands are the check (gates are facts, not taste).
+# {checks} is filled in by Ariadne: the folder of shared gate scripts.
+params:
+  change: "What should change, in one or two sentences?"
+  done_when: "How do we know it works (a test to pass, a command to run, what you should see)?"
+goal: "{change}"
+steps:
+  - title: Plan the change
+    instruction: |
+      Read the code this touches (search, read files; run nothing that changes anything). Then write PLAN.md:
+      '## Goal' ({change}); '## Done when' ({done_when}) as exact commands to run and what they must show; and
+      '## Steps': a numbered list of 1 to 8 small changes in order, one line each, naming the file(s) it touches.
+      Put tests first when the change can be tested. Do not change code yet.
+    tools: [file, search, skills]
+    outputs: [PLAN.md]
+    gate: {type: run, text: "python {checks}/plan_steps.py PLAN.md --min 1 --max 8"}
+  - title: Change
+    each: PLAN.md
+    instruction: |
+      Make change {i} of {count} from PLAN.md, and only that one: {item}
+      Earlier changes are done; later ones come after you. Run the narrowest test that covers this change and
+      fix what it shows before you finish.
+    tools: [file, terminal, skills, todo, search]
+  - title: Prove it
+    instruction: |
+      Run every command under '## Done when' in PLAN.md, and the repository's tests. Fix what fails (small fixes;
+      if the plan was wrong, say so). Write CHECK.md: each command, what it printed (trimmed), and pass or fail,
+      ending with the line 'RESULT: PASS' or 'RESULT: FAIL: <why>'. Then commit the change with a message that says
+      what changed and why.
+    tools: [file, terminal, skills, todo, search]
+    outputs: [CHECK.md]
+    gate: {type: run, text: "python {checks}/verify_result.py CHECK.md"}
+gates: []
+trigger: {kind: manual}
+retries: 1
