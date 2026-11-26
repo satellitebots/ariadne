@@ -278,6 +278,10 @@ def chat_loop(rest):
         except KeyboardInterrupt:
             print("\n(stopped waiting; the orchestrator did not answer that message)\n")
             continue
+        except Exception as e:      # a model server error, a lost connection: say it, keep the conversation
+            print(f"(error) the orchestrator could not answer: {type(e).__name__}: {e}\n"
+                  "(say it again, or use a /command; /status shows the machine)\n")
+            continue
         finally:
             watch.stop()
         conv = out["conversation"]

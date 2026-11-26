@@ -116,6 +116,22 @@ def test_terminal_chat_commands_act_without_the_model(tmp_path, monkeypatch):
     assert "unknown command" in cli.chat_command("/nope")
 
 
+def test_an_unchanged_model_server_config_is_never_rewritten(tmp_path, monkeypatch):
+    # llama-swap -watch-config reloads on every write and fails requests in flight; the idle daemon wrote every 2 s
+    from ariadne import serve
+    monkeypatch.setattr(serve, "CONFIG", tmp_path / "llama-swap.yaml")
+    monkeypatch.setattr(serve, "_render_text", lambda: "models: {}\n")
+    serve.render_config()
+    first = serve.CONFIG.stat().st_mtime_ns
+    import time as _t
+    _t.sleep(0.05)
+    assert serve.apply_if_changed() is False
+    serve.render_config()
+    assert serve.CONFIG.stat().st_mtime_ns == first
+    monkeypatch.setattr(serve, "_render_text", lambda: "models: {a: 1}\n")
+    assert serve.apply_if_changed() is True
+
+
 def test_the_orchestrator_loop_has_no_cap_or_clock_by_default():
     from ariadne import orchestrate
     o = orchestrate.Orchestrator()
