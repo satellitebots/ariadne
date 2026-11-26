@@ -79,7 +79,14 @@ steps ("Write 3/7: Divide and conquer"). A template-less flow gets the same shap
 **Gates: facts first, judgment once.** Command gates (scripts in `checks/`) retry a step once with their findings.
 A review gate is a model's judgment, and a weak local reviewer can be wrong in both directions, so a failing review
 is never retried: the run goes to `needs_you` with the reviewer's words, and the person decides. Templates carry at
-most one review, at the end, and only where claims need sources. `retries` is 0 to 2.
+most one review, at the end, and only where claims need sources. `retries` is 0 to 4.
+
+**Structure guides, it never fences.** Ariadne is for empowerment: the freest worker a local model can be. Every
+step and every reviewer has all of its flow's tools (toolsets and MCP servers; a definition may narrow a step on
+purpose, nothing narrows it by default). Plans have no size limits; a size or a long line is a note, not a failure.
+Instructions say what to focus on, never what is forbidden ("fix anything this step depends on, and say so").
+`piece_check.py` is a tool the worker runs to find gaps; it blocks only with `--strict`. The only gates in the
+templates are facts: a plan has a `## Steps` list, the worker's own CHECK.md says PASS.
 
 **Trigger**: `manual`, `now`, `at <time>`, or `cron <expr>` with a time zone. `now` runs once, started by signing;
 the scheduler never starts `now` or `manual` (on 26 Nov it re-ran a `now` task after every run). Missed runs while
@@ -112,7 +119,11 @@ Workers have no Hermes restrictions. Hermes caps its agents because it expects h
 its approval layer, dangerous-command and hardline blocks, read-before-write, sensitive-path, protected-file and
 binary-file guards, read blocks on credential paths, URL/SSRF and cloud-metadata blocks, secret-shaped-URL refusals,
 workdir validation, repeated-read blocks, loop hard stops and private-URL block are all off, and the step prompt
-tells the model that everything is permitted and never to report something as not allowed (`flows.BASE_CONFIG`, `permissions.HERMES_ENV`, and the
+tells the model that everything is permitted and never to report something as not allowed. Hermes's limits for
+fast hosted models are lifted too: turn liveness (600 s of silence aborted a turn; one local call took 482 s),
+the gateway, stall and stale-stream clocks, the compressor's timeouts, page, file and command-output truncation
+(15,000 characters, 100,000, 50 KB), and small caps on delegation, goals, loops, memory and skill shells
+(`flows.BASE_CONFIG`; a test pins them, and the compiled home is checked with Hermes's own loader) (`flows.BASE_CONFIG`, `permissions.HERMES_ENV`, and the
 interpreter overlay `tools/permissions_hook.py`; vendor stays untouched). The only rules are the person's own,
 in `permissions.yaml`: default allow; `ask` lists tools, command regexes or write paths that hold a run (status
 `asking`, machine released) until `approve` or `reject`; `deny` refuses outright.

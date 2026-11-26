@@ -8,7 +8,7 @@ requires: [node, chrome]   # for the browser server; checked before a task runs
 mcp_servers: [memory, browser, export, image, web, jobs, office]
 toolsets:
   plan: [file, skills, search]
-  execute: [file, skills, todo, search]
+  execute: [file, terminal, skills, todo, search]
 plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, web_search, web_fetch, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 checks:
   - {run: "\"{python}\" -m ariadne.citations .", when_exists: "sources"}

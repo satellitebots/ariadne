@@ -14,14 +14,12 @@ steps:
       Write NOTES.md: the question ({question}) as one sentence; what a good answer must contain ({must_contain});
       what you already know and what you are assuming; the primary sources you will look for; and every number the
       answer will need, each with its definition (formula, unit, window). Do not research yet.
-    tools: [file, skills]
     outputs: [NOTES.md]
   - title: Gather sources
     instruction: |
       Collect evidence for the question in NOTES.md from primary sources: web_search, then web_fetch. Only sources
       dated within the last {within_days} days. Record each in SOURCES.md, one line per source, exactly
       "- <url> | <publisher> | <what it supports> | <YYYY-MM-DD>", the publisher being the site the URL is on.
-    tools: [file, search, web, skills]
     outputs: [SOURCES.md]
     gate: {type: run, text: "python {checks}/sources_ledger.py SOURCES.md --min 3 --within-days {within_days}"}
   - title: Compute the facts
@@ -30,7 +28,6 @@ steps:
       data/facts.json with every number the report will state, using the definitions in NOTES.md (facts-first
       skill: value, unit, date or window, formula). Heavy downloads are a job (submit_job). If the answer needs no
       numbers, write an empty JSON object and say so.
-    tools: [file, terminal, jobs, skills]
     outputs: [data/facts.json]
     gate: {type: run, text: "python -c \"import json; json.load(open('data/facts.json', encoding='utf-8')); print('ok: data/facts.json is valid JSON')\""}
   - title: Write the report
@@ -38,14 +35,12 @@ steps:
       Write REPORT.md from NOTES.md, SOURCES.md and data/facts.json, with these headings: Question, Answer, Evidence,
       Inference, Unknown, What would change the answer. Cite a source for each claim. Copy every number from
       data/facts.json exactly, with its unit and date; never compute one yourself.
-    tools: [file, skills]
     outputs: [REPORT.md]
   - title: Verify
     instruction: |
       Check REPORT.md against data/, SOURCES.md and NOTES.md using only the files here (verify-locally skill):
       never change data/ or SOURCES.md, change REPORT.md to match them, remove or mark what you cannot back. Run the
       gate below yourself before finishing. End REPORT.md with "VERIFIED: <n> claims checked".
-    tools: [file, terminal, skills]
     outputs: [REPORT.md]
     gate: {type: run, text: "python {checks}/facts_in_report.py REPORT.md data/facts.json --allow-empty && python {checks}/report_shape.py REPORT.md --needs answer,evidence,inference,unknown --verified"}
 gates:     # one model review at the end, never retried: a failing one goes to the person (scripts did the rest)

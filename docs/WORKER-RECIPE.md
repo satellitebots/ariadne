@@ -37,7 +37,9 @@ driving Hermes one step at a time. A bigger model moves the thresholds, not the 
 - **A single step never carries the whole task.** A planning step writes `## Steps`; `each:` runs one fresh step
   per item. One "do the task" step wrote a whole study guide in one 8-minute call: unchecked, off-syllabus in places,
   with a convention backwards (case study 26 Nov).
-- **A reviewer's FAIL is not retried.** It goes to the person; only facts (scripts, missing outputs) retry, once.
+- **A reviewer's FAIL is not retried.** It goes to the person; only facts (scripts, missing outputs) retry.
+- **No fences.** Every step and reviewer has all of its flow's tools; no Hermes clock, truncation or cap cuts a
+  local model short; plans have no size limits; instructions guide, they do not forbid.
 - **A cancel is immediate**, and a run whose worker died while you cancelled it ends cancelled, not stuck.
 - **`now` runs once.** The scheduler never starts `now` or `manual` tasks.
 - **Steering notes hold for the rest of the run**, and the orchestrator proposes a note instead of acting on a run

@@ -81,10 +81,36 @@ def test_a_reviewer_fail_goes_to_you_and_is_not_retried(env):
     assert [n for kind, n, *_ in w.calls if kind == "step"] == [1]     # one attempt, no rework loop
 
 
-def test_retries_are_capped():
-    with pytest.raises(speclib.SpecError) as e:
-        make_spec("C:/x/ws", [{"title": "A", "instruction": "a"}], retries=4)
-    assert "retries" in str(e.value)
+def test_retries_are_the_persons_choice_up_to_four():
+    assert make_spec("C:/x/ws", [{"title": "A", "instruction": "a"}], retries=4)["retries"] == 4
+    with pytest.raises(speclib.SpecError):
+        make_spec("C:/x/ws", [{"title": "A", "instruction": "a"}], retries=9)
+
+
+def test_no_fences_every_step_and_reviewer_has_all_its_flows_tools(env):
+    for name, fl in FLOWS.items():
+        sp, asks = speclib.from_template(fl, name="t-" + name, workspace="C:/elsewhere/ws")
+        sp["params"] = {k: "x" for k in asks}
+        sp = speclib.validate(sp, FLOWS)
+        for s in sp["steps"]:
+            assert s["tools"] == speclib.tools_for(fl), (name, s["title"], s["tools"])
+    store, broker, server, tmp = env
+    sp = make_spec(tmp / "ws", [{"title": "A", "instruction": "a", "gate": {"type": "review", "text": "ok"}}])
+    rid = start(store, sp)
+    w = Script({"review": [lambda ws, p: ("PASS - fine", 0)]})
+    engine.Engine(store, FLOWS, broker, step_runner=w).run_once()
+    review_tools = next(tools for kind, n, p, s, tools in w.calls if kind == "review")
+    assert review_tools == speclib.tools_for(FLOWS["investigation"])
+
+
+def test_no_hermes_clock_or_truncation_cuts_a_local_model_short():
+    from ariadne.flows import BASE_CONFIG as C
+    assert C["agent"]["turn_liveness"]["timeout_s"] == 0           # 600 s of silence aborted a turn; one call took 482
+    assert min(C["agent"][k] for k in ("gateway_timeout", "session_stall_timeout", "local_stream_stale_timeout")) >= 86400
+    assert C["terminal"]["timeout"] >= 86400 and C["web"]["extract_char_limit"] >= 1_000_000
+    assert C["tool_output"]["max_bytes"] >= 1_000_000 and C["file_read_max_chars"] >= 1_000_000
+    assert not C["tool_loop_guardrails"]["hard_stop_enabled"] and C["approvals"]["mode"] == "off"
+    assert "Do this step only" not in engine.STEP_PROMPT and "limit 3-5" not in engine.STEP_PROMPT
 
 
 def test_every_flow_starts_with_planned_steps_not_one_big_step():
@@ -150,7 +176,7 @@ def test_a_cron_task_runs_once_per_due_time(env):
     assert len(store.runs(tid)) == 2
 
 
-def test_piece_check_catches_a_missing_section_and_a_page_too_wide_for_a_phone(tmp_path):
+def test_piece_check_reports_a_missing_section_and_a_page_too_wide_for_a_phone(tmp_path):
     (tmp_path / "OUTLINE.md").write_text("## Steps\n1. Dynamic programming: LIS\n2. Max flow: Ford-Fulkerson\n")
     body = " ".join(["word"] * 40)
     page = (f'<html><head><meta name="viewport" content="width=device-width"></head><body>'
@@ -158,10 +184,13 @@ def test_piece_check_catches_a_missing_section_and_a_page_too_wide_for_a_phone(t
     (tmp_path / "g.html").write_text(page)
     out = subprocess.run([sys.executable, str(ROOT / "checks" / "piece_check.py"), "OUTLINE.md", "g.html"],
                          cwd=tmp_path, capture_output=True, text=True)
-    assert out.returncode == 1 and "item 2" in out.stdout and "overflow-x" in out.stdout
+    assert out.returncode == 0 and "item 2" in out.stdout and "overflow-x" in out.stdout     # it reports, never blocks
+    strict = subprocess.run([sys.executable, str(ROOT / "checks" / "piece_check.py"), "OUTLINE.md", "g.html",
+                             "--strict"], cwd=tmp_path, capture_output=True, text=True)
+    assert strict.returncode == 1
     page = page.replace("</body>", f"<h2>Max flow</h2><p>{body}</p></body>").replace(
         "<head>", "<head><style>table{display:block;overflow-x:auto}</style>")
     (tmp_path / "g.html").write_text(page)
     out = subprocess.run([sys.executable, str(ROOT / "checks" / "piece_check.py"), "OUTLINE.md", "g.html"],
                          cwd=tmp_path, capture_output=True, text=True)
-    assert out.returncode == 0, out.stdout
+    assert out.returncode == 0 and out.stdout.startswith("ok"), out.stdout

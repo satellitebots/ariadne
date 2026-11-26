@@ -9,26 +9,24 @@ steps:
     instruction: |
       Read what exists in the workspace about {subject}. Write PLAN.md: '## Purpose' (what the design must decide),
       '## Constraints', and '## Steps': one line per view in the order a reader needs them (2 to 8), each
-      "View title: diagram kind (flowchart, sequence, state, ER, layout) and what it must show".
-    tools: [file, search, skills]
+      "View title: diagram kind (flowchart, sequence, state, ER, layout) and what it must show" (as many as the
+      design needs).
     outputs: [PLAN.md]
-    gate: {type: run, text: "python {checks}/plan_steps.py PLAN.md --min 2 --max 8"}
+    gate: {type: run, text: "python {checks}/plan_steps.py PLAN.md"}
   - title: Draw
     each: PLAN.md
     instruction: |
       Draw view {i} of {count}: {item}
       Write it as Mermaid in diagrams/view-{i}.mmd (diagram-first skill: check it parses), then add a section
       to DESIGN.md with the view's title as its heading, the diagram, and the decisions it shows in a few
-      sentences. Do not rewrite the other sections.
-    tools: [file, skills, diagram]
+      sentences. Fix an earlier view only if this one shows it is wrong, and say so.
     outputs: ["diagrams/view-{i}.mmd", DESIGN.md]
   - title: Assemble and check
     instruction: |
       Read DESIGN.md whole: an opening paragraph (purpose, constraints), the views in PLAN.md order, and an
-      '## Open questions' section. Fix contradictions between views. The check below runs when you finish.
-    tools: [file, skills]
+      '## Open questions' section. Fix contradictions between views. To find gaps, run:
+      python {checks}/piece_check.py PLAN.md DESIGN.md --min-words 15
     outputs: [DESIGN.md]
-    gate: {type: run, text: "python {checks}/piece_check.py PLAN.md DESIGN.md --min-words 15"}
 gates: []
 trigger: {kind: manual}
 retries: 1

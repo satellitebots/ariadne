@@ -30,24 +30,50 @@ BASE_CONFIG = {
     "models_dev": {"url": "http://127.0.0.1:9/models-dev-disabled.json"},
     "updates": {"check": False},
     "telemetry": {"shared_metrics": {"enabled": False, "send": False}},
-    "web": {"search_backend": "ddgs"},   # keyless web_search (Hermes' ddgs extra); pages are read with web_fetch
     # No tool_search/tool_call bridge: a step sees exactly its own tools (the bridge let a worker reach web_extract,
     # which the keyless backend cannot serve, on the first real run).
     "tools": {"tool_search": {"enabled": "off"}},
     # Hermes' approval and guard layers are off: Ariadne runs locally, unattended, on the person's own machine
-    # (they asked for every Hermes restriction removed). What stays is code-only: Hermes' hardline blocks
-    # (rm -rf /, mkfs, ...) and its refusal to write text over a binary file. HERMES_ENV below does the rest.
+    # (they asked for every Hermes restriction removed). The code-level guards, hardline blocks and the binary-file
+    # write refusal included, are lifted by tools/permissions_hook.py; permissions.yaml is the only policy.
     "approvals": {"mode": "off", "single_query_mode": "approve", "cron_mode": "approve",
                   "unattended_mode": "approve", "mcp_reload_confirm": False, "destructive_slash_confirm": False},
     "security": {"allow_private_urls": True, "protected_instruction_files": False},
     # The gateway that owns a worker's sessions must never continue one on its own: it auto-continued a run that had
     # been cancelled (googl-daily e6aa) and shared the GPU with the next run. Ariadne resumes sessions itself
     # (--resume, after park or a job). Hermes reads <= 0 as "always", so the window is a millisecond.
-    "agent": {"gateway_auto_continue_freshness": 0.001},
+    # The freest worker (the person's ask, 26 Nov): no Hermes limit that would cut a local model short. Hermes is
+    # tuned for fast hosted models; here one model call can take 8 minutes with no stream, so its turn-liveness
+    # (600 s of silence aborts the turn; 0 = off), stall, stale-stream and gateway turn clocks would kill real work.
+    # Week-long values mean only a deliberate stop (cancel, park) ends anything.
+    "agent": {"gateway_auto_continue_freshness": 0.001,
+              "turn_liveness": {"timeout_s": 0},
+              "gateway_timeout": 604800, "gateway_timeout_warning": 604800, "restart_after_turn_timeout": 604800,
+              "session_stall_timeout": 604800, "local_stream_stale_timeout": 604800, "build_wait_timeout": 604800,
+              "clarify_timeout": 604800, "api_max_retries": 10},
     # No clocks: Hermes stops a foreground terminal command after 180 s; a day means only a deliberate stop does.
-    "terminal": {"timeout": 86400},
+    "terminal": {"timeout": 86400, "oneshot_completion_wait_seconds": 86400},
+    # No truncation a worker did not choose: whole pages, whole files, whole command output (Hermes cut a page at
+    # 15,000 characters, a file read at 100,000 and command output at 50 KB / 2,000 lines). Compression, not
+    # truncation, is what keeps a long session inside the model's context.
+    "web": {"search_backend": "ddgs", "extract_char_limit": 1_000_000},
+    "file_read_max_chars": 2_000_000,
+    "tool_output": {"max_bytes": 2_000_000, "max_lines": 100_000, "max_line_length": 100_000},
+    "browser": {"command_timeout": 600, "inactivity_timeout": 86400},
+    # A slow local model must be allowed to finish compressing its own context (120 s cut it short).
+    "compression": {"context_timeout_seconds": 3600, "context_total_ceiling_seconds": 7200,
+                    "hygiene_timeout_seconds": 3600, "hygiene_total_ceiling_seconds": 7200,
+                    "hygiene_max_turn_hold_seconds": 3600},
+    "auxiliary": {"compression": {"timeout": 3600}},
+    # Delegation, goals, loops, memory and skill shells without small caps.
+    "delegation": {"max_iterations": 100_000, "max_spawn_depth": 3, "max_summary_chars": 200_000},
+    "goals": {"max_turns": 100_000},
+    "loops": {"max_ticks": 100_000},
+    "memory": {"memory_char_limit": 50_000, "user_char_limit": 50_000},
+    "skills": {"inline_shell_timeout": 3600},
+    "code_execution": {"max_session_kernels": 32},
     "tool_loop_guardrails": {"hard_stop_enabled": False, "non_interactive_hard_stop_enabled": False,
-                             "loop_caps": {"max_web_searches": 1000, "max_subagents": 1000}},
+                             "loop_caps": {"max_web_searches": 1_000_000, "max_subagents": 1_000_000}},
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
                             "base_url": "http://localhost:11434/v1"}],
 }
@@ -276,10 +302,11 @@ def compile_flow(fl, flows_dir=None):
     cfg["model"]["context_length"] = ctx["window"]
     # Context compression (Hermes's own compressor): past compress_at tokens the run pauses, the same model
     # summarises the older turns (auxiliary "auto" = the main model, so nothing swaps), the recent tail stays.
-    cfg["compression"] = {"enabled": True, "threshold": 0.75, "threshold_tokens": ctx["compress_at"],
+    cfg["compression"] = {**BASE_CONFIG.get("compression", {}),      # keep the lifted timeouts (BASE_CONFIG)
+                          "enabled": True, "threshold": 0.75, "threshold_tokens": ctx["compress_at"],
                           "max_attempts": 4, "tail_mode": "lean"}
     cfg["auxiliary"] = {"compression": {"provider": "auto", "model": "", "base_url": "", "api_key": "",
-                                        "timeout": 900, "extra_body": {}, "reasoning_effort": ""},
+                                        "timeout": 3600, "extra_body": {}, "reasoning_effort": ""},
                         # No model call for session titles: it would overwrite the KV slot that is parked after the run.
                         "title_generation": {"enabled": True, "model_upgrade_enabled": False, "provider": "auto",
                                              "model": "", "prefer_fast_model": False, "extra_body": {}}}

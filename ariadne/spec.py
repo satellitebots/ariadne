@@ -40,8 +40,8 @@ from . import paths, yamlio
 # (docs/WORKER-RECIPE.md), so a gate reads `python {checks}/facts_in_report.py REPORT.md data/facts.json`.
 BUILTIN_PARAMS = {"checks": (paths.ROOT / "checks").as_posix()}
 ITEM_PARAMS = ("item", "i", "count")     # filled per item when an `each:` step is expanded
-MAX_RETRIES = 2
-MAX_ITEMS = 25
+MAX_RETRIES = 4
+MAX_ITEMS = 200          # a sanity ceiling against a runaway plan, not a size limit on real work
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}$")
 TRIGGERS = ("now", "manual", "at", "cron")
@@ -134,7 +134,7 @@ def validate(spec, flows, catalog=None):
             problems.append(f"{where}: a title")
         if not str(st.get("instruction", "")).strip():
             problems.append(f"{where}: an instruction")
-        tools = list(st.get("tools") or (flow.execute_toolsets if flow else []))
+        tools = list(st.get("tools") or allowed)       # by default a step has everything its flow has
         bad = [t for t in tools if t not in allowed]
         if flow and bad:
             problems.append(f"{where}: tools {', '.join(bad)} are not in flow {flow.name} ({', '.join(allowed)})")
@@ -182,7 +182,7 @@ def validate(spec, flows, catalog=None):
         problems.append(f"tz: '{s['tz']}' is not a time zone")
     s.pop("budget_s", None)     # older versions had a run clock; runs now end only done, failed or cancelled
     if not isinstance(s.get("retries"), int) or not 0 <= s["retries"] <= MAX_RETRIES:
-        problems.append(f"retries: 0 to {MAX_RETRIES} (more retries mostly repeat the same mistake)")
+        problems.append(f"retries: 0 to {MAX_RETRIES}")
     if problems:
         raise SpecError(problems)
     return s
@@ -217,19 +217,19 @@ def from_template(flow, **given):
 
 def generic_template(flow):
     """For a flow with no template.yaml: plan, do each planned item as its own step, check. Never one big step: a
-    single "do the task" step put a whole study guide in one 8-minute model call (26 Nov case study)."""
-    tools = list(flow.execute_toolsets)
+    single "do the task" step put a whole study guide in one 8-minute model call (26 Nov case study). Every step
+    has all of the flow's tools; the structure guides, it never fences."""
     return {"params": {}, "steps": [
-        {"title": "Plan", "tools": tools, "outputs": ["PLAN.md"],
-         "instruction": "Plan the work for: {goal}. Read what you need first; do not do the work yet. Write PLAN.md "
-                        "with '## Done when' (how anyone can check the result: a command to run, a file and what it "
-                        "must show) and '## Steps': a numbered list of 2 to 8 small pieces of work in order, one line "
-                        "each, each naming the file it makes or changes.",
-         "gate": {"type": "run", "text": "python {checks}/plan_steps.py PLAN.md --min 2 --max 8"}},
-        {"title": "Step", "each": "PLAN.md", "tools": tools,
-         "instruction": "Do step {i} of {count} in PLAN.md, and only that one: {item}. Earlier steps are done; read "
-                        "PLAN.md and what they made first. Leave later steps for later."},
-        {"title": "Check", "tools": tools, "outputs": ["CHECK.md"],
+        {"title": "Plan", "outputs": ["PLAN.md"],
+         "instruction": "Plan the work for: {goal}. Look into whatever you need first. Write PLAN.md with "
+                        "'## Done when' (how anyone can check the result: a command to run, a file and what it "
+                        "must show) and '## Steps': a numbered list of the pieces of work in order, one line each, "
+                        "each naming the file it makes or changes (as many as the work needs; small ones go better).",
+         "gate": {"type": "run", "text": "python {checks}/plan_steps.py PLAN.md"}},
+        {"title": "Step", "each": "PLAN.md",
+         "instruction": "Do step {i} of {count} in PLAN.md: {item}. Earlier steps are done; read PLAN.md and what "
+                        "they made first. Later steps are planned on their own; fix anything this one depends on."},
+        {"title": "Check", "outputs": ["CHECK.md"],
          "instruction": "Check the result against '## Done when' in PLAN.md: run or open what it names, fix small "
                         "problems, and write CHECK.md: each check and what you saw, ending with the line "
                         "'RESULT: PASS' or 'RESULT: FAIL: <why>'.",

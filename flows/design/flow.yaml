@@ -8,7 +8,7 @@ requires: [node, chrome]   # Mermaid renders with the Mermaid CLI (npx) on your 
 mcp_servers: [memory, diagram, image, export, web, browser, jobs, office]
 toolsets:
   plan: [file, skills, search]
-  execute: [file, skills, todo, search]
+  execute: [file, terminal, skills, todo, search]
 plan_tools: [read_file, search_files, skill_view, skills_list, memory_recall, check_diagram, web_search, web_fetch, navigate_page, new_page, list_pages, select_page, take_snapshot, take_screenshot, wait_for]
 browser:
   real_logins: false       # a clean, isolated Chrome; `python -m ariadne browser debug on` attaches to your Chrome when a step needs a login

@@ -1,12 +1,14 @@
-"""Gate: a written piece covers its outline, and an HTML piece is well formed for a browser and a phone.
+"""A tool for the worker: what a written piece still lacks against its outline, and HTML problems for a browser and
+a phone. It reports; the worker judges. Only with --strict does it fail (exit 1) on findings.
 
-    python {checks}/piece_check.py OUTLINE.md PIECE [--min-words 30]
+    python {checks}/piece_check.py OUTLINE.md PIECE [--min-words 30] [--allow-external] [--strict]
 
 Coverage: every item of the outline's '## Steps' list has a heading in the piece that shares its key words
 (the section was written), and every section has at least --min-words words. For .html: the tags balance, there is
 a viewport meta tag, no script or stylesheet is loaded from elsewhere unless allowed with --allow-external, and
 wide content (tables, pre) can scroll sideways instead of widening the page on a phone. Prints every problem and
-exits 1, or a one-line pass. Never raises. Model-free: what it checks is fact, not taste.
+exits 0 (1 with --strict), or a one-line pass. Never raises. Heading matching is by shared key words, so a finding
+is a lead to look at, not a verdict.
 """
 import re
 import sys
@@ -125,8 +127,8 @@ def main(argv):
     if thin:
         problems.append(f"section(s) with under {min_words} words: " + "; ".join(h[:40] for h in thin[:6]))
     if problems:
-        print(f"{piece}:\n- " + "\n- ".join(problems))
-        return 1
+        print(f"{piece}: worth a look:\n- " + "\n- ".join(problems))
+        return 1 if "--strict" in argv else 0
     print(f"ok: {piece} covers all {len(items)} outline items in {len(heads)} headings")
     return 0
 

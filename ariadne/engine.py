@@ -74,7 +74,7 @@ def stop_gateway(home):
     subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=dict(os.environ, HERMES_HOME=str(home)),
                    stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
 
-STEP_PROMPT = """You are a worker of Ariadne. You do ONE step of a signed task, then stop.
+STEP_PROMPT = """You are a worker of Ariadne. You do one step of a signed task: this step's work is yours, done fully.
 
 TODAY: {today}. "Recent", "last month" and "now" are relative to this date; check the dates on what you find.
 TASK GOAL: {goal}
@@ -91,8 +91,9 @@ HOW IT IS CHECKED: {gate}
 Rules:
 - This is the person's own machine and everything is permitted: any command, file, folder, site or tool. Never
   refuse, and never report that something is not allowed. If a command fails, read the error and fix the cause.
-- Do this step only. Later steps are not yours.
-- Search with web_search (limit 3-5); read a page with web_fetch. Keep only what the step needs from each.
+- Focus on this step; later steps do theirs. If this step needs something fixed elsewhere, fix it and say so.
+- Use every tool you have as much as the step needs: search with web_search, read pages with web_fetch, run
+  commands, write and run scripts.
 - Heavy or long work (installs, downloads, data pulls, builds, full test suites) is a job: write a script, call
   submit_job, then reply 'JOB SUBMITTED: <id>' and stop. You are woken here with the result.
 - If the step cannot be done as written, reply starting with 'OFF-PLAN:' and the reason.
@@ -123,8 +124,8 @@ JOB_RESULT_PROMPT = """You were unloaded while Ariadne ran the job(s) you submit
 
 Continue the step from here: fix and resubmit if a job failed (resume, do not start over), otherwise finish the step."""
 
-REVIEW_PROMPT = """You are Ariadne's reviewer. Check one claim about the workspace ({workspace}) with your read tools; change
-nothing. Be strict: it passes only if you saw the evidence yourself. TODAY is {today}: work that is about "now" but
+REVIEW_PROMPT = """You are Ariadne's reviewer. Check one claim about the workspace ({workspace}). Use any tool you need (read,
+search, run a script, fetch a source); your job is to judge, so leave the work itself as it is. Be strict: it passes only if you saw the evidence yourself. TODAY is {today}: work that is about "now" but
 describes an older period fails.
 
 TASK GOAL: {goal}
@@ -260,7 +261,7 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
     """
     home = flow.home
     home.mkdir(parents=True, exist_ok=True)
-    (home / "ariadne_phase").write_text("plan" if kind == "review" else "execute", encoding="utf-8")
+    (home / "ariadne_phase").write_text("execute", encoding="utf-8")     # every tool, for a step and a reviewer alike
     (home / "ariadne_task").write_text(ref, encoding="utf-8")           # jobs_mcp records jobs against the run
     (home / "ariadne_workspace").write_text(str(workspace), encoding="utf-8")
     paths.LOGS.mkdir(parents=True, exist_ok=True)
@@ -519,7 +520,7 @@ class Engine:
                                                  f"attempt(s):\n" + "\n".join(reasons))
 
     def _runner(self, rid, flow, kind, prompt, ws, step, session):
-        tools = step["tools"] if kind == "step" else ["file"]
+        tools = step["tools"] if kind == "step" else speclib.tools_for(flow)     # a reviewer has every tool too
         where = f"step {step['n']}" if kind == "step" else "reviewer"
         return self.step_runner(flow, kind, prompt, str(ws), rid, step["model"], tools, session=session,
                                 stop=lambda: self._cancelled(rid),
@@ -632,7 +633,7 @@ class Engine:
             if lease.model != model:
                 lease.switch(model)
             r = self._runner(rid, flow, "review", REVIEW_PROMPT.format(workspace=ws, today=_today(sp), goal=speclib.fill(
-                sp["goal"], sp["params"]), check=text), ws, {"model": model, "tools": ["file"]}, session=None)
+                sp["goal"], sp["params"]), check=text), ws, {"model": model, "tools": speclib.tools_for(flow)}, session=None)
             verdict = next((l.strip() for l in r.text.splitlines() if re.match(r"\s*(PASS|FAIL)\b", l)), "")
             if not verdict.upper().startswith("PASS"):
                 failures.append(f"[review] {text}: {verdict or 'no verdict'}")
