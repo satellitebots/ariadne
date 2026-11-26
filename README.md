@@ -28,6 +28,7 @@ uv run --no-project --python 3.14 python -m ariadne install --system
 .venv\Scripts\activate                     # Windows; Linux/macOS: source .venv/bin/activate
 python -m ariadne doctor                   # what is missing (changes nothing)
 python -m ariadne ui                       # the console at http://127.0.0.1:8917
+python -m ariadne ui --mock --port 8918    # the same console on a scripted backend: no model, no GPU
 python -m ariadne chat                     # or talk to the orchestrator in the terminal
 ```
 
