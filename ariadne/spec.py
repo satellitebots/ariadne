@@ -28,6 +28,10 @@ from pathlib import Path
 
 from . import paths, yamlio
 
+# Placeholders every definition may use without a param: {checks} is the folder of shared gate scripts
+# (docs/WORKER-RECIPE.md), so a gate reads `python {checks}/facts_in_report.py REPORT.md data/facts.json`.
+BUILTIN_PARAMS = {"checks": (paths.ROOT / "checks").as_posix()}
+
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}$")
 TRIGGERS = ("now", "manual", "at", "cron")
 GATE_TYPES = ("run", "review")
@@ -100,7 +104,7 @@ def validate(spec, flows, catalog=None):
     texts = [str(s.get("goal", ""))] + [str(g) for g in s.get("gates") or []] + \
             [str(st.get(k, "")) for st in s.get("steps") or [] if isinstance(st, dict) for k in ("instruction", "gate")]
     used = {m for t in texts for m in re.findall(r"\{(\w+)\}", t)}
-    missing = sorted(used - {k for k, v in params.items() if str(v).strip()})
+    missing = sorted(used - {k for k, v in params.items() if str(v).strip()} - set(BUILTIN_PARAMS))
     if missing:
         problems.append(f"params: the steps use {', '.join(missing)}, which have no value")
     steps = s.get("steps") or []
@@ -164,7 +168,8 @@ def validate(spec, flows, catalog=None):
 
 
 def fill(text, params):
-    return re.sub(r"\{(\w+)\}", lambda m: str(params.get(m.group(1), m.group(0))), text)
+    values = {**BUILTIN_PARAMS, **(params or {})}
+    return re.sub(r"\{(\w+)\}", lambda m: str(values.get(m.group(1), m.group(0))), text)
 
 
 # ---------- flow templates ----------

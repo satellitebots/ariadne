@@ -28,14 +28,14 @@ def ctx(tmp_path, monkeypatch):
 
 def good_spec(tmp_path, **over):
     sp, _ = speclib.from_template(FLOWS["investigation"], name="googl-daily", workspace=str(tmp_path / "ws"))
-    sp["params"] = {"question": "Is GOOGL trending up?", "must_contain": "a verdict"}
+    sp["params"] = {"question": "Is GOOGL trending up?", "must_contain": "a verdict", "within_days": "30"}
     sp.update(over)
     return sp
 
 
 def test_a_template_needs_its_params_and_a_name(tmp_path):
     sp, asks = speclib.from_template(FLOWS["investigation"])
-    assert set(asks) == {"question", "must_contain"} and len(sp["steps"]) == 4
+    assert set(asks) == {"question", "must_contain", "within_days"} and len(sp["steps"]) == 5
     with pytest.raises(speclib.SpecError) as e:
         speclib.validate(sp, FLOWS)
     text = str(e.value)
@@ -75,7 +75,7 @@ def test_draft_sign_run_and_versions(ctx, tmp_path):
     assert t["version"] == 1 and t["trigger"] == "runs when you start it"
     assert (ctx.store.specs_dir / t["id"] / "v1.yaml").exists()
     r = verbs.call("run", task="googl-daily")
-    assert r["status"] == "queued" and r["steps_total"] == 4
+    assert r["status"] == "queued" and r["steps_total"] == 5
     e = verbs.call("edit", task="googl-daily")
     sp = e["spec"]
     sp["goal"] = "changed"

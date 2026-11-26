@@ -4,9 +4,10 @@ description: How to run work that takes minutes or hours (ingest, embedding, ins
 ---
 # Long jobs
 
-The terminal tool stops a foreground command after its timeout (at most 600 s). A run also has a time budget and a
-turn limit, and anything still running when the run ends is stopped. So never bet on one long command finishing.
-(RAG build: a full ingest run in the foreground died at 600 s, twice, and the next attempt started it from zero.)
+Prefer `submit_job` (the jobs skill): Ariadne runs the job with you unloaded and wakes you with the result. Use the
+background pattern below only for work that must run beside you. Runs have no time budget or turn limit, but a
+long foreground command still blocks you and your progress, and a crash midway loses everything not saved.
+(RAG build: a full ingest run in the foreground died twice, and the next attempt started it from zero.)
 
 ## Before you run it: measure
 1. Run it on a small sample first (`--limit 20`, one folder, one file). Check the result is right end to end.
@@ -29,10 +30,10 @@ turn limit, and anything still running when the run ends is stopped. So never be
 - At the end write the real numbers to a file (e.g. `ingest_report.json`: documents, chunks, seconds). README text
   and gate evidence quote that file, never a guess.
 
-## If the run might end first
-Your run can end (time budget, turn limit) while the job is still going. That is fine when the job is resumable:
-leave it a clear note in your report ("ingest at 1200/3400, resume with `python -m rag ingest --resume`") and the
-next attempt continues from the progress record.
+## If the run is stopped first
+A run can be parked or cancelled while the job is still going. That is fine when the job is resumable: leave a
+clear note in your report ("ingest at 1200/3400, resume with `python -m rag ingest --resume`") and the next attempt
+continues from the progress record.
 
 ## When planning
 Give long work its own step, planned as: sample run -> estimate -> background run with progress -> verify counts.

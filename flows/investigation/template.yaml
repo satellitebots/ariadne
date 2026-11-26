@@ -1,42 +1,55 @@
 # The investigation flow as a task template (docs/DESIGN.md, "Flows as templates").
 # `params` are what the orchestrator asks the person; everything else is the starting definition it fills in and may
-# adjust (add a data-gathering step, tighten a gate) before the person signs.
+# adjust before the person signs. The shape follows docs/WORKER-RECIPE.md: sources in a ledger, every number in a
+# facts file a script wrote, the report copies, verify is local, scripts check before a reviewer judges.
+# {checks} is filled in by Ariadne: the folder of shared gate scripts.
 params:
   question: "What should be answered, in one sentence?"
   must_contain: "What must a good answer contain (numbers, names, dates, a comparison, a recommendation)?"
+  within_days: "How far back may sources go, in days (e.g. 14 for news, 3650 for background)?"
 goal: "REPORT.md answers: {question}"
 steps:
   - title: Bound the question
     instruction: |
       Write NOTES.md: the question ({question}) as one sentence; what a good answer must contain ({must_contain});
-      what you already know and what you are assuming; and the primary sources you will look for. Do not research
-      yet.
+      what you already know and what you are assuming; the primary sources you will look for; and every number the
+      answer will need, each with its definition (formula, unit, window). Do not research yet.
     tools: [file, skills]
     outputs: [NOTES.md]
-  - title: Gather evidence
+  - title: Gather sources
     instruction: |
-      Collect evidence for the question in NOTES.md from primary sources: web_search, then web_fetch. For data (prices,
-      tables, downloads), write a script under scripts/ and submit it with submit_job; never run heavy or long work in
-      the terminal. Record every source in SOURCES.md as "- <url> - <what it supports> (<date>)", and save data to
-      data/.
-    tools: [file, terminal, search, web, jobs, skills]
+      Collect evidence for the question in NOTES.md from primary sources: web_search, then web_fetch. Only sources
+      dated within the last {within_days} days. Record each in SOURCES.md, one line per source, exactly
+      "- <url> | <publisher> | <what it supports> | <YYYY-MM-DD>", the publisher being the site the URL is on.
+    tools: [file, search, web, skills]
     outputs: [SOURCES.md]
-    gate: {type: run, text: "python -c \"import re,sys; t=open('SOURCES.md',encoding='utf-8').read(); sys.exit(0 if len(set(re.findall(r'https?://[^\\s)]+', t)))>=3 else 1)\""}
+    gate: {type: run, text: "python {checks}/sources_ledger.py SOURCES.md --min 3 --within-days {within_days}"}
+  - title: Compute the facts
+    instruction: |
+      Write scripts/facts.py: it gets the raw data the answer needs (downloads go to data/) and writes
+      data/facts.json with every number the report will state, using the definitions in NOTES.md (facts-first
+      skill: value, unit, date or window, formula). Heavy downloads are a job (submit_job). If the answer needs no
+      numbers, write an empty JSON object and say so.
+    tools: [file, terminal, jobs, skills]
+    outputs: [data/facts.json]
+    gate: {type: run, text: "python -c \"import json; json.load(open('data/facts.json', encoding='utf-8')); print('ok: data/facts.json is valid JSON')\""}
   - title: Write the report
     instruction: |
-      Write REPORT.md from NOTES.md, SOURCES.md and data/: the question, a short answer, the evidence with a citation
-      for each claim, what is inference rather than fact, what is unknown or contested, and what would change the
-      answer. Numbers carry units and dates.
+      Write REPORT.md from NOTES.md, SOURCES.md and data/facts.json, with these headings: Question, Answer, Evidence,
+      Inference, Unknown, What would change the answer. Cite a source for each claim. Copy every number from
+      data/facts.json exactly, with its unit and date; never compute one yourself.
     tools: [file, skills]
     outputs: [REPORT.md]
   - title: Verify
     instruction: |
-      Check every claim and number in REPORT.md against SOURCES.md and data/. Fix or remove anything you cannot
-      back; mark what is inference. End with a line "VERIFIED: <n> claims checked".
-    tools: [file, search, web]
+      Check REPORT.md against data/, SOURCES.md and NOTES.md using only the files here (verify-locally skill):
+      never change data/ or SOURCES.md, change REPORT.md to match them, remove or mark what you cannot back. Run the
+      gate below yourself before finishing. End REPORT.md with "VERIFIED: <n> claims checked".
+    tools: [file, terminal, skills]
     outputs: [REPORT.md]
-    gate: {type: review, text: "Every number and factual claim in REPORT.md has a source listed in SOURCES.md"}
+    gate: {type: run, text: "python {checks}/facts_in_report.py REPORT.md data/facts.json --allow-empty && python {checks}/report_shape.py REPORT.md --needs answer,evidence,inference,unknown --verified"}
 gates:
+  - {type: review, text: "Every factual claim in REPORT.md has a source in SOURCES.md, and every number matches data/facts.json"}
   - {type: review, text: "REPORT.md gives a short answer to the question, evidence with citations, inference marked as such, and open questions"}
 trigger: {kind: manual}
 retries: 1

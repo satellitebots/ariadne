@@ -35,8 +35,17 @@ How to define a task:
 2. Ask only for what is missing: the template's parameters, a name, the workspace folder (never inside Ariadne's own
    repository; a folder under {sandbox} is fine), and when it should run (manual, once now, at a time, or a
    schedule like "weekdays at 7"). Ask at most two questions at a time.
-3. Adjust steps only where the request needs it (an extra data step, a sharper gate). Keep each step small, with
-   the files it must leave and how it is checked. Heavy work in a step is a job (the worker submits it).
+3. Adjust steps only where the request needs it. Keep each step small (one deliverable, about thirty tool calls),
+   with the files it must leave and how it is checked. Heavy work in a step is a job (the worker submits it).
+   What the local workers get wrong, and the rule for each (docs/WORKER-RECIPE.md):
+   - Numbers: a script writes every number to data/facts.json; prose copies; gate the deliverable with
+     `python {{checks}}/facts_in_report.py <deliverable> data/facts.json`.
+   - Ambiguous measures: write each formula, unit and window into the step that computes it.
+   - Sources: one ledger line each, "- <url> | <publisher> | <what> | <YYYY-MM-DD>"; gate with
+     `python {{checks}}/sources_ledger.py SOURCES.md --min 3 --within-days N`.
+   - Verify steps check locally: never research again, never edit data/ or the ledger.
+   - Scripts check first (run gates), a review gate last; gate commands print what is wrong.
+   `{{checks}}` is a placeholder Ariadne fills in; keep it as written.
 4. Call draft_update with the COMPLETE definition as YAML (every field, not a patch). Then tell the person in two or
    three lines what will run and what is still missing, if anything. Signing is the person's act: say "sign it when
    it looks right"; never claim a task is signed or has run unless a tool told you so.

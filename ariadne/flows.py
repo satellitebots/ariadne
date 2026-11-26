@@ -44,6 +44,8 @@ BASE_CONFIG = {
     # been cancelled (googl-daily e6aa) and shared the GPU with the next run. Ariadne resumes sessions itself
     # (--resume, after park or a job). Hermes reads <= 0 as "always", so the window is a millisecond.
     "agent": {"gateway_auto_continue_freshness": 0.001},
+    # No clocks: Hermes stops a foreground terminal command after 180 s; a day means only a deliberate stop does.
+    "terminal": {"timeout": 86400},
     "tool_loop_guardrails": {"hard_stop_enabled": False, "non_interactive_hard_stop_enabled": False,
                              "loop_caps": {"max_web_searches": 1000, "max_subagents": 1000}},
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
@@ -321,6 +323,13 @@ def install_shared_skills(fl):
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
+        md = dst / "SKILL.md"           # skills name the shared gate scripts as {checks}, like definitions do
+        if md.exists():
+            from .spec import BUILTIN_PARAMS
+            text = md.read_text(encoding="utf-8")
+            for k, v in BUILTIN_PARAMS.items():
+                text = text.replace("{" + k + "}", v)
+            md.write_text(text, encoding="utf-8")
 
 
 def missing_requirements(fl):

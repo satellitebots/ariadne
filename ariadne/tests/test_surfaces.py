@@ -46,7 +46,7 @@ def test_chat_offers_every_verb_but_the_bypass_and_itself():
 def test_the_same_definition_signs_and_runs_from_http_and_the_terminal(ctx, tmp_path, capsys):
     client = TestClient(appmod.create_app(ctx))
     sp, _ = speclib.from_template(FLOWS["investigation"], name="googl-daily", workspace=str(tmp_path / "ws"))
-    sp["params"] = {"question": "q", "must_contain": "m"}
+    sp["params"] = {"question": "q", "must_contain": "m", "within_days": "30"}
     d = client.post("/api/v/draft", json={"text": "q", "flow": "investigation"}).json()
     d = client.post("/api/v/draft_update", json={"draft": d["id"], "yaml": speclib.dump(sp)}).json()
     assert d["ready"]

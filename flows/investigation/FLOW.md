@@ -22,6 +22,13 @@
 - Numbers carry units and the year they are from.
 - "I could not verify this" is a finding. Write it instead of guessing.
 
+## Numbers and sources (docs/WORKER-RECIPE.md)
+- Every number comes from `data/facts.json`, written by a script; the report copies it (facts-first skill).
+- Sources live in a ledger, one line each: `- <url> | <publisher> | <what it supports> | <YYYY-MM-DD>`.
+- The verify step checks locally and never edits `data/` or `SOURCES.md` (verify-locally skill).
+
 ## Gates
-- Command gates are things like "REPORT.md exists", "every `http` link in REPORT.md appears in the sources list".
-- A review gate should name the claims a reviewer must check and the sources they should find behind them.
+- Run gates first, from the shared scripts: `python {checks}/sources_ledger.py SOURCES.md --min 3 --within-days N`,
+  `python {checks}/facts_in_report.py REPORT.md data/facts.json`, `python {checks}/report_shape.py REPORT.md
+  --needs answer,evidence --verified`, `python {checks}/fresh_data.py data/<file>.csv --max-age-days 7`.
+- Then one review gate that names the claims a reviewer must check and the sources they should find behind them.

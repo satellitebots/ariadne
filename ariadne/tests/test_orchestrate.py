@@ -39,7 +39,7 @@ def ctx(tmp_path, monkeypatch):
 def test_the_orchestrator_fills_a_draft_and_cannot_work(ctx, tmp_path):
     d = verbs.call("draft", text="Is GOOGL trending up?", flow="investigation")
     sp = dict(d["spec"], name="googl-daily", workspace=str(tmp_path / "ws"),
-              params={"question": "Is GOOGL trending up?", "must_contain": "a verdict"})
+              params={"question": "Is GOOGL trending up?", "must_contain": "a verdict", "within_days": "30"})
     transport, seen = model_says(("draft_update", {"yaml": speclib.dump(sp)}),
                                  "It runs four steps on GOOGL. Sign it when it looks right.")
     ctx.orchestrator = orchestrate.Orchestrator(transport=transport, model="qwen")
@@ -57,7 +57,7 @@ def test_the_orchestrator_fills_a_draft_and_cannot_work(ctx, tmp_path):
 def test_chat_can_drive_runs_through_the_same_verbs(ctx, tmp_path):
     d = verbs.call("define", yaml=speclib.dump(dict(speclib.from_template(FLOWS["investigation"])[0],
                                                     name="googl-daily", workspace=str(tmp_path / "ws"),
-                                                    params={"question": "q", "must_contain": "m"})))
+                                                    params={"question": "q", "must_contain": "m", "within_days": "30"})))
     verbs.call("sign", draft=d["id"])
     transport, seen = model_says(("run", {"task": "googl-daily"}), "Started; it is queued for the machine.")
     ctx.orchestrator = orchestrate.Orchestrator(transport=transport, model="qwen")
