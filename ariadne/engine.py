@@ -403,7 +403,8 @@ class Engine:
             ended = self._ask_tools(rid, step, lease)
             if ended:
                 return ended
-            notes = self.store.take_steers(rid)
+            fresh = self.store.take_steers(rid)     # new since the last step saw them (for the event)
+            notes = self.store.steers(rid)          # all of them: a note holds for the rest of the run
             prompt = STEP_PROMPT.format(
                 today=_today(sp), goal=speclib.fill(sp["goal"], sp["params"]), workspace=ws, workspace_posix=Path(ws).as_posix(),
                 platform=PLATFORM,
@@ -413,7 +414,8 @@ class Engine:
                 gate=_gate_text(step["gate"], sp["params"]),
                 steering=STEERING.format(notes="\n- ".join(notes)) if notes else "", retry=retry_text)
             if notes:
-                self.store.event(rid, "steer", f"{len(notes)} note(s) delivered to step {n}")
+                self.store.event(rid, "steer", f"{len(notes)} note(s) given to step {n}"
+                                               + (f" ({len(fresh)} new)" if fresh else ""))
             self.store.step_set(rid, n, attempt, model=step["model"], status="running")
             self.store.event(rid, "step", f"{n}/{total} {step['title']} on {step['model']}, attempt {attempt}")
             r = self._runner(rid, flow, "step", prompt, ws, step, session=None)

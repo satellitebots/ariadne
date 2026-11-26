@@ -53,7 +53,8 @@ def test_a_turn_calls_a_tool_and_answers(ws, home):
                          transport=run, on_event=lambda k, d: events.append((k, d)))
     assert (answer.text, answer.turns, answer.stopped) == ("fixed it; tests pass", 2, "")
     assert "return a - b" in json.dumps(session_mod.load(home, "t1"), ensure_ascii=False)
-    assert events == [("tool", 'read_file {"path": "calc.py"}')]
+    assert [e for e in events if e[0] == "tool"] == [("tool", 'read_file {"path": "calc.py"}')]
+    assert [k for k, _ in events].count("model") == 2          # every model call is reported too
     assert run.calls[0]["tools"] and run.calls[0]["tool_choice"] == "auto"
 
 

@@ -178,9 +178,13 @@ def run(prompt, *, home, workspace, phase="execute", model, session="", max_turn
             answer.dropped += dropped
             messages[0] = {**messages[0], "content": _mark_omitted(messages[0].get("content") or "", dropped)}
         left = min(600, max(30, int(budget - (clock() - started)))) if budget else None   # None: wait for the model
+        asked = time.time()
         reply = model_mod.chat(messages, model=model, tools=schemas, transport=transport, base_url=base_url,
                                timeout=left)
         messages.append(reply["raw"])
+        if on_event:
+            on_event("model", f"model call {answer.turns}: {time.time() - asked:.0f} s, "
+                              f"{len(reply['tool_calls'])} tool call(s)")
         for call in reply["tool_calls"]:
             if on_event:
                 on_event("tool", f"{call['name']} {json.dumps(call['arguments'], ensure_ascii=False)[:200]}")

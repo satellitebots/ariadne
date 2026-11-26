@@ -225,6 +225,10 @@ class Store:
         self._exec("INSERT INTO steer(run_id, created, text) VALUES (?,?,?)", rid, time.time(), text)
         self.event(rid, "steer", f"note queued: {text[:200]}")
 
+    def steers(self, rid):
+        """Every note for a run, oldest first. They hold for the rest of the run: each later step is given all of them."""
+        return [r["text"] for r in self._all("SELECT text FROM steer WHERE run_id=? ORDER BY id", rid)]
+
     def take_steers(self, rid):
         rows = self._all("SELECT id, text FROM steer WHERE run_id=? AND consumed=0 ORDER BY id", rid)
         for r in rows:

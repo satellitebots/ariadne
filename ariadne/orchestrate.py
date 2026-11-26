@@ -24,6 +24,9 @@ What you can do (tools): look at flows (task templates), drafts, tasks, runs and
 definition with draft_update; start, park, steer, resume or cancel runs when the person asks; search the web and read
 files to plan well. You cannot write files or run commands. A run that is "asking" waits for the person's yes or no
 (permissions.yaml): tell them what it asks, and call approve or reject only on their explicit answer, never on your own.
+Act on a run (run, park, steer, resume, cancel, approve, reject) only when the person's message tells you to do that.
+When they ask what to do or what to tell a run, answer with your proposal (the exact note you would send) and ask
+whether to send it; do nothing to the run in that turn. A steering note holds for the rest of the run.
 To say how a run is doing, call progress: its last tool call, model call or job output and how long ago. Nothing stops a
 run on its own; cancel only when the person asks. "waiting" means queued for the machine; only "parked" is parked.
 
@@ -88,8 +91,10 @@ class Orchestrator:
         if fl:
             return fl.step_model
         # Outside a draft: the agent model the machine has now (a live run's), so talking about a run costs no swap.
+        from . import park
         st = broker.status() if broker else {}
-        for h in [st.get("holder")] + list(st.get("waiting") or []):
+        parked = park.requested() or {}
+        for h in [st.get("holder")] + list(st.get("waiting") or []) + [{"model": parked.get("model")}]:
             m = catalog.models.get((h or {}).get("model") or "")
             if m and m.kind == "agent" and m.installed():
                 return m.name
@@ -125,7 +130,8 @@ class Orchestrator:
                             web=web_mod.Search(), extra=VerbTools(d["id"] if d else ""),
                             system=SYSTEM.format(sandbox=(paths.ROOT / "sandbox").as_posix(),
                                                  today=time.strftime("%A %d %B %Y")),
-                            on_event=lambda kind, detail: store.event(ref, "orchestrator", detail))
+                            on_event=lambda kind, detail: store.event(
+                                ref, "orchestrator", detail if kind == "model" else "called " + detail))
         finally:
             lease.release()
         return a.text or "(the orchestrator gave no answer; try again or say it differently)"

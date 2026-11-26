@@ -23,6 +23,7 @@ Machine and setup:
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from . import deps, paths
@@ -213,6 +214,38 @@ def _busy_note():
             "/park stops a run now, Ctrl+C stops waiting.)")
 
 
+class _EventEcho:
+    """While a chat turn works, print what the orchestrator does (its waits, model calls and tool calls) as it
+    happens, so nothing changes out of sight."""
+    def __init__(self, ref, poll=1.0):
+        import threading
+        self.ref, self.poll, self.done = ref, poll, threading.Event()
+        self.since = time.time()
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.done.set()
+        self.thread.join(timeout=3)
+        self._print_new()
+
+    def _print_new(self):
+        from . import verbs
+        for e in verbs.ctx.store.events(self.ref, since=self.since):
+            self.since = e["ts"]
+            if e["kind"] in ("orchestrator", "waiting"):
+                print(f"   . {e['detail'][:300]}", flush=True)
+
+    def _loop(self):
+        while not self.done.wait(self.poll):
+            try:
+                self._print_new()
+            except Exception:
+                pass
+
+
 def chat_loop(rest):
     """A terminal conversation with the orchestrator (the same `chat` verb the UI uses)."""
     from . import verbs
@@ -233,6 +266,9 @@ def chat_loop(rest):
         busy = _busy_note()
         if busy:
             print(busy)
+        conv = conv or f"c{time.strftime('%m%d-%H%M%S')}"
+        watch = _EventEcho(conv)
+        watch.start()
         try:
             out = verbs.call("chat", message=msg, conversation=conv)
         except verbs.VerbError as e:
@@ -241,6 +277,8 @@ def chat_loop(rest):
         except KeyboardInterrupt:
             print("\n(stopped waiting; the orchestrator did not answer that message)\n")
             continue
+        finally:
+            watch.stop()
         conv = out["conversation"]
         print(f"ariadne> {out['reply']}\n")
 

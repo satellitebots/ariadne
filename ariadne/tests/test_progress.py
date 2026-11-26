@@ -70,6 +70,38 @@ def test_the_newest_events_are_the_ones_shown(tmp_path):
     assert [e["detail"] for e in store.events("r1", limit=3, newest=True)] == ["call 27", "call 28", "call 29"]
 
 
+def test_a_steering_note_holds_for_every_later_step(tmp_path):
+    store = durable.Store(tmp_path / "a.db")
+    broker = Broker(tmp_path / "m.db", server=FakeServer(), poll=0.01)
+    rid = start(store, make_spec(tmp_path / "ws", [{"title": "A", "instruction": "a", "outputs": []},
+                                                    {"title": "B", "instruction": "b", "outputs": []},
+                                                    {"title": "C", "instruction": "c", "outputs": []}]))
+
+    def first(ws, prompt):        # a note given while step 1 runs is meant for step 3
+        store.steer(rid, "in step 3 use news from the last 2 weeks only")
+        return "ok", 0
+    script = Script({1: [first]})
+    engine.Engine(store, FLOWS, broker, step_runner=script).run_once()
+    prompts = {n: p for kind, n, p, *_ in script.calls if kind == "step"}
+    assert "last 2 weeks" in prompts[2] and "last 2 weeks" in prompts[3]
+
+
+def test_terminal_chat_commands_act_without_the_model(tmp_path, monkeypatch):
+    from ariadne import __main__ as cli, park
+    monkeypatch.setattr(park, "FLAG", tmp_path / "park.json")
+    store = durable.Store(tmp_path / "a.db")
+    broker = Broker(tmp_path / "m.db", server=FakeServer(), poll=0.01)
+    rid = start(store, make_spec(tmp_path / "ws", [{"title": "A", "instruction": "a", "outputs": []}]))
+    store.run_set(rid, status="running", step=1)
+    store.event(rid, "tool", "step 1: wrote NOTES.md")
+    monkeypatch.setattr(verbs, "ctx", verbs.Ctx(store=store, broker=broker, flows=FLOWS))
+    assert "wrote NOTES.md" in cli.chat_command("/status")
+    assert "parking" in cli.chat_command("/park") and park.requested()
+    assert "noted" in cli.chat_command("/steer use primary sources")
+    assert store.steers(rid) == ["use primary sources"]
+    assert "unknown command" in cli.chat_command("/nope")
+
+
 def test_the_orchestrator_loop_has_no_cap_or_clock_by_default():
     from ariadne import orchestrate
     o = orchestrate.Orchestrator()
