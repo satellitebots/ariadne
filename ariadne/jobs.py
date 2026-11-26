@@ -52,6 +52,15 @@ def get(jid, db_path=None):
     return dict(r) if r else None
 
 
+def recent(limit=30, task_id=None, db_path=None):
+    """The newest jobs, newest first (all tasks, or one)."""
+    q, a = "SELECT * FROM jobs", []
+    if task_id:
+        q, a = q + " WHERE task_id=?", [task_id]
+    with _db(db_path) as c:
+        return [dict(r) for r in c.execute(q + " ORDER BY created DESC LIMIT ?", a + [int(limit)])]
+
+
 def for_task(task_id, status=None, db_path=None):
     q, a = "SELECT * FROM jobs WHERE task_id=?", [task_id]
     if status:

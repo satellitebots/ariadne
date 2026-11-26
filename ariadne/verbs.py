@@ -114,7 +114,17 @@ def _run_view(r, detail=False):
         act = next((e for e in reversed(v["events"]) if e["kind"] in ACTIVITY), None)
         v["activity"] = {"ts": act["ts"], "kind": act["kind"], "detail": act["detail"]} if act else None
         v["workspace"] = r["workspace"]
+        v["notes"] = s.steers(r["id"])
+        from . import jobs as jobslib
+        v["jobs"] = [_job_view(j) for j in jobslib.recent(20, task_id=r["id"])]
     return v
+
+
+def _job_view(j):
+    res = json.loads(j.get("result") or "{}") if j.get("result") else {}
+    return {"id": j["id"], "run": j["task_id"], "status": j["status"], "command": j["command"], "why": j["why"],
+            "created": j["created"], "started": j["started"], "ended": j["ended"], "exit_code": j["exit_code"],
+            "seconds": res.get("seconds"), "log_tail": (res.get("log_tail") or "")[-1200:]}
 
 
 def _draft_view(d):
@@ -194,6 +204,27 @@ def say(draft: str, message: str) -> dict:
 def draft_show(draft: str) -> dict:
     """A draft: its definition (as YAML), what is still missing, and the conversation so far."""
     return _draft_view(_draft(draft, open_only=False))
+
+
+@verb("define")
+def draft_fill(draft: str, name: str = "", workspace: str = "", trigger: str = "", params: dict = None) -> dict:
+    """Fill in a draft directly, without the orchestrator: its name, workspace folder, when it runs ('manual',
+    'now', an ISO time or cron) and answers to the template's questions. Empty values leave a field as it is."""
+    d = _draft(draft)
+    sp = dict(d["spec"])
+    if name.strip():
+        sp["name"] = name.strip()
+    if workspace.strip():
+        sp["workspace"] = workspace.strip()
+    trig = trigger.strip()
+    if trig:
+        sp["trigger"] = ({"kind": trig} if trig in ("manual", "now") else
+                         {"kind": "cron", "cron": trig} if len(trig.split()) == 5 else {"kind": "at", "at": trig})
+    if params:
+        sp["params"] = {**(sp.get("params") or {}), **{k: str(v) for k, v in params.items() if str(v).strip()}}
+    ctx.store.draft_set(d["id"], sp)
+    ctx.store.event(d["id"], "draft", "filled in from the form")
+    return _draft_view(ctx.store.draft(d["id"]))
 
 
 @verb("define")
@@ -293,8 +324,16 @@ def tasks() -> list:
 def task(task: str) -> dict:
     """A task: its current definition and its recent runs."""
     t = _task(task)
-    return {**_task_view(t), "yaml": speclib.dump(ctx.store.spec(t["id"])),
-            "runs": [_run_view(r) for r in ctx.store.runs(t["id"], limit=20)]}
+    sp = ctx.store.spec(t["id"])
+    runs = [_run_view(r) for r in ctx.store.runs(t["id"], limit=20)]
+    ended = [r for r in runs if r["status"] not in durable.LIVE]
+    took = [r["ended"] - r["started"] for r in ended if r["status"] == "done" and r["ended"] and r["started"]]
+    stats = {"runs": len(ended), "done": sum(r["status"] == "done" for r in ended),
+             "needs_you": sum(r["status"] == "needs_you" for r in ended),
+             "failed": sum(r["status"] in ("failed", "timed_out") for r in ended),
+             "cancelled": sum(r["status"] == "cancelled" for r in ended),
+             "typical_s": sorted(took)[len(took) // 2] if took else None}
+    return {**_task_view(t), "yaml": speclib.dump(sp), "spec": sp, "stats": stats, "runs": runs}
 
 
 @verb("tasks")
@@ -351,11 +390,47 @@ def run(task: str) -> dict:
     return _run_view(ctx.store.run(ctx.store.run_new(t["id"], "manual")))
 
 
+@verb("machine")
+def jobs(run: str = "", limit: int = 30) -> list:
+    """Heavy work runs as jobs with the models unloaded: the newest, or one run's. Status, command, why, exit code,
+    seconds and the end of the log."""
+    from . import jobs as jobslib
+    rid = _run(run)["id"] if run else None
+    return [_job_view(j) for j in jobslib.recent(limit, task_id=rid)]
+
+
+@verb("machine")
+def activity(limit: int = 60) -> list:
+    """What happened lately across every run and conversation, newest first: steps, tool calls, model calls, jobs,
+    parks, asks, steering notes and ends."""
+    rows = ctx.store.events(limit=max(1, min(int(limit), 500)), newest=True)
+    return [{"ts": e["ts"], "ref": e["ref"], "kind": e["kind"], "detail": e["detail"]} for e in reversed(rows)]
+
+
+@verb("machine")
+def rules() -> dict:
+    """What workers may do (permissions.yaml: default allow; what asks, what is refused) and what local workers get
+    wrong, with the rule that removes each (docs/WORKER-RECIPE.md)."""
+    try:
+        perms = permissions.load()
+    except ValueError as e:
+        perms = {"error": str(e)}
+    recipe = []
+    from . import paths as _paths
+    doc = _paths.ROOT / "docs" / "WORKER-RECIPE.md"
+    if doc.exists():
+        for line in doc.read_text(encoding="utf-8").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if line.startswith("| W") and len(cells) >= 5:
+                recipe.append({"id": cells[0], "failure": cells[1], "seen": cells[2], "rule": cells[3], "where": cells[4]})
+    return {"permissions": perms, "permissions_file": str(permissions.FILE), "recipe": recipe}
+
+
 @verb("runs")
-def runs(task: str = "", live: bool = False) -> list:
+def runs(task: str = "", live: bool = False, limit: int = 50) -> list:
     """Runs, newest first: all, one task's, or only the live ones."""
     tid = _task(task)["id"] if task else None
-    return [_run_view(r) for r in ctx.store.runs(tid, live=live)]
+    return [_run_view(r) for r in ctx.store.runs(tid, live=live, limit=max(1, min(int(limit), 500)))]
 
 
 @verb("runs")
@@ -507,7 +582,7 @@ def events(since: float = 0.0) -> list:
 
 def schema(v: Verb) -> dict:
     """A JSON schema for a verb's arguments (MCP tool input, chat tool parameters)."""
-    kinds = {str: "string", int: "integer", float: "number", bool: "boolean"}
+    kinds = {str: "string", int: "integer", float: "number", bool: "boolean", dict: "object", list: "array"}
     props, req = {}, []
     for n, (ann, default) in v.params.items():
         props[n] = {"type": kinds.get(ann, "string")}

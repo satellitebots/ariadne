@@ -43,8 +43,9 @@ def stream_batch(since=0.0, limit=200):
     return text, cursor
 
 
-def create_app(ctx=None):
-    """The app; a test passes its own verbs.Ctx so it needs no model and no real database."""
+def create_app(ctx=None, start_worker=True):
+    """The app; a test passes its own verbs.Ctx so it needs no model and no real database. The mock backend passes
+    start_worker=False: its engine runs in-process, and the real daemon must not start."""
     if ctx is not None:
         verbs.ctx = ctx
     app = FastAPI(title="Ariadne", version=VERSION, docs_url=None, redoc_url=None, openapi_url=None)
@@ -67,7 +68,7 @@ def create_app(ctx=None):
             out = verbs.call(name, **(args or {}))
         except verbs.VerbError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        if name in ("run", "rerun", "sign", "schedule", "resume", "chat", "say"):
+        if start_worker and name in ("run", "rerun", "sign", "schedule", "resume", "chat", "say"):
             from ..daemon import ensure_worker
             try:
                 ensure_worker()

@@ -335,6 +335,10 @@ def main(argv=None):
         print(f"Ariadne stopped: the worker and the models. Runs back to you: {', '.join(stopped) or 'none'}")
         return 0
     if cmd == "ui":
+        if "--mock" in rest:        # its own process: the mock's state folder must be set before anything imports paths
+            import subprocess
+            args = [a for a in rest if a != "--mock"]
+            return subprocess.call([sys.executable, "-m", "ariadne.mock", *args], cwd=str(paths.ROOT))
         from . import server
         return server.main(rest)
     deps.require()
