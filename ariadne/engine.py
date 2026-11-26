@@ -307,8 +307,11 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             boundary.pos = None
     if progress:
         progress.poll()
-    if code == CANCELLED:
-        stop_gateway(home)      # a cancelled session must not live on in the gateway that owned it
+    if code in (CANCELLED, PARKED):
+        # The turn runs in the home's Hermes gateway, not in the CLI process killed above: without this a parked run
+        # kept generating on the GPU (seen 25 Nov: "parked", gateway turn running, GPU at 98%) and a cancelled one
+        # lived on. Ariadne resumes the session itself (--resume) after a park.
+        stop_gateway(home)
     out = (stdout or "") + ("\n[stderr]\n" + stderr if (stderr or "").strip() else "")
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
     sid = _SESSION_ID.findall(out) or ([session or _latest_session(home, started)] if code in (PARKED, CANCELLED) else [])
