@@ -27,7 +27,8 @@ KINDS = ("tools", "commands", "paths")
 HOOK = paths.ROOT / "tools" / "permissions_hook.py"
 
 # Set on every Hermes run: the read-before-write guard and the approval layer go away entirely.
-HERMES_ENV = {"HERMES_DISABLE_FILE_STATE_GUARD": "1", "HERMES_YOLO_MODE": "1"}
+HERMES_ENV = {"HERMES_DISABLE_FILE_STATE_GUARD": "1", "HERMES_YOLO_MODE": "1",
+              "HERMES_AUTO_CONTINUE_FRESHNESS": "0.001"}   # its gateway never continues a session on its own
 
 
 def load(file=None) -> dict:

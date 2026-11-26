@@ -66,7 +66,9 @@ def _latest_session(home, since):
 
 
 def stop_gateway(home):
-    """Stop a Hermes gateway left running in a worker home (older workers started them; headless runs do not)."""
+    """Stop the Hermes gateway of a worker home. Hermes's CLI runs every session through a gateway it starts on
+    demand (gateway run --idle-exit); it is stopped at daemon start and when a run is cancelled, so nothing it holds
+    can carry on unseen."""
     if not (Path(home) / "gateway.pid").exists():
         return
     subprocess.run([str(paths.HERMES_EXE), "gateway", "stop", "--yes"], env=dict(os.environ, HERMES_HOME=str(home)),
@@ -305,6 +307,8 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
             boundary.pos = None
     if progress:
         progress.poll()
+    if code == CANCELLED:
+        stop_gateway(home)      # a cancelled session must not live on in the gateway that owned it
     out = (stdout or "") + ("\n[stderr]\n" + stderr if (stderr or "").strip() else "")
     log.write_text(" ".join(cmd) + "\n\n" + out, encoding="utf-8")
     sid = _SESSION_ID.findall(out) or ([session or _latest_session(home, started)] if code in (PARKED, CANCELLED) else [])

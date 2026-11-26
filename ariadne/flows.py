@@ -40,6 +40,10 @@ BASE_CONFIG = {
     "approvals": {"mode": "off", "single_query_mode": "approve", "cron_mode": "approve",
                   "unattended_mode": "approve", "mcp_reload_confirm": False, "destructive_slash_confirm": False},
     "security": {"allow_private_urls": True, "protected_instruction_files": False},
+    # The gateway that owns a worker's sessions must never continue one on its own: it auto-continued a run that had
+    # been cancelled (googl-daily e6aa) and shared the GPU with the next run. Ariadne resumes sessions itself
+    # (--resume, after park or a job). Hermes reads <= 0 as "always", so the window is a millisecond.
+    "agent": {"gateway_auto_continue_freshness": 0.001},
     "tool_loop_guardrails": {"hard_stop_enabled": False, "non_interactive_hard_stop_enabled": False,
                              "loop_caps": {"max_web_searches": 1000, "max_subagents": 1000}},
     "fallback_providers": [{"provider": "custom", "model": "ariadne-qwen3.5-4b",
