@@ -379,6 +379,9 @@ def progress(run: str, recent: int = 15) -> dict:
     changed = sorted({e["detail"].split(": ", 1)[-1].split(" ", 1)[-1] for e in act if e["kind"] == "tool"
                       and e["detail"].split(": ", 1)[-1].startswith(("wrote ", "edited "))})
     quiet = next((e for e in reversed(ev) if e["kind"] == "quiet"), None)
+    loop = next((e for e in reversed(ev) if e["kind"] == "looping"), None)
+    work = next((e for e in reversed(act) if e["kind"] == "tool" and e["detail"].split(": ", 1)[-1].startswith(
+        ("wrote ", "edited ", "submitted a job"))), None)
     view = _run_view(r)
     return {"run": r["id"], "task": view["task"], "status": r["status"], "step": r["step"],
             "steps_total": view["steps_total"], "ask": view["ask"],
@@ -386,7 +389,8 @@ def progress(run: str, recent: int = 15) -> dict:
             "last_activity": last["detail"] if last else "",
             "tool_calls": sum(e["kind"] == "tool" for e in act), "model_calls": sum(e["kind"] == "model" for e in act),
             "files_changed": changed, "quiet_note": quiet["detail"] if quiet and (not last or quiet["ts"] > last["ts"])
-            else "", "recent": [{"ts": e["ts"], "kind": e["kind"], "detail": e["detail"]} for e in act[-recent:]],
+            else "", "looping_note": loop["detail"] if loop and (not work or loop["ts"] > work["ts"]) else "",
+            "recent": [{"ts": e["ts"], "kind": e["kind"], "detail": e["detail"]} for e in act[-recent:]],
             "machine": ctx.broker.describe()}
 
 

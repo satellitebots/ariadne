@@ -181,8 +181,9 @@ def chat_command(line):
                 if p["last_activity"]:
                     lines.append(f"      last: {p['last_activity']} ({p['seconds_since_activity']} s ago; "
                                  f"{p['tool_calls']} tool calls, {p['model_calls']} model calls)")
-                if p["quiet_note"]:
-                    lines.append(f"      {p['quiet_note']}")
+                for note in (p["quiet_note"], p["looping_note"]):
+                    if note:
+                        lines.append(f"      ! {note}")
             return "\n".join(lines)
         rid, rest = _pick_run(rest)
         if word == "/steer":

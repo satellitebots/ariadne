@@ -201,6 +201,26 @@ class Progress:
         self.pos[key] += cut
         return data[:cut].decode("utf-8", "replace").splitlines()
 
+    LOOP_REPEATS = 3        # the same cycle of tool calls this many times in a row reads as a loop
+    LOOP_MAX_CYCLE = 6
+
+    def _watch_for_loops(self, what):
+        """Busy is not progress: a worker repeating the same few calls is reported (once per loop), never stopped."""
+        recent = getattr(self, "_recent", [])
+        recent = (recent + [what])[-self.LOOP_REPEATS * self.LOOP_MAX_CYCLE:]
+        self._recent = recent
+        for n in range(1, self.LOOP_MAX_CYCLE + 1):
+            span = n * self.LOOP_REPEATS
+            if len(recent) >= span and all(recent[-i] == recent[-i - n] for i in range(1, span - n + 1)):
+                cycle = recent[-n:]
+                key = min(tuple(cycle[i:] + cycle[:i]) for i in range(n))     # a b c, b c a, c a b: one loop
+                if key != getattr(self, "_reported", None):
+                    self._reported = key
+                    self.emit("looping", f"it is repeating the same {n} tool call(s) {self.LOOP_REPEATS}+ times: "
+                                         f"{'; '.join(cycle)[:300]}. It is not stopped: park and steer it, or cancel it")
+                return
+        self._reported = None
+
     def poll(self):
         for line in self._new_lines("tools"):
             try:
@@ -209,7 +229,9 @@ class Progress:
                 continue
             self.tools += 1
             self.last = self.clock()
-            self.emit("tool", describe_tool(e.get("tool", ""), e.get("args") or {}, self.ws))
+            what = describe_tool(e.get("tool", ""), e.get("args") or {}, self.ws)
+            self.emit("tool", what)
+            self._watch_for_loops(what)
         for line in self._new_lines("agent"):
             m = _API_CALL.search(line)
             if m:
@@ -246,14 +268,15 @@ def hermes_step(flow, kind, prompt, workspace, ref, model, tools, session=None, 
     cmd = [str(paths.HERMES_EXE), "chat", "--query-file", str(qfile), "-Q", "--source", "tool"]
     if session:
         cmd += ["--resume", session, "--no-restore-cwd"]
-    else:
-        cmd += ["-t", ",".join(hermes_sets + mcp_sets)]     # no --run-budget, no --max-turns: Hermes's unlimited
-        for s in flow.skills + flow.shared_skills:
-            cmd += ["-s", s]
-        if model:
-            cmd += ["-m", model]
-        if flow.reasoning.get("execute") and kind == "step":
-            cmd += ["--reasoning", flow.reasoning["execute"]]
+    # A resumed session gets the same tools, skills and model as a fresh one: without them a resumed worker asked
+    # for its skills forever (skill_view errors in a loop, googl-daily run e6aa). No --run-budget, no --max-turns.
+    cmd += ["-t", ",".join(hermes_sets + mcp_sets)]
+    for s in flow.skills + flow.shared_skills:
+        cmd += ["-s", s]
+    if model:
+        cmd += ["-m", model]
+    if flow.reasoning.get("execute") and kind == "step":
+        cmd += ["--reasoning", flow.reasoning["execute"]]
     permissions.install_hook()
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONIOENCODING="utf-8", **permissions.hermes_env(ref))
     log = qfile.with_suffix("").with_suffix(".log")
