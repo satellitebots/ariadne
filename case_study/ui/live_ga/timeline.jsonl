@@ -1,0 +1,22 @@
+{"t": 4.7, "at": "04:13:16", "kind": "shot", "file": "01-home-typed.png"}
+{"t": 5.7, "at": "04:13:17", "kind": "draft", "id": "d1126-041316-e68b"}
+{"t": 7.9, "at": "04:13:20", "kind": "shot", "file": "02-draft-opened.png"}
+{"t": 10.3, "at": "04:13:22", "kind": "shot", "file": "03-draft-filled.png"}
+{"t": 10.3, "at": "04:13:22", "kind": "ready", "ready": true}
+{"t": 11.3, "at": "04:13:23", "kind": "signed", "hash": "#run/r1126-041322-2563"}
+{"t": 13.4, "at": "04:13:25", "kind": "shot", "file": "04-run-started.png"}
+{"t": 13.4, "at": "04:13:25", "kind": "status", "status": "queued", "step": 0, "steps": 1, "ask": null}
+{"t": 13.5, "at": "04:13:25", "kind": "shot", "file": "05-run-queued-step0.png"}
+{"t": 28.5, "at": "04:13:40", "kind": "status", "status": "running", "step": 1, "steps": 1, "ask": null}
+{"t": 28.6, "at": "04:13:40", "kind": "shot", "file": "06-run-running-step1.png"}
+{"t": 329.9, "at": "04:18:42", "kind": "shot", "file": "07-run-running-step1-t329.png"}
+{"t": 631.3, "at": "04:23:43", "kind": "shot", "file": "08-run-running-step1-t631.png"}
+{"t": 932.6, "at": "04:28:44", "kind": "shot", "file": "09-run-running-step1-t932.png"}
+{"t": 1007.9, "at": "04:30:00", "kind": "status", "status": "done", "step": 1, "steps": 1, "ask": null}
+{"t": 1008.1, "at": "04:30:00", "kind": "shot", "file": "10-run-done-step1.png"}
+{"t": 1011.3, "at": "04:30:03", "kind": "shot", "file": "11-run-final.png"}
+{"t": 1012.5, "at": "04:30:04", "kind": "shot", "file": "12-run-final-activity.png"}
+{"t": 1015.6, "at": "04:30:07", "kind": "shot", "file": "13-task-final.png"}
+{"t": 1020.0, "at": "04:30:12", "kind": "shot", "file": "14-made-desktop.png"}
+{"t": 1023.6, "at": "04:30:15", "kind": "shot", "file": "15-made-phone.png"}
+{"t": 1023.6, "at": "04:30:15", "kind": "end", "status": "done"}

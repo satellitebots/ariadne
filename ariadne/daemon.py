@@ -110,9 +110,13 @@ def _code_stamp():
 
 
 def reconcile(store):
-    """Runs a dead process left live go back to the person; queued runs stay queued."""
+    """Runs a dead process left live go back to the person; queued runs stay queued; a run you had asked to cancel
+    is cancelled (the worker died before it could do it)."""
     for r in store.runs(live=True, limit=200):
-        if r["status"] != "queued":
+        if (r.get("error") or "").startswith("cancel requested"):
+            store.run_set(r["id"], status="cancelled", ended=time.time())
+            store.event(r["id"], "recover", "cancelled: you asked, and its worker had stopped")
+        elif r["status"] != "queued":
             store.run_set(r["id"], status="needs_you", ended=time.time(),
                           error="the worker restarted during this run; the work so far is in the workspace. "
                                 "Rerun it to start again.")

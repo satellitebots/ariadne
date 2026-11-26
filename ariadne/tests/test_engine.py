@@ -170,3 +170,33 @@ def test_the_scheduler_queues_due_tasks_once(env):
     assert len(e.sweep()) == 1                                              # once, not three times
     assert store.task(tid)["next_due"] > clock[0]
     assert e.sweep() == []
+
+
+
+def test_a_run_once_now_task_runs_once(env):
+    # Found in the UI pass on 2026-11-26: a task signed "Once, now" started a second run the moment its first ended,
+    # because the scheduler kept finding it due.
+    store, broker, server, tmp = env
+    sp = make_spec(tmp / "ws", [{"title": "A", "instruction": "a"}])
+    sp["trigger"] = {"kind": "now"}
+    tid, _ = store.sign(sp)
+    assert store.task(tid)["next_due"] is None
+    rid = store.run_new(tid, "signed: run now")                 # what signing does
+    e = engine.Engine(store, FLOWS, broker, step_runner=Script({1: [lambda ws, p: ("did a", 0)]}))
+    e.run_once()
+    assert store.run(rid)["status"] == "done"
+    assert e.sweep() == [] and len(store.runs(tid)) == 1
+
+
+
+def test_a_dead_worker_leaves_cancelled_what_you_cancelled(env):
+    from ariadne import daemon
+    store, broker, server, tmp = env
+    tid, _ = store.sign(make_spec(tmp / "ws", [{"title": "A", "instruction": "a"}]))
+    asked, lost, waiting = (store.run_new(tid, "manual") for _ in range(3))
+    store.run_set(asked, status="running", error="cancel requested")
+    store.run_set(lost, status="running")
+    daemon.reconcile(store)
+    assert store.run(asked)["status"] == "cancelled"
+    assert store.run(lost)["status"] == "needs_you"
+    assert store.run(waiting)["status"] == "queued"

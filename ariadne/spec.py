@@ -198,12 +198,14 @@ def from_template(flow, **given):
 # ---------- when is it due ----------
 
 def next_due(spec, after):
-    """Epoch seconds of the next run strictly after `after`, or None (manual, or a one-off already past)."""
+    """Epoch seconds of the next run strictly after `after`, or None (manual, or a one-off already past). 'now' is
+    never due on a schedule: signing it (or `schedule now`) starts its one run directly. Making it due here re-ran
+    the task after every run, for ever."""
     t = spec.get("trigger") or {}
     from zoneinfo import ZoneInfo
     tz = ZoneInfo(spec.get("tz") or DEFAULTS["tz"])
-    if t.get("kind") == "now":
-        return after
+    if t.get("kind") in ("now", "manual"):
+        return None
     if t.get("kind") == "at":
         at = datetime.fromisoformat(str(t["at"]))
         at = at if at.tzinfo else at.replace(tzinfo=tz)

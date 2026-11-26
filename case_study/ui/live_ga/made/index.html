@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS6515 Graduate Algorithms — Cumulative Final Exam Study Guide</title>
+<style>
+/* ===== Reset & Base ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,sans-serif;line-height:1.6;color:#1a1a2e;background:#f8f9fb}
+a{color:#4361ee;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ===== Layout ===== */
+.wrap{max-width:860px;margin:0 auto;padding:1rem 1.25rem 4rem}
+header{text-align:center;padding:2rem 0 1rem;border-bottom:3px solid #4361ee;margin-bottom:2rem}
+header h1{font-size:1.75rem;color:#1a1a2e;letter-spacing:-.02em}
+header p{color:#555;font-size:.95rem;margin-top:.25rem}
+
+/* ===== Navigation ===== */
+nav{background:#1a1a2e;border-radius:8px;padding:.75rem 1rem;margin-bottom:2rem;overflow-x:auto;white-space:nowrap}
+nav a{color:#e0e0e0;margin-right:1rem;font-size:.82rem;font-weight:500}
+nav a:hover{color:#fff}
+
+/* ===== Section cards ===== */
+section{margin-bottom:2rem}
+section h2{font-size:1.35rem;color:#1a1a2e;border-left:4px solid #4361ee;padding-left:.75rem;margin-bottom:.75rem}
+section h3{font-size:1.1rem;color:#333;margin:1rem 0 .5rem}
+section h4{font-size:1rem;color:#555;margin:.75rem 0 .35rem}
+
+.card{background:#fff;border:1px solid #e2e4ea;border-radius:8px;padding:1rem 1.25rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card ul{padding-left:1.5rem}
+.card ul li{margin-bottom:.3rem}
+
+/* ===== Code / table ===== */
+table{width:100%;border-collapse:collapse;margin:.75rem 0;font-size:.9rem}
+th,td{border:1px solid #ddd;padding:.5rem .75rem;text-align:left}
+th{background:#f0f1f5;font-weight:600}
+code,pre{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.85rem}
+pre{background:#1e1e2e;color:#cdd6f4;padding:.75rem 1rem;border-radius:6px;overflow-x:auto;margin:.5rem 0}
+code{background:#f0f1f5;padding:.15rem .35rem;border-radius:3px}
+pre code{background:none;padding:0}
+
+/* ===== MCQ traps ===== */
+.trap{background:#fff3e0;border-left:4px solid #ff9800;padding:.5rem .75rem;margin:.4rem 0;border-radius:0 6px 6px 0;font-size:.9rem}
+
+/* ===== Self-check Q&A ===== */
+details.check{margin:.5rem 0;border:1px solid #e2e4ea;border-radius:6px;overflow:hidden}
+details.check summary{background:#f0f1f5;padding:.6rem .9rem;cursor:pointer;font-weight:600;user-select:none;font-size:.95rem}
+details.check[open] summary{border-bottom:1px solid #e2e4ea}
+details.check .answer{padding:.6rem .9rem;color:#333;font-size:.9rem;line-height:1.65}
+
+/* ===== Exam format ===== */
+.format-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin:1rem 0}
+.format-card{background:#fff;border:1px solid #e2e4ea;border-radius:8px;padding:.9rem;text-align:center}
+.format-card .pct{font-size:1.5rem;font-weight:700;color:#4361ee}
+.format-card .lbl{font-size:.82rem;color:#666;margin-top:.2rem}
+
+/* ===== Footer ===== */
+footer{text-align:center;padding:2rem 0;border-top:1px solid #ddd;color:#888;font-size:.82rem;margin-top:2rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CS6515 Graduate Algorithms</h1>
+  <p>Cumulative Multiple-Choice Final Exam &mdash; Study Guide</p>
+  <p style="font-size:.8rem;color:#999;margin-top:.3rem">Based on DPV (Dasgupta, Papadimitriou, Vazirani) &amp; Georgia Tech OMSCS lectures</p>
+</header>
+
+<nav>
+  <a href="#exam-format">Exam Format</a>
+  <a href="#dynamic-programming">Dynamic Programming</a>
+  <a href="#divide-and-conquer">Divide &amp; Conquer</a>
+  <a href="#randomized-rsa">Randomized Algos &amp; RSA</a>
+  <a href="#graph-algorithms">Graph Algorithms</a>
+  <a href="#max-flow">Max-Flow</a>
+  <a href="#linear-programming">Linear Programming</a>
+  <a href="#np-completeness">NP-Completeness</a>
+  <a href="#sources">Sources</a>
+</nav>
+
+<!-- ============================================================
+     EXAM FORMAT
+     ============================================================ -->
+<section id="exam-format">
+<h2>Exam Format</h2>
+<div class="card">
+<p>The cumulative final is a <strong>multiple-choice</strong> exam covering <strong>all course units</strong>.</p>
+<ul>
+<li><strong>Weight:</strong> 30% of final grade, with up to 10% extra credit.</li>
+<li><strong>Scope:</strong> Every unit taught in the course &mdash; DP, Divide &amp; Conquer, Randomized Algorithms &amp; RSA, Graph Algorithms, Max-Flow, Linear Programming, NP-Completeness.</li>
+<li><strong>Question style:</strong> Run-time analysis, algorithm identification, complexity class membership, reduction reasoning, and classic traps (e.g. &ldquo;greedy works for MST but not SPT&rdquo;).</li>
+<li><strong>Prerequisite knowledge assumed:</strong> DFS, BFS, Dijkstra, basic DP &amp; D&amp;C with recurrence solving.</li>
+</ul>
+</div>
+
+<div class="format-grid">
+<div class="format-card"><div class="pct">10%</div><div class="lbl">Exam 1 (DP, D&amp;C)</div></div>
+<div class="format-card"><div class="pct">10%</div><div class="lbl">Exam 2 (Graphs, MF, RSA)</div></div>
+<div class="format-card"><div class="pct">20%</div><div class="lbl">Exam 3 (LP, NP)</div></div>
+<div class="format-card"><div class="pct">20%</div><div class="lbl">Exam 4 (Review / practice)</div></div>
+<div class="format-card"><div class="pct">30%</div><div class="lbl"><strong>Cumulative MCQ Final</strong></div></div>
+</div>
+</section>
+
+<!-- ============================================================
+     DYNAMIC PROGRAMMING
+     ============================================================ -->
+<section id="dynamic-programming">
+<h2>1. Dynamic Programming</h2>
+
+<div class="card">
+<h3>Key Concepts</h3>
+<ul>
+<li><strong>Optimal substructure:</strong> Optimal solution to the problem contains optimal solutions to subproblems.</li>
+<li><strong>Overlapping subproblems:</strong> Same subproblems are solved many times in recursion.</li>
+<li>Bottom-up (table-filling) vs. top-down (memoization).</li>
+<li>Space optimisation: often only the last row/column is needed.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Classic Problems &amp; Running Times</h3>
+<table>
+<tr><th>Problem</th><th>Naive Recursion</th><th>DP</th><th>Space (basic)</th></tr>
+<tr><td>Fibonacci</td><td>O(2<sup>n</sup>)</td><td>O(n)</td><td>O(n) &mdash; reducible to O(1)</td></tr>
+<tr><td>Longest Increasing Subsequence (LIS)</td><td>O(2<sup>n</sup>)</td><td>O(n<sup>2</sup>)</td><td>O(n)</td></tr>
+<tr><td>Longest Common Subsequence (LCS)</td><td>O(2<sup>n+m</sup>)</td><td>O(nm)</td><td>O(nm)</td></tr>
+<tr><td>0/1 Knapsack</td><td>O(2<sup>n</sup>)</td><td>O(nW)</td><td>O(W)</td></tr>
+<tr><td>Matrix Chain Multiplication</td><td>&mdash;</td><td>O(n<sup>3</sup>)</td><td>O(n<sup>2</sup>)</td></tr>
+<tr><td>Shortest Path in DAG</td><td>&mdash;</td><td>O(V+E)</td><td>O(V)</td></tr>
+<tr><td>Chain Matrix Multiply (DPV Ch. 3)</td><td>O(2<sup>n</sup>)</td><td>O(n<sup>3</sup>)</td><td>O(n<sup>2</sup>)</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Key Formulas</h3>
+<pre><code>/* LCS: */
+L[i][j] = 0                                    if i==0 or j==0
+L[i][j] = L[i-1][j-1]+1                        if x[i]==y[j]
+L[i][j] = max(L[i-1][j], L[i][j-1])            if x[i]!=y[j]
+
+/* 0/1 Knapsack: */
+K[i][w] = K[i-1][w]                           if w_i > w
+K[i][w] = max(K[i-1][w], v_i + K[i-1][w-w_i]) if w_i <= w
+
+/* Matrix Chain: */
+m[i][j] = min{ m[i][k] + m[k+1][j] + p[i-1]*p[k]*p[j] }  for k in [i..j-1]
+/* p[] holds dimensions: n matrices of sizes p[0]x p[1], p[1]x p[2], ... */
+
+/* LIS: */
+dp[i] = 1 + max(dp[j])  for j < i where A[j] < A[i]
+/* Answer = max(dp) &mdash; can be O(n log n) with patience sorting / binary search */</code></pre>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;Knapsack DP is O(nW)&mdash;this is <strong>pseudo-polynomial</strong>, not polynomial, because W is a value not an input length.&rdquo;</div>
+<div class="trap">&ldquo;Greedy for shortest path (Dijkstra) works for non-negative weights; <strong>not for negative weights</strong> (use Bellman-Ford O(VE)).&rdquo;</div>
+<div class="trap">&ldquo;LCS gives <strong>length</strong> in O(nm); to <strong>reconstruct</strong> the string, trace back through the table.&rdquo;</div>
+<div class="trap">&ldquo;For chain matrix multiplication, the <strong>number of multiplications</strong> depends on parenthesisation order; greedy left-to-right is <strong>not optimal</strong> (e.g., (10&times;100)(100&times;5) vs 10(100&times;5)).&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: What is the time complexity of LIS using the standard DP approach, and can it be improved?</summary>
+<div class="answer">
+Standard DP: O(n<sup>2</sup>) time, O(n) space. Can be improved to O(n log n) time using patience sorting with binary search (maintain an array of smallest tail elements for increasing subsequences of each length).
+</div>
+</details>
+<details class="check">
+<summary>Q: Why is the 0/1 Knapsack DP not truly polynomial time?</summary>
+<div class="answer">
+The running time is O(nW). W is a <em>value</em>, not the number of bits needed to represent it. In binary, W requires log W bits, so O(nW) = O(n &middot; 2<sup>log W</sup>) is exponential in the input size. Hence it is <em>pseudo-polynomial</em>.
+</div>
+</details>
+<details class="check">
+<summary>Q: In LCS, if X = &ldquo;ABCBDAB&rdquo; and Y = &ldquo;BDCAB&rdquo;, what is the LCS length?</summary>
+<div class="answer">
+LCS length = 4. One valid LCS is &ldquo;BCAB&rdquo; (others: &ldquo;BDAB&rdquo;, &ldquo;BCAB&rdquo;).
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     DIVIDE & CONQUER
+     ============================================================ -->
+<section id="divide-and-conquer">
+<h2>2. Divide &amp; Conquer</h2>
+
+<div class="card">
+<h3>Key Concepts</h3>
+<ul>
+<li>Recurrence: <em>T(n) = a &middot; T(n/b) + f(n)</em></li>
+<li><strong>Master Theorem:</strong> Compare f(n) with n<sup>log<sub>b</sub>a</sup>.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Master Theorem</h3>
+<table>
+<tr><th>Relation</th><th>Case</th><th>Result</th></tr>
+<tr><td>f(n) = O(n<sup>log<sub>b</sub>a &minus;&minus;</sup>&epsilon;)</td><td>1 &mdash; work at leaves</td><td>T(n) = &Theta;(n<sup>log<sub>b</sub>a</sup>)</td></tr>
+<tr><td>f(n) = &Theta;(n<sup>log<sub>b</sub>a</sup> &middot; log<sup>k</sup>n)</td><td>2 &mdash; work balanced</td><td>T(n) = &Theta;(n<sup>log<sub>b</sub>a</sup> &middot; log<sup>k+1</sup>n)</td></tr>
+<tr><td>f(n) = &Omega;(n<sup>log<sub>b</sub>a + &epsilon;</sup>)</td><td>3 &mdash; work at root</td><td>T(n) = &Theta;(f(n))</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Classic Problems &amp; Running Times</h3>
+<table>
+<tr><th>Problem</th><th>Naive</th><th>D&amp;C</th><th>Notes</th></tr>
+<tr><td>Integer multiplication (Karatsuba)</td><td>O(n<sup>2</sup>)</td><td>O(n<sup>log<sub>2</sub>3</sup>) &asymp; O(n<sup>1.58</sup>)</td><td>3 recursive calls instead of 4</td></tr>
+<tr><td>Matrix multiplication (Strassen)</td><td>O(n<sup>3</sup>)</td><td>O(n<sup>log<sub>2</sub>7</sup>) &asymp; O(n<sup>2.81</sup>)</td><td>7 recursive calls</td></tr>
+<tr><td>Fast Fourier Transform (FFT)</td><td>O(n<sup>2</sup>)</td><td>O(n log n)</td><td>Evaluate poly at roots of unity, multiply pointwise, interpolate</td></tr>
+<tr><td>Median of two sorted arrays</td><td>O(n+m)</td><td>O(log(min(n,m)))</td><td>Binary search on partition</td></tr>
+<tr><td>Closer pair of points</td><td>O(n<sup>2</sup>)</td><td>O(n log n)</td><td>Sweep + strip of width d</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Key Details</h3>
+<ul>
+<li><strong>Karatsuba:</strong> Split each n-digit number into high/low halves. Compute z<sub>0</sub> = x<sub>0</sub>y<sub>0</sub>, z<sub>2</sub> = x<sub>1</sub>y<sub>1</sub>, z<sub>1</sub> = (x<sub>0</sub>+x<sub>1</sub>)(y<sub>0</sub>+y<sub>1</sub>) &minus; z<sub>0</sub> &minus; z<sub>2</sub>. Recurrence: T(n) = 3T(n/2) + O(n) &rarr; O(n<sup>log<sub>2</sub>3</sup>).
+</li>
+<li><strong>FFT:</strong> O(n log n) polynomial multiplication via evaluation at n<sup>th</sup> roots of unity, pointwise multiply, inverse FFT. Uses butterfly operations. Number-Theoretic Transform (NTT) replaces complex roots with modular roots of unity.
+</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;Master Theorem <strong>does not apply</strong> when f(n) is in-between cases or when a &lt; 1. It also fails for T(n) = 2T(n/2) + n/log n.&rdquo;</div>
+<div class="trap">&ldquo;FFT multiplies polynomials in O(n log n), but converting back to coefficient form requires the <strong>inverse FFT</strong> (divide by n).&rdquo;</div>
+<div class="trap">&ldquo;Strassen is O(n<sup>2.81</sup>) but has a large constant; it is only faster for <em>very large</em> matrices.&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: Solve T(n) = 4T(n/2) + n. What is the complexity?</summary>
+<div class="answer">
+a=4, b=2, log<sub>b</sub>a = log<sub>2</sub>4 = 2. f(n) = n = O(n<sup>2 &minus;&minus;</sup>1). Case 1 applies: T(n) = &Theta;(n<sup>2</sup>).
+</div>
+</details>
+<details class="check">
+<summary>Q: How many recursive multiplications does Karatsuba use vs. schoolbook?</summary>
+<div class="answer">
+Schoolbook: 4 multiplications of n/2-digit numbers. Karatsuba: 3 multiplications (uses addition/subtraction to eliminate one).
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     RANDOMIZED ALGORITHMS & RSA
+     ============================================================ -->
+<section id="randomized-rsa">
+<h2>3. Randomized Algorithms &amp; RSA</h2>
+
+<div class="card">
+<h3>Key Concepts</h3>
+<ul>
+<li><strong>Modular arithmetic:</strong> (a &middot; b) mod n, (a + b) mod n.</li>
+<li><strong>Modular exponentiation (square-and-multiply):</strong> O(log e) modular multiplications.</li>
+<li><strong>Extended Euclidean Algorithm:</strong> Finds gcd(a,b) and coefficients x, y such that ax + by = gcd(a,b). Used to compute modular inverses.</li>
+<li><strong>Fermat&rsquo;s Little Theorem:</strong> If p is prime and a not divisible by p, then a<sup>p&minus;1</sup> &equiv; 1 (mod p).</li>
+<li><strong>Euler&rsquo;s Totient Theorem:</strong> a<sup>&phi;(n)</sup> &equiv; 1 (mod n) when gcd(a,n)=1.</li>
+<li><strong>Chinese Remainder Theorem (CRT):</strong> System of congruences with pairwise-coprime moduli has a unique solution mod the product.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Primality Testing</h3>
+<table>
+<tr><th>Test</th><th>Type</th><th>Running Time</th><th>Notes</th></tr>
+<tr><td>Fermat</td><td>Probabilistic</td><td>O(k &middot; log<sup>3</sup>n)</td><td>Fooled by <strong>Carmichael numbers</strong> (e.g., 561). Always says &ldquo;probably prime&rdquo; for them.</td></tr>
+<tr><td>Miller-Rabin</td><td>Probabilistic</td><td>O(k &middot; log<sup>3</sup>n)</td><td>Stronger: at most 1/4 of bases are strong liars for any composite. Error &le; (1/4)<sup>k</sup>.</td></tr>
+<tr><td>AKS</td><td>Deterministic</td><td>O(log<sup>6</sup>n)</td><td>Theoretical; not used in practice.</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>RSA Cryptosystem</h3>
+<table>
+<tr><th>Step</th><th>Details</th></tr>
+<tr><td><strong>Key Gen</strong></td><td>Pick large primes p, q. n = pq. &phi;(n) = (p&minus;1)(q&minus;1). Choose e coprime to &phi;(n). Compute d = e<sup>&minus;1</sup> mod &phi;(n). Public key: (n, e). Private key: (n, d).</td></tr>
+<tr><td><strong>Encrypt</strong></td><td>c = m<sup>e</sup> mod n</td></tr>
+<tr><td><strong>Decrypt</strong></td><td>m = c<sup>d</sup> mod n</td></tr>
+<tr><td><strong>Security</strong></td><td>Relies on difficulty of factoring n = pq. Known key sizes: 2048+ bits.</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Modular Inverse (Extended Euclidean)</h3>
+<pre><code>function ExtendedGCD(a, b):
+  if b == 0: return (a, 1, 0)
+  (g, x1, y1) = ExtendedGCD(b, a % b)
+  return (g, y1, x1 - (a // b) * y1)
+
+# To find e^(-1) mod phi:
+(g, x, _) = ExtendedGCD(e, phi)
+inverse = x mod phi</code></pre>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;Fermat test: a<sup>n&minus;1</sup> &equiv; 1 (mod n) is <strong>necessary</strong> but not <strong>sufficient</strong> for primality. Carmichael numbers pass for all a coprime to n.&rdquo;</div>
+<div class="trap">&ldquo;Miller-Rabin: write n&minus;1 = 2<sup>s</sup>&middot;d (d odd). Check a<sup>d</sup> &equiv; 1 (mod n) <strong>OR</strong> some a<sup>2<sup>r</sup>d</sup> &equiv; &minus;1 (mod n) for 0 &le; r &lt; s. If neither, n is <strong>definitely composite</strong>.&rdquo;</div>
+<div class="trap">&ldquo;RSA with small e=3 is insecure if the message m is small (m &lt; n<sup>1/3</sup>): the ciphertext c = m<sup>3</sup> can be recovered by taking the cube root without modular reduction.&rdquo;</div>
+<div class="trap">&ldquo;&phi;(pq) = (p&minus;1)(q&minus;1), <strong>not</strong> pq &minus; 1 (that&rsquo;s only for prime p).&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: Given p=61, q=53, e=17. Find d (the private exponent).</summary>
+<div class="answer">
+n = 61 &middot; 53 = 3233. &phi;(n) = 60 &middot; 52 = 3120. d = 17<sup>&minus;1</sup> mod 3120. Using Extended Euclidean: 17 &middot; 2753 &minus; 1 &middot; 3120 = 1. So d = 2753.
+</div>
+</details>
+<details class="check">
+<summary>Q: Why is Miller-Rabin better than Fermat for primality testing?</summary>
+<div class="answer">
+Fermat test is fooled by Carmichael numbers (which pass for all bases coprime to n). Miller-Rabin&rsquo;s &ldquo;strong&rdquo; test catches all composites with probability &ge; 3/4 per random base, and has no Carmichael-number counterexamples.
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     GRAPH ALGORITHMS
+     ============================================================ -->
+<section id="graph-algorithms">
+<h2>4. Graph Algorithms</h2>
+
+<div class="card">
+<h3>Key Concepts &amp; Running Times</h3>
+<table>
+<tr><th>Algorithm</th><th>Problem</th><th>Time</th><th>Notes</th></tr>
+<tr><td>DFS</td><td>Traverse / reachability</td><td>O(V+E)</td><td>Color coding (white/gray/black); detects back edges = cycles</td></tr>
+<tr><td>BFS</td><td>Shortest path (unweighted)</td><td>O(V+E)</td><td>Layer-by-layer; tree edges, cross edges only</td></tr>
+<tr><td>Dijkstra</td><td>Shortest path (non-neg. weights)</td><td>O((V+E) log V)</td><td>Priority queue; <strong>fails with negative weights</strong></td></tr>
+<tr><td>Bellman-Ford</td><td>Shortest path (with neg. weights)</td><td>O(VE)</td><td>Detects negative-weight cycles</td></tr>
+<tr><td>Kruskal&rsquo;s</td><td>MST</td><td>O(E log E) = O(E log V)</td><td>Sort edges, use Union-Find</td></tr>
+<tr><td>Prim&rsquo;s</td><td>MST</td><td>O((V+E) log V)</td><td>PQ-based, like Dijkstra but on edge weights to tree</td></tr>
+<tr><td>Tarjan&rsquo;s / Kosaraju&rsquo;s</td><td>SCC</td><td>O(V+E)</td><td>Strongly connected components</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Graph Edge Types (DFS classification)</h3>
+<ul>
+<li><strong>Tree edge:</strong> Edge in the DFS spanning tree.</li>
+<li><strong>Back edge:</strong> Edge to an ancestor (in directed graphs, indicates a <strong>cycle</strong>).</li>
+<li><strong>Forward edge:</strong> Edge to a descendant (not in tree).</li>
+<li><strong>Cross edge:</strong> Edge between different DFS trees or non-ancestor/descendant nodes.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>2-SAT</h3>
+<ul>
+<li>Given a boolean formula in CNF with exactly 2 literals per clause, is it satisfiable?</li>
+<li>Build an <strong>implication graph</strong>: each literal x gets a node &ldquo;x&rdquo; and a node &ldquo;&not;x&rdquo;. Clause (a &or; b) becomes (&not;a &rarr; b) and (&not;b &rarr; a).</li>
+<li>2-SAT is satisfiable <strong>iff</strong> no variable and its negation are in the same SCC.</li>
+<li>Time: O(V + E) for building graph + O(V + E) for SCC. <strong>Total: O(V + E).</strong></li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;Dijkstra fails with <strong>negative edge weights</strong> (even if no negative cycle exists). Use Bellman-Ford O(VE) or SPFA.&rdquo;</div>
+<div class="trap">&ldquo;MST is <strong>not</strong> the same as Shortest Path Tree. Kruskal&rsquo;s/Prim&rsquo;s minimise total edge weight; Dijkstra minimises path distance.&rdquo;</div>
+<div class="trap">&ldquo;In a directed graph, a back edge in DFS <strong>always</strong> means a cycle exists. In an undirected graph, only edges to already-visited (non-parent) nodes matter.&rdquo;</div>
+<div class="trap">&ldquo;Topological sort = DFS with decreasing finish time (post-order stack). Only valid on a <strong>DAG</strong>.&rdquo;</div>
+<div class="trap">&ldquo;Kruskal&rsquo;s and Prim&rsquo;s both produce MSTs, but they can differ if there are ties in edge weights. Both are correct.&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: Can a graph have multiple MSTs? Under what conditions?</summary>
+<div class="answer">
+Yes, if there are edges with <strong>equal weights</strong> that can be swapped. If all edge weights are distinct, the MST is <strong>unique</strong>.
+</div>
+</details>
+<details class="check">
+<summary>Q: For 2-SAT, why does finding a variable and its negation in the same SCC mean unsatisfiable?</summary>
+<div class="answer">
+If x and &not;x are in the same SCC, there is a path x &rarr; ... &rarr; &not;x and &not;x &rarr; ... &rarr; x, meaning x &rarr; &not;x and &not;x &rarr; x &mdash; i.e., x &harr; &not;x. No truth assignment can satisfy both.
+</div>
+</details>
+<details class="check">
+<summary>Q: What is the time complexity of finding SCCs in a directed graph?</summary>
+<div class="answer">
+O(V + E) using either Kosaraju&rsquo;s algorithm (2 DFS passes) or Tarjan&rsquo;s algorithm (single DFS pass with low-link values).
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     MAX-FLOW
+     ============================================================ -->
+<section id="max-flow">
+<h2>5. Max-Flow &amp; Min-Cut</h2>
+
+<div class="card">
+<h3>Key Concepts</h3>
+<ul>
+<li>Flow network: directed graph G = (V, E), source s, sink t, capacity c(u,v) &ge; 0 on each edge.</li>
+<li><strong>Flow properties:</strong> Capacity constraint (f(u,v) &le; c(u,v)), skew symmetry (f(u,v) = &minus;f(v,u)), flow conservation (inflow = outflow at every node except s, t).</li>
+<li><strong>Residual network G<sub>f</sub>:</strong> For each edge (u,v), residual capacity = c(u,v) &minus; f(u,v). Also adds back-edges if f(u,v) &gt; 0.</li>
+<li><strong>Augmenting path:</strong> A path from s to t in the residual network.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Algorithms &amp; Running Times</h3>
+<table>
+<tr><th>Algorithm</th><th>Running Time</th><th>Notes</th></tr>
+<tr><td>Ford-Fulkerson</td><td>O(C &middot; |E|)</td><td>C = max flow value. Pseudo-polynomial. Depends on augmenting path choice. DFS-based.</td></tr>
+<tr><td>Edmonds-Karp</td><td>O(V &middot; E<sup>2</sup>)</td><td>BFS to find shortest augmenting path (by # edges). Number of augmentations: O(VE).</td></tr>
+<tr><td>Orlin (2013)</td><td>O(VE)</td><td>Best known exact algorithm for general graphs.</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Max-Flow = Min-Cut Theorem</h3>
+<ul>
+<li>For any flow f and any s-t cut (L,R), size(f) &le; capacity(L,R).</li>
+<li>The <strong>maximum</strong> flow equals the <strong>minimum</strong> cut capacity.</li>
+<li>After max-flow, the min-cut (L,R) is: L = {vertices reachable from s in G<sub>f*</sub>}, R = V &minus; L.</li>
+<li>All edges from L to R are <strong>saturated</strong> (f(u,v) = c(u,v)). All edges from R to L have f(u,v) = 0.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;Ford-Fulkerson is O(C &middot; |E|) &mdash; <strong>not</strong> polynomial in input size (C can be exponential in log C bits). Edmonds-Karp fixes this to O(VE<sup>2</sup>).&rdquo;</div>
+<div class="trap">&ldquo;A cut (L,R) in max-flow must <strong>separate s and t</strong> (s &isin; L, t &isin; R). A general partition of V that does not separate s and t is not an s-t cut.&rdquo;</div>
+<div class="trap">&ldquo;The min-cut is the sum of capacities of edges from <strong>L to R only</strong> &mdash; edges from R to L are not counted.&rdquo;</div>
+<div class="trap">&ldquo;Ford-Fulkerson stops when there is <strong>no path</strong> from s to t in the residual network &mdash; not when no edges are saturated.&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: In Edmonds-Karp, why does BFS (instead of DFS) guarantee polynomial running time?</summary>
+<div class="answer">
+BFS finds the <strong>shortest</strong> augmenting path (by # edges). Each augmentation increases the distance of the shortest s-t path in the residual graph. The distance can increase at most O(V) times, and each BFS takes O(E), so total augmentations = O(VE), each O(E) &rarr; O(VE<sup>2</sup>).
+</div>
+</details>
+<details class="check">
+<summary>Q: How do you find the minimum cut from a maximum flow?</summary>
+<div class="answer">
+After computing max-flow f*, let L be the set of vertices <strong>reachable from s</strong> in the residual graph G<sub>f*</sub>. Let R = V &minus; L. The min-cut is the set of original edges from L to R. Its capacity = max flow value.
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     LINEAR PROGRAMMING
+     ============================================================ -->
+<section id="linear-programming">
+<h2>6. Linear Programming</h2>
+
+<div class="card">
+<h3>Standard Form</h3>
+<pre><code>Primal (standard form):
+  min c^T x
+  s.t. Ax = b
+       x >= 0
+
+Dual:
+  max b^T y
+  s.t. A^T y <= c
+       y free (unconstrained)</code></pre>
+</div>
+
+<div class="card">
+<h3>Duality Rules</h3>
+<table>
+<tr><th>Primal</th><th>Dual</th></tr>
+<tr><td>min problem</td><td>max problem</td></tr>
+<tr><td>x &ge; 0</td><td>dual constraint: &le;</td></tr>
+<tr><td>x free</td><td>dual constraint: =</td></tr>
+<tr><td>constraint: =</td><td>dual variable: free</td></tr>
+<tr><td>constraint: &ge;</td><td>dual variable: &ge; 0</td></tr>
+<tr><td>constraint: &le;</td><td>dual variable: &le; 0</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Key Theorems</h3>
+<ul>
+<li><strong>Weak Duality:</strong> For any feasible primal x and dual y: c<sup>T</sup>x &ge; b<sup>T</sup>y. Primal objective &ge; dual objective.</li>
+<li><strong>Strong Duality:</strong> If either the primal or dual has an optimal solution, so does the other, and <em>their optimal values are equal</em>.</li>
+<li><strong>Complementary Slackness:</strong> At optimality: x<sub>j</sub> &middot; (c<sub>j</sub> &minus; (A<sup>T</sup>y)<sub>j</sub>) = 0 for all j. If a primal variable is positive, the corresponding dual constraint is tight (equality).</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Simplex Algorithm</h3>
+<ul>
+<li>Starts at a <strong>vertex</strong> of the feasible region (a basic feasible solution).</li>
+<li>Iteratively moves to an <strong>adjacent vertex</strong> with a better objective value.</li>
+<li><strong>Terminates</strong> when no improving adjacent vertex exists &rarr; optimal.</li>
+<li><strong>Worst-case: exponential</strong> (Klee-Minty cube). But in <strong>practice</strong>, very fast on real-world problems.</li>
+<li>LP is in <strong>P</strong> (Karmarkar&rsquo;s interior-point method is polynomial; simplex is fast empirically). <strong>ILP (integer LP) is NP-complete.</strong></li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Max-Flow as LP</h3>
+<pre><code>Primal (max-flow):
+  max sum of flow out of s
+  s.t. flow conservation at each node
+       0 <= f(u,v) <= c(u,v)
+
+Dual (min-cut):
+  min sum of cut capacities
+  s.t. variables y_v for each vertex
+       y_s = 1, y_t = 0
+       y_v - y_u <= c(u,v) for each edge (u,v)</code></pre>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;LP (linear programming) is in <strong>P</strong>, but <strong>ILP</strong> (integer linear programming) is <strong>NP-complete</strong>. Don&rsquo;t confuse them on the exam.&rdquo;</div>
+<div class="trap">&ldquo;Weak duality: primal (min) &ge; dual (max). Don&rsquo;t flip the inequality sign on the exam.&rdquo;</div>
+<div class="trap">&ldquo;The simplex algorithm can cycle in theory. In practice, <strong>Bland&rsquo;s rule</strong> (pick lowest-index entering/exiting variable) prevents cycling.&rdquo;</div>
+<div class="trap">&ldquo;An LP can be <strong>unbounded</strong> or <strong>infeasible</strong>. These are possible outcomes &mdash; not just &lsquo;optimal solution found.&rsquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: If a primal LP is unbounded, what does that imply about the dual?</summary>
+<div class="answer">
+By weak duality, if the primal (min) is unbounded below (&minus;&infin;), the dual must be <strong>infeasible</strong>. You cannot have a feasible dual providing a lower bound if the primal goes to &minus;&infin;.
+</div>
+</details>
+<details class="check">
+<summary>Q: Is the dual of the dual always the primal?</summary>
+<div class="answer">
+Yes. Taking the dual of the dual LP recovers the original primal LP exactly.
+</div>
+</details>
+<details class="check">
+<summary>Q: What does complementary slackness tell you?</summary>
+<div class="answer">
+At optimality, for each primal variable x<sub>j</sub> and its corresponding dual slack s<sub>j</sub> = c<sub>j</sub> &minus; (A<sup>T</sup>y)<sub>j</sub>: either x<sub>j</sub> = 0 or s<sub>j</sub> = 0 (or both). This lets you recover one optimal solution if you know the other.
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     NP-COMPLETENESS
+     ============================================================ -->
+<section id="np-completeness">
+<h2>7. NP-Completeness</h2>
+
+<div class="card">
+<h3>Key Definitions</h3>
+<ul>
+<li><strong>P:</strong> Problems solvable in polynomial time.</li>
+<li><strong>NP:</strong> Problems whose solutions can be <em>verified</em> in polynomial time.</li>
+<li><strong>NP-hard:</strong> At least as hard as any problem in NP (may not even be in NP).</li>
+<li><strong>NP-complete:</strong> In NP <strong>and</strong> NP-hard. Hardest problems in NP (assuming P &ne; NP).</li>
+<li><strong>Halting Problem:</strong> &ldquo;Does program P halt on input I?&rdquo; &mdash; undecidable (not in NP, not even verifiable in poly time).</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>Classic NP-Complete Problems</h3>
+<table>
+<tr><th>Problem</th><th>Decision Version</th></tr>
+<tr><td>SAT</td><td>Is there a truth assignment satisfying a boolean formula?</td></tr>
+<tr><td>3-SAT</td><td>Is there a truth assignment satisfying a CNF formula with &le; 3 literals per clause?</td></tr>
+<tr><td>Vertex Cover (VC)</td><td>Does G have a vertex cover of size &le; k?</td></tr>
+<tr><td>Independent Set (IS)</td><td>Does G have an independent set of size &ge; k?</td></tr>
+<tr><td>Clique</td><td>Does G have a clique of size &ge; k?</td></tr>
+<tr><td>Hamiltonian Cycle (HC)</td><td>Does G have a cycle visiting every vertex exactly once?</td></tr>
+<tr><td>Rudrata Path</td><td>Does G have a path visiting every vertex exactly once?</td></tr>
+<tr><td>Traveling Salesman (TSP)</td><td>Does a tour of cost &le; K exist?</td></tr>
+<tr><td>Subset Sum</td><td>Is there a subset summing to target t?</td></tr>
+<tr><td>3-Coloring</td><td>Can vertices be colored with 3 colors so no adjacent vertices share a color?</td></tr>
+<tr><td>ILP</td><td>Does Ax &le; b have an integer solution x &ge; 0?</td></tr>
+<tr><td>3D Matching</td><td>Given sets X,Y,Z and triples, is there a matching covering all elements?</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Key Reductions</h3>
+<ul>
+<li><strong>SAT</strong> &rarr; <strong>3-SAT:</strong> Break clauses with &gt;3 literals using auxiliary variables.</li>
+<li><strong>3-SAT</strong> &rarr; <strong>Vertex Cover:</strong> For each clause (a &or; b &or; c), create a triangle of 3 nodes. Connect conflicting literals. Cover size = 2n + k.</li>
+<li><strong>Vertex Cover</strong> &rarr; <strong>Independent Set:</strong> S is a vertex cover iff V &minus; S is an independent set. Same graph, same k.</li>
+<li><strong>Independent Set</strong> &rarr; <strong>Clique:</strong> S is an IS in G iff S is a clique in G&rsquo; (complement graph).</li>
+<li><strong>Vertex Cover</strong> &rarr; <strong>Hamiltonian Cycle:</strong> Replace each edge with a &ldquo;gadget&rdquo; (diamond-shaped path). HC exists iff VC exists.</li>
+<li><strong>3-Coloring</strong> &rarr; <strong>Clique:</strong> If G has a clique of size 3, then G is 3-colorable iff G&rsquo; has a clique of size k.</li>
+<li><strong>Subset Sum</strong> &rarr; <strong>ILP:</strong> Special case with binary variables and one constraint.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>How to Prove a Problem is NP-Complete</h3>
+<ol>
+<li><strong>In NP:</strong> Show a certificate (witness) can be verified in polynomial time.</li>
+<li><strong>NP-hard:</strong> Reduce a known NP-complete problem to the new problem in polynomial time.</li>
+<li>Chain: start from <strong>SAT/3-SAT</strong> (first proved NP-complete by Cook-Levin), then reduce through the web of known NP-complete problems.</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>Multiple-Choice Traps</h3>
+<div class="trap">&ldquo;If P = NP, <strong>every</strong> NP-complete problem becomes solvable in polynomial time. If P &ne; NP, none of them do.&rdquo;</div>
+<div class="trap">&ldquo;The Halting Problem is <strong>undecidable</strong>, not NP-complete. It cannot even be verified in polynomial time (it is &notin; NP).&rdquo;</div>
+<div class="trap">&ldquo;Vertex Cover + Independent Set: S is a VC &harr; V &minus; S is an IS. They are <strong>complements</strong> on the same graph. Don&rsquo;t reduce to different graphs.&rdquo;</div>
+<div class="trap">&ldquo;TSP with triangle inequality (metric TSP) can be <strong>approximated</strong> (2-approx via MST), but the <strong>decision version</strong> is still NP-complete.&rdquo;</div>
+<div class="trap">&ldquo;A problem being NP-complete does <strong>not</strong> mean it cannot be solved in polynomial time for special cases (e.g., 2-SAT is in P, but 3-SAT is NP-complete).&rdquo;</div>
+</div>
+
+<div class="card">
+<h3>Self-Check Questions</h3>
+<details class="check">
+<summary>Q: What is the difference between NP-hard and NP-complete?</summary>
+<div class="answer">
+NP-hard: at least as hard as any NP problem (may not be in NP). NP-complete: in NP <strong>and</strong> NP-hard. All NP-complete problems are NP-hard, but not all NP-hard problems are NP-complete (e.g., Halting Problem is NP-hard but not in NP).
+</div>
+</details>
+<details class="check">
+<summary>Q: How do you reduce Vertex Cover to Independent Set?</summary>
+<div class="answer">
+On the <em>same</em> graph G: S is a vertex cover of size k iff V &minus; S is an independent set of size |V| &minus; k. This is a trivial (polynomial-time) reduction.
+</div>
+</details>
+<details class="check">
+<summary>Q: Why is 2-SAT in P but 3-SAT NP-complete?</summary>
+<div class="answer">
+2-SAT can be solved by building an implication graph and checking SCCs (O(V+E)). The implication structure guarantees consistency. With 3+ literals per clause, the implication graph no longer captures all constraints, and the problem becomes NP-complete.
+</div>
+</details>
+</div>
+</section>
+
+<!-- ============================================================
+     SOURCES
+     ============================================================ -->
+<section id="sources">
+<h2>Sources &amp; References</h2>
+<div class="card">
+<ol>
+<li><a href="https://omscs.gatech.edu/sites/default/files/documents/Syllabi/CS%206515%202026-3.pdf" target="_blank" rel="noopener">Fall 2026 Syllabus &mdash; OMSCS Georgia Tech</a></li>
+<li><a href="https://www.omscs.gatech.edu/cs-6515-intro-graduate-algorithms" target="_blank" rel="noopener">OMSCS Course Page &mdash; CS 6515</a></li>
+<li><a href="https://www.cc.gatech.edu/~vigoda/GA" target="_blank" rel="noopener">Vigoda&rsquo;s Lecture Outline (course lectures)</a></li>
+<li><a href="https://blog-5nd.pages.dev/posts/cs-650-graduate-algorithms/" target="_blank" rel="noopener">Student Course Review</a></li>
+<li><a href="https://awaisrauf.github.io/omscs_reviews/CS-6515" target="_blank" rel="noopener">Aggregated Student Reviews</a></li>
+<li><a href="https://brainscape.com/flashcards/cs6515_exam3-11648987/packs/20156545" target="_blank" rel="noopener">Student Flashcards (Exam 3)</a></li>
+<li><a href="https://courses.cs.washington.edu/courses/cse421/24sp/final-review.pdf" target="_blank" rel="noopener">UW CSE421 Algorithms Final Review (comparable)</a></li>
+<li><a href="https://lowyx.com/posts/gt-ga-exam-graph-mf-rsa/" target="_blank" rel="noopener">Lowyx&rsquo;s CS6515 Exam Prep: Graphs, Max Flow, RSA</a></li>
+<li><a href="https://teapowered.dev/assets/ga-notes.pdf" target="_blank" rel="noopener">Kudrayvtsev&rsquo;s Unofficial GA Notes (comprehensive)</a></li>
+<li>Dasgupta, Papadimitriou, Vazirani &mdash; <em>Algorithms</em> (DPV), McGraw-Hill. <strong>Textbook used by the course.</strong></li>
+</ol>
+</div>
+</section>
+
+<footer>
+  <p>CS6515 Graduate Algorithms &mdash; Cumulative Final Exam Study Guide</p>
+  <p>Generated 2026-11-26 &mdash; Based on DPV textbook &amp; Georgia Tech OMSCS materials</p>
+</footer>
+
+</div>
+</body>
+</html>
